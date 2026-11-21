@@ -13,7 +13,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("FF8 Reborn Installer")]
 [assembly: AssemblyProduct("FF8 Reborn")]
-[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
 
 internal static class Juego {
     internal const string Nombre = "FINAL FANTASY VIII Remastered";
@@ -52,6 +52,7 @@ internal static class Juego {
     const string RebornCustomCopy = "3F5E6E59BB11D85FA59993BD66FBE79D6E420192129EF1A5A21632AB5DD74507";
     const string RebornEnglish = "42ED54AD00B57263C9108B2B42EC7E7E36CB67C470903A8AB487C068E76A035F";
     static bool EsAnterior(string firma) {
+        if(firma=="4850A85CC7C491132D14C4E36E679F1363917CF5EA65E39A3C47868F39A442C3")return true;
         const string publicV1="95B0B8CBBCD5436B7B7F734BCAC12AAEB66A0095C4C5F70E134E13721186E43D";
         const string setupPreview="F180DF0C89DAF6B6D98F6DBF6C29416B586F9B4A8AA2E811C0229E7290EE1EC5";
         if(firma==RebornEnglish||firma==publicV1||firma==setupPreview)return true;
@@ -99,6 +100,23 @@ internal static class Juego {
         }
         return "";
     }
+    internal const string GogId="1086370078";
+    internal static bool EsGog(string ruta) {
+        return !String.IsNullOrWhiteSpace(ruta) && File.Exists(Path.Combine(ruta,"goggame-"+GogId+".info"));
+    }
+    internal static string DetectarGog() {
+        foreach(var raiz in new[]{@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node",@"HKEY_LOCAL_MACHINE\SOFTWARE",@"HKEY_CURRENT_USER\SOFTWARE"}){
+            try {
+                var ruta=Registry.GetValue(raiz+@"\GOG.com\Games\"+GogId,"path",null) as string;
+                if(EsGog(ruta))return ruta;
+            } catch(System.Security.SecurityException) {} catch(UnauthorizedAccessException) {}
+        }
+        foreach(var disco in DriveInfo.GetDrives()) if(disco.DriveType==DriveType.Fixed){
+            var ruta=Path.Combine(disco.Name,"GOG Games","FINAL FANTASY VIII - REMASTERED");
+            if(EsGog(ruta))return ruta;
+        }
+        return "";
+    }
     static string Firma(string archivo) {
         if(!File.Exists(archivo)) return "";
         using(var f=File.OpenRead(archivo)) using(var sha=SHA256.Create())
@@ -140,6 +158,7 @@ internal static class Juego {
     }
     static string Aplicar(string ruta,bool instalar) {
         Exigir(Directory.Exists(ruta),"Choose the FINAL FANTASY VIII Remastered folder.");
+        Exigir(!EsGog(ruta),"GOG edition detected. This renderer currently supports the Steam engine only.");
         Exigir(Firma(Path.Combine(ruta,"FFVIII_EFIGS.dll"))==Motor,"Choose a compatible Steam installation of FFVIII Remastered for Windows (EFIGS).");
         foreach(var nombre in new[]{"FFVIII","FFVIII_LAUNCHER"}) {
             var procesos=Process.GetProcessesByName(nombre);
@@ -198,6 +217,8 @@ internal static class Juego {
 }
 
 internal sealed class Ventana : Form {
+    readonly ComboBox edicion=new ComboBox();
+    readonly Label tienda;
     readonly TextBox carpeta=new TextBox();
     readonly Label estado=new Label();
     readonly Button instalar=new Button(), quitar=new Button();
@@ -218,18 +239,28 @@ internal sealed class Ventana : Form {
         b.FlatAppearance.MouseOverBackColor=principal?Color.FromArgb(31,104,98):Color.FromArgb(229,233,224);
         b.Font=new Font("Segoe UI",9,principal?FontStyle.Bold:FontStyle.Regular);Controls.Add(b);
     }
-    public Ventana(string ruta) {
+    public Ventana(string ruta) : this(ruta,Juego.DetectarGog()) {}
+    internal Ventana(string ruta,string gog) {
         Text="FF8 Reborn · Installer";
         AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi;
         Font=new Font("Segoe UI",10); ClientSize=new Size(778,372);BackColor=papel;ForeColor=tinta;
         FormBorderStyle=FormBorderStyle.FixedDialog; MaximizeBox=false; StartPosition=FormStartPosition.CenterScreen;
         AutoScroll=true;
         portada.SetBounds(0,0,210,372);Controls.Add(portada);
-        Rotulo("INSTALLER   /   STEAM",234,16,460,18,8,verde,true);
+        tienda=Rotulo("INSTALLER",234,16,290,18,8,verde,true);
         Rotulo("Install FF8 Reborn",231,33,530,40,22,tinta,true);
         Regla(234,81,520,1);
-        Rotulo("Game folder",234,93,500,22,10,tinta,true);
-        carpeta.SetBounds(234,119,412,29);carpeta.Text=ruta;carpeta.TabIndex=0;
+        Rotulo("Game folder",234,93,250,22,10,tinta,true);
+        carpeta.SetBounds(234,119,412,29);carpeta.Text=String.IsNullOrEmpty(ruta)?gog:ruta;carpeta.TabIndex=0;
+        if(!String.IsNullOrEmpty(ruta)&&!String.IsNullOrEmpty(gog)&&!Juego.EsGog(ruta)){
+            edicion.SetBounds(550,85,204,27);edicion.DropDownStyle=ComboBoxStyle.DropDownList;
+            edicion.AccessibleName="Game edition";edicion.Items.AddRange(new object[]{"Steam","GOG"});
+            edicion.SelectedIndex=0;Controls.Add(edicion);
+            edicion.SelectedIndexChanged+=delegate{
+                if(edicion.SelectedIndex<0)return;
+                carpeta.Text=edicion.SelectedIndex==0?ruta:gog;RevisarCarpeta();
+            };
+        }
         carpeta.AccessibleName="Game folder";Controls.Add(carpeta);
         var buscar=new Button();Boton(buscar,"Browse…",656,117,98,false);buscar.TabIndex=1;
         buscar.Click+=delegate {
@@ -239,6 +270,7 @@ internal sealed class Ventana : Form {
             }
         };
         carpeta.Validated+=delegate{RevisarCarpeta();};
+        carpeta.TextChanged+=delegate{if(Directory.Exists(carpeta.Text.Trim()))RevisarCarpeta();};
         Rotulo("Change settings while playing",234,177,518,28,13,tinta,true);
         Rotulo("Press F8 on your keyboard or Select + Start together on your controller.",234,211,518,50,10,tinta,false);
         Regla(234,266,520,1);
@@ -269,6 +301,14 @@ internal sealed class Ventana : Form {
         string ruta=carpeta.Text.Trim();
         if(String.Equals(ruta,ultimaCarpeta,StringComparison.OrdinalIgnoreCase))return;
         try {
+            bool gog=Juego.EsGog(ruta);
+            if(edicion.Items.Count>0 && edicion.SelectedIndex>=0 && (edicion.SelectedIndex==1)!=gog)edicion.SelectedIndex=-1;
+            tienda.Text=gog?"INSTALLER   /   GOG":"INSTALLER   /   STEAM";
+            instalar.Enabled=!gog;
+            if(gog){
+                actual=false;instalar.Text="GOG support pending";quitar.Visible=false;
+                estado.Text="GOG installation found. Its engine still needs compatibility testing.";ultimaCarpeta=ruta;return;
+            }
             ActualizarAcciones(Juego.VersionActual(ruta));
             ultimaCarpeta=ruta;
             estado.Text=actual?"FF8 Reborn is installed.":"Close the game and its launcher before installing.";

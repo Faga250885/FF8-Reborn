@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Descargar el instalador para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar el instalador para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · [Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -12,7 +12,27 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 [Ver las capturas, la medición de FPS y los ejemplos a tamaño completo](docs/GALERIA.md#features).
 
-## Requisitos
+## Steam Deck (SteamOS, experimental)
+
+1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
+2. Cambia al modo Escritorio y guarda el [instalador para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) en la carpeta de descargas.
+3. Abre Konsole en la carpeta que contiene la descarga y ejecuta:
+
+   ```sh
+   python3 FF8-Reborn-Deck.pyz
+   ```
+
+4. Vuelve al modo Juego e inicia FFVIII desde tu biblioteca de Steam. Para abrir el panel, pulsa **Vista + Menú** a la vez.
+
+El instalador busca el juego en las bibliotecas registradas en Steam, incluida la microSD. Para elegir una biblioteca concreta, añade `--library "/ruta/a/la/biblioteca"` (la carpeta que contiene `steamapps`). Para desinstalar, cierra el juego y ejecuta el mismo comando con `--uninstall`. Requiere Python 3.8 o superior y funciona con tu usuario habitual.
+
+Se probó la instalación y la restauración en Linux con archivos originales de Steam. Queda pendiente comprobar el juego bajo Proton en una Steam Deck física, incluidos los controles y la cadencia.
+
+## GOG para Windows
+
+El instalador reconoce la edición GOG. Si encuentra ambas tiendas, permite elegir la copia. El motor de GOG 1.0.3 difiere del de Steam y su instalación del mod está pendiente de adaptación y pruebas.
+
+## Requisitos para Windows
 
 - Un PC con Windows y la cuenta de Steam propietaria de [FINAL FANTASY VIII Remastered (app 1026680)](https://store.steampowered.com/app/1026680/FINAL_FANTASY_VIII__REMASTERED/).
 - La edición compatible de Steam para Windows con `FFVIII_EFIGS.dll`. El instalador comprueba el motor y la DLL de audio original. La edición de PC de 2013 y la de PlayStation usan otros motores.

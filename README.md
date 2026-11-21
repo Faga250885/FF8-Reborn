@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Download the Windows installer](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download the Windows installer](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · [Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -12,7 +12,27 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 [See the full-size screenshots and frame-rate measurement](docs/GALLERY.md#features).
 
-## Requirements
+## Steam Deck (SteamOS, experimental)
+
+1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
+2. Switch to Desktop Mode and save the [Steam Deck installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) to your downloads folder.
+3. Open Konsole in the folder containing the download and run:
+
+   ```sh
+   python3 FF8-Reborn-Deck.pyz
+   ```
+
+4. Return to Gaming Mode and launch FFVIII from your Steam library. Press **View + Menu** together to open the panel.
+
+The installer looks in registered Steam libraries, including microSD storage. To choose a library, add `--library "/path/to/library"` (the folder containing `steamapps`). To uninstall, close the game and run the same command with `--uninstall`. It requires Python 3.8 or newer and runs under your normal user account.
+
+Installation and restoration were tested on Linux with original Steam game files. Gameplay under Proton on physical Deck hardware, including controls and frame pacing, still needs testing.
+
+## GOG for Windows
+
+Setup recognizes the GOG edition. When both stores are detected, you can select the installation. The GOG 1.0.3 engine differs from Steam’s and still needs a renderer port and gameplay validation.
+
+## Windows requirements
 
 - A Windows PC and the Steam account that owns [FINAL FANTASY VIII Remastered (app 1026680)](https://store.steampowered.com/app/1026680/FINAL_FANTASY_VIII__REMASTERED/).
 - The supported Windows Steam build with `FFVIII_EFIGS.dll`. The installer checks the engine and original audio DLL before making changes. The 2013 PC release and the original PlayStation game use different engines.
