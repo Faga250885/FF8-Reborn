@@ -152,7 +152,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         if(!persist(path,s,active_profile,-1,false,row,value))return;
         if(row==Map)display_settings.atlas=value!=0;
         if(row==Aspect)display_settings.wide=value!=0;
-        if(row==FPS)display_settings.fps=value;
+        if(row==FPS){display_settings.fps=value;display_settings.automatic_fps=false;}
         if(row==Sides)display_settings.field_sides=value!=0;
         can_present=false;
         return;

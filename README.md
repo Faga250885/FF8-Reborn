@@ -4,9 +4,13 @@
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
-[![Slideshow of filter comparisons, widescreen battles, the world map, blurred sidebars and live settings](docs/images/tour.gif)](docs/GALLERY.md)
+**In active development.** If you find a bug, [report it on GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) or add a comment to an existing issue. Reports in English or Spanish are welcome.
 
-[Browse all 16 screenshots at your own pace →](docs/GALLERY.md)
+## Gameplay features
+
+[![Widescreen, the 120 FPS target, the world map and blurred sidebars](docs/images/features.gif)](docs/GALLERY.md#features)
+
+[See the full-size screenshots and frame-rate measurement](docs/GALLERY.md#features).
 
 ## Requirements
 
@@ -20,10 +24,12 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 1. Install the game in Steam. Close the game and the FFVIII launcher.
 2. Download **[FF8-Reborn-Setup.exe](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** from Releases and run it. This single installer contains the mod. You do not need a mod manager or Lossless Scaling.
 3. Check **Game folder**. If needed, choose **Browse** and select the folder Steam opens under **Manage → Browse local files**.
-4. Select your settings and click **Install with these settings**. The installer keeps a backup of the original audio DLL.
+4. Click **Install**. The installer keeps a backup of the original audio DLL.
 5. Launch the game from Steam. Press **F8** or **Select + Start** to open FF8 Reborn.
 
-![FF8 Reborn installer and filter preview](docs/images/installer.png)
+![FF8 Reborn installer](docs/images/installer.png)
+
+On a fresh install, the game targets **60 FPS** when its monitor runs at 60 Hz or below and **120 FPS** when Windows reports more than 60 Hz. If the refresh rate is unavailable it defaults to 60 FPS. Choose another target in the live menu at any time.
 
 ## What you can change
 
@@ -31,11 +37,17 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 | --- | --- |
 | Frame rate | **Original**, **60** or **120**. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
 | Aspect ratio | **Widescreen** expands the camera in battle and on the world map. **Original (4:3)** restores the original framing. |
-| Blurred sidebars | In widescreen, fills the sides of fixed backgrounds with diffuse colors sampled from the current scene, including characters near the edges. |
+| Blurred sidebars | Available across all prerendered fields in widescreen. Fills the side margins with diffuse colors from the current scene, including characters near the edges. Deling City is shown as an example. |
 | Full-screen map | Choose the **Original** map or the illustrated **Reborn** atlas. The full map is centered and keeps its proportions. |
 | Screen filter | Choose a preset or edit resolution, pixelation, scanlines, RGB mask, glow, PS1 dithering and edge smoothing. Available controls depend on filter type. |
 
-**FF8 Reborn (recommended)** combines a 320-line image with mild scanlines and dithering. **HD Blend** is for players who prefer a higher-resolution image. It compares nearby colors at two distances, softens abrupt color boundaries and limits brightness changes around fine details. Adjust **Edge smoothing** to taste. [Compare HD Blend, the original frame and the recommended filter](docs/GALLERY.md#hd-blend).
+## Screen filters
+
+[![All eight built-in filters and the unfiltered view outside the Galbadia Hotel](docs/images/filters.gif)](docs/GALLERY.md#filters)
+
+[Open the original 2560 × 1440 screenshots of every filter](docs/GALLERY.md#filters).
+
+**FF8 Reborn (recommended)** combines a 320-line image with mild scanlines and dithering. **HD Blend** is for players who prefer a higher-resolution image. It compares nearby colors at two distances, softens abrupt color boundaries and limits brightness changes around fine details. Adjust **Edge smoothing** to taste. [Compare every preset outside the Galbadia Hotel](docs/GALLERY.md#hd-blend).
 
 Other looks include **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1 Backgrounds**, **PS1 · CRT TV**, **PS1 Sharp** and **Off**.
 
@@ -52,11 +64,11 @@ Other looks include **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1
 
 Display choices save as you adjust them. Filters have their own profiles. To make a personal filter, pick a starting profile, adjust it and choose **Create a custom copy**. If a copy already exists, **Save to my custom profile** replaces that one slot. While editing the saved copy, choose **Save my changes**. **Restore filter defaults** appears when the values differ from the base filter. The last selected filter is remembered.
 
-![In-game settings panel](docs/images/settings.png)
+[View the in-game panel](docs/GALLERY.md#frame-rate).
 
 ## Update, uninstall and troubleshoot
 
-- **Update:** close FFVIII and its launcher, then run the latest installer. Existing preferences are read on startup. Review the selections before applying.
+- **Update:** close FFVIII and its launcher, then run the latest installer. Click **Install** to update. Your saved settings carry over.
 - **Uninstall:** close the game and launcher, open the installer, select the game folder and click **Uninstall**. The installer verifies and restores the original DLL. Save files are not part of the installation.
 - **F8 does nothing:** give the game window focus and launch through the Steam account that owns the game. On a controller, press both buttons together. For a pad without XInput, use a Steam Input gamepad layout.
 - **Unexpected DLL or incompatible engine:** confirm the edition and game folder. Another mod using `libvgmstream.dll` can conflict. Remove that mod using its own instructions before installing FF8 Reborn.
@@ -64,4 +76,4 @@ Display choices save as you adjust them. Filters have their own profiles. To mak
 
 ## Project
 
-Created by **Faga12**. FF8 Reborn is an unofficial fan project. FINAL FANTASY VIII Remastered belongs to its respective rights holders. [Build from source](docs/BUILD.md) · [Release history and SHA-256 checksums](https://github.com/Faga250885/FF8-Reborn/releases).
+Created by **Faga12**. FF8 Reborn is an unofficial fan project. FINAL FANTASY VIII Remastered belongs to its respective rights holders. [Renderer source](src/) · [Installer source](installer/) · [Build and verify the download](docs/BUILD.md) · [Release history and SHA-256 checksums](https://github.com/Faga250885/FF8-Reborn/releases).

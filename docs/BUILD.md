@@ -10,4 +10,12 @@ From the repository root, point the script to the include directory containing `
 
 The output is `dist/FF8-Reborn-Setup.exe`. The script builds the x86 renderer, strips debug symbols, compresses the mod DLL, embeds its SHA-256 and builds the Windows Forms installer. The original game, Steamworks runtime and original audio library come from the user's Steam installation.
 
-The renderer and filter are in `src/`. The settings window, installation checks and filter preview are in `installer/`. Steam ownership is checked using the game's initialized Steam session. [Steamworks ownership API](https://partner.steamgames.com/doc/api/ISteamApps#GetAppOwner).
+The renderer and filter are in `src/`. The setup window and installation checks are in `installer/`. Steam ownership is checked using the game's initialized Steam session. [Steamworks ownership API](https://partner.steamgames.com/doc/api/ISteamApps#GetAppOwner).
+
+## Verify the downloaded installer
+
+Download the installer and the accompanying SHA256SUMS.txt from the same release. In PowerShell, run the following in the download folder and compare the resulting hash with the entry for FF8-Reborn-Setup.exe.
+
+~~~powershell
+Get-FileHash .\FF8-Reborn-Setup.exe -Algorithm SHA256
+~~~

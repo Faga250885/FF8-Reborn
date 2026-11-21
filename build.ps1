@@ -22,7 +22,7 @@ try {
 }finally{$file.Dispose()}
 $exe=Join-Path $out 'FF8-Reborn-Setup.exe'
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-$sources='Instalador.cs','Portada.cs','Retro.cs'|ForEach-Object{Join-Path $installer $_}
+$sources='Instalador.cs','Portada.cs'|ForEach-Object{Join-Path $installer $_}
 $atlas=Join-Path $installer 'Atlas.jpg'
 & $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll "/resource:$payload,mod.gz" "/resource:$atlas,atlas.jpg" "/out:$exe" @sources $package
 if($LASTEXITCODE){throw 'Installer build failed.'}

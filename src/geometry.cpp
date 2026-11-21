@@ -49,12 +49,14 @@ API_LIST(DECLARE)
 static bool loaded=false,inside=false,enabled=true,can_present=false,accessibility_test=false,diagnostic_trace=false;
 #include "retro_settings.h"
 struct DisplaySettings {
-    int fps=120;
+    int fps=60;
+    bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
     void load(const wchar_t* path){
-        const int value=GetPrivateProfileIntW(L"Display",L"FPS",120,path);
-        fps=value==0||value==60?value:120;
+        const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
+        automatic_fps=value!=0&&value!=60&&value!=120;
+        fps=value==0||value==120?value:60;
         wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
         atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
         field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
@@ -1004,13 +1006,15 @@ static void qa_native_image(int,int);
 #endif
 static void track_display_refresh(HDC handle,double time){
     static double next_check=0;
-    if(time<next_check&&presentation_clock.last_submission>0)return;
+    if(time<next_check)return;
     next_check=time+2.;
     MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);
     HMONITOR nearest=MonitorFromWindow(WindowFromDC(handle),MONITOR_DEFAULTTONEAREST);
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
-    if(GetMonitorInfoW(nearest,&monitor)&&EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)&&mode.dmDisplayFrequency>1)
+    if(GetMonitorInfoW(nearest,&monitor)&&EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)&&mode.dmDisplayFrequency>1){
         presentation_clock.refresh_period=1./mode.dmDisplayFrequency;
+        if(display_settings.automatic_fps)display_settings.fps=mode.dmDisplayFrequency>60?120:60;
+    }
     else presentation_clock.refresh_period=0;
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h){
@@ -1038,8 +1042,8 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false){doub
         if(f){fprintf(f,"%.9f,%u,%d,%.6f,%.6f,%.6f,%d,%d\n",began,sources,present_reason,alpha,began-next_output,maximum_gap,gap_from,gap_to);
             if(++rows%120==0)fflush(f);if(rows==9000){fclose(f);f=nullptr;}}}
     maximum_gap=0;qa_stage(12);
+    track_display_refresh(handle,began);
     if(alpha>=0){
-        track_display_refresh(handle,began);
         presentation_clock.submitted(now());
     }
     BOOL result=real_swap(handle);

@@ -11,9 +11,9 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyTitle("Instalador de FF8 Reborn")]
+[assembly: AssemblyTitle("FF8 Reborn Installer")]
 [assembly: AssemblyProduct("FF8 Reborn")]
-[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
 
 internal static class Juego {
     internal const string Nombre = "FINAL FANTASY VIII Remastered";
@@ -52,7 +52,9 @@ internal static class Juego {
     const string RebornCustomCopy = "3F5E6E59BB11D85FA59993BD66FBE79D6E420192129EF1A5A21632AB5DD74507";
     const string RebornEnglish = "42ED54AD00B57263C9108B2B42EC7E7E36CB67C470903A8AB487C068E76A035F";
     static bool EsAnterior(string firma) {
-        if(firma==RebornEnglish)return true;
+        const string publicV1="95B0B8CBBCD5436B7B7F734BCAC12AAEB66A0095C4C5F70E134E13721186E43D";
+        const string setupPreview="F180DF0C89DAF6B6D98F6DBF6C29416B586F9B4A8AA2E811C0229E7290EE1EC5";
+        if(firma==RebornEnglish||firma==publicV1||firma==setupPreview)return true;
         return firma==Anterior||firma==RebornInicial||firma==RebornFranjas||firma==RebornPanorama||firma==RebornCosta||firma==RebornGiro||firma==RebornCarrera||firma==RebornCabeza||firma==RebornZancada||firma==RebornPerfil||firma==RebornLateral||firma==RebornPaso||firma==RebornSeguimiento||firma==RebornEstabilidad||firma==RebornMapaProporcional||firma==RebornCapas||firma==RebornRitmo||firma==RebornAntesDeRetro||firma==RebornRetro||firma==RebornPanel||firma==RebornPerfiles||firma==RebornAtlasEstable||firma==RebornEspecial||firma==RebornScroll||firma==RebornFuente||firma==RebornMenu||firma==RebornTransicion||firma==RebornRecomendada||firma==RebornPS1||firma==RebornPanelVivo||firma==RebornCustomCopy;
     }
     static string Mod { get { return Paquete.Firma; } }
@@ -195,64 +197,11 @@ internal static class Juego {
     }
 }
 
-internal sealed partial class Ventana : Form {
+internal sealed class Ventana : Form {
     readonly TextBox carpeta=new TextBox();
     readonly Label estado=new Label();
     readonly Button instalar=new Button(), quitar=new Button();
-    readonly Button jugar=new Button();
-    readonly ComboBox fps=new ComboBox(), perfilRetro=new ComboBox();
     readonly Portada portada=new Portada();
-    readonly CheckBox ancho=new CheckBox(), atlas=new CheckBox(), lados=new CheckBox();
-    string Archivo { get { return Path.Combine(carpeta.Text.Trim(),"FF8-Horizonte.ini"); } }
-    [System.Runtime.InteropServices.DllImport("kernel32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)]
-    static extern int GetPrivateProfileInt(string section,string key,int fallback,string file);
-    [System.Runtime.InteropServices.DllImport("kernel32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,SetLastError=true)]
-    static extern bool WritePrivateProfileString(string section,string key,string value,string file);
-    void Cargar() {
-        string path=Directory.Exists(carpeta.Text.Trim())?Path.GetFullPath(Archivo):"";
-        int hz=GetPrivateProfileInt("Display","FPS",120,path);
-        fps.SelectedIndex=hz==0?0:hz==60?1:2;
-        ancho.Checked=GetPrivateProfileInt("Display","Wide",1,path)!=0;
-        atlas.Checked=GetPrivateProfileInt("Display","Atlas",1,path)!=0;
-        lados.Checked=GetPrivateProfileInt("Display","FieldSides",1,path)!=0;
-        lados.Enabled=ancho.Checked;
-        CargarRetro(path);
-    }
-    static void EscribirClave(string archivo,string seccion,string clave,int valor) {
-        if(!WritePrivateProfileString(seccion,clave,valor.ToString(System.Globalization.CultureInfo.InvariantCulture),archivo))
-            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
-    }
-    void EscribirAjustes() {
-        using(var mutex=new Mutex(false,@"Local\FF8RebornDisplaySettings")) {
-            bool adquirido;
-            try {adquirido=mutex.WaitOne(1000);} catch(AbandonedMutexException) {adquirido=true;}
-            if(!adquirido)throw new IOException("The game is saving settings. Try again in a moment.");
-            try {EscribirArchivoDeAjustes();} finally {mutex.ReleaseMutex();}
-        }
-    }
-    void EscribirArchivoDeAjustes() {
-        string path=Path.GetFullPath(Archivo),temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
-        try {
-            bool existe=File.Exists(path);
-            if(existe) File.Copy(path,temp);
-            EscribirClave(temp,"Display","FPS",new[]{0,60,120}[fps.SelectedIndex]);
-            EscribirClave(temp,"Display","Wide",ancho.Checked?1:0);
-            EscribirClave(temp,"Display","Atlas",atlas.Checked?1:0);
-            EscribirClave(temp,"Display","FieldSides",lados.Checked?1:0);
-            EscribirRetro(temp);
-            if(existe)File.Replace(temp,path,null);else File.Move(temp,path);
-            Array.Clear(pendiente,0,pendiente.Length);
-        } finally {if(File.Exists(temp))File.Delete(temp);}
-    }
-    void Guardar(bool iniciarJuego) {
-        try {
-            Juego.VerificarInstalado(carpeta.Text.Trim());
-            EscribirAjustes();
-            estado.Text="Settings saved for the next launch. In game, press F8 or Select + Start to adjust them.";
-            if(iniciarJuego) Process.Start(new ProcessStartInfo("steam://rungameid/1026680"){UseShellExecute=true});
-        } catch(UnauthorizedAccessException){estado.Text="Run the installer as administrator to save to this folder.";}
-        catch(Exception e){estado.Text=e.Message;}
-    }
     static readonly Color papel=Color.FromArgb(246,245,239), tinta=Color.FromArgb(25,49,52),
         suave=Color.FromArgb(70,91,89), verde=Color.FromArgb(21,86,82), linea=Color.FromArgb(201,208,199);
     Label Rotulo(string texto,int x,int y,int w,int h,float size,Color color,bool bold) {
@@ -269,29 +218,20 @@ internal sealed partial class Ventana : Form {
         b.FlatAppearance.MouseOverBackColor=principal?Color.FromArgb(31,104,98):Color.FromArgb(229,233,224);
         b.Font=new Font("Segoe UI",9,principal?FontStyle.Bold:FontStyle.Regular);Controls.Add(b);
     }
-    void Opcion(CheckBox c,string titulo,string detalle,int y,int orden) {
-        c.Text=titulo;c.Font=new Font("Segoe UI",10,FontStyle.Bold);c.ForeColor=tinta;
-        c.SetBounds(254,y,294,23);c.TabIndex=orden;Controls.Add(c);
-        Rotulo(detalle,273,y+23,269,34,9,suave,false);
-    }
-    void Lista(ComboBox lista, string[] items,int x,int y,int w,int orden,string nombre) {
-        lista.DropDownStyle=ComboBoxStyle.DropDownList;lista.SetBounds(x,y,w,28);
-        lista.TabIndex=orden;lista.AccessibleName=nombre;lista.Items.AddRange(items);Controls.Add(lista);
-    }
     public Ventana(string ruta) {
         Text="FF8 Reborn · Installer";
         AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi;
-        Font=new Font("Segoe UI",10); ClientSize=new Size(936,552);BackColor=papel;ForeColor=tinta;
+        Font=new Font("Segoe UI",10); ClientSize=new Size(778,372);BackColor=papel;ForeColor=tinta;
         FormBorderStyle=FormBorderStyle.FixedDialog; MaximizeBox=false; StartPosition=FormStartPosition.CenterScreen;
         AutoScroll=true;
-        portada.SetBounds(0,0,230,552);Controls.Add(portada);
-        Rotulo("INSTALLER   /   STEAM",254,16,460,18,8,verde,true);
-        Rotulo("Game settings",251,33,660,40,22,tinta,true);
-        Regla(254,81,658,1);
-        Rotulo("Game folder",254,93,500,22,10,tinta,true);
-        carpeta.SetBounds(255,119,544,29);carpeta.Text=ruta;carpeta.TabIndex=0;
+        portada.SetBounds(0,0,210,372);Controls.Add(portada);
+        Rotulo("INSTALLER   /   STEAM",234,16,460,18,8,verde,true);
+        Rotulo("Install FF8 Reborn",231,33,530,40,22,tinta,true);
+        Regla(234,81,520,1);
+        Rotulo("Game folder",234,93,500,22,10,tinta,true);
+        carpeta.SetBounds(234,119,412,29);carpeta.Text=ruta;carpeta.TabIndex=0;
         carpeta.AccessibleName="Game folder";Controls.Add(carpeta);
-        var buscar=new Button();Boton(buscar,"Browse…",812,114,100,false);buscar.TabIndex=1;
+        var buscar=new Button();Boton(buscar,"Browse…",656,117,98,false);buscar.TabIndex=1;
         buscar.Click+=delegate {
             using(var dialogo=new FolderBrowserDialog {Description="Select the folder containing FFVIII_EFIGS.dll",ShowNewFolderButton=false}) {
                 if(Directory.Exists(carpeta.Text)) dialogo.SelectedPath=carpeta.Text;
@@ -299,21 +239,18 @@ internal sealed partial class Ventana : Form {
             }
         };
         carpeta.Validated+=delegate{RevisarCarpeta();};
-        Regla(254,162,658,1);Regla(561,179,1,276);
-        Rotulo("Frame rate",254,178,286,24,11,tinta,true);
-        Lista(fps,new[]{"Original frame rate","60 FPS (interpolated)","120 FPS (interpolated)"},255,210,284,2,"Frame rate");
-        Opcion(ancho,"Widescreen","Widen the view on the world map and in battle.",258,3);
-        Opcion(lados,"Blurred sidebars","Fill the sides of prerendered scenes in widescreen.",323,4);
-        Opcion(atlas,"HD world map","Use the illustrated map in full-screen map view.",388,5);
-        ancho.CheckedChanged+=delegate{lados.Enabled=ancho.Checked;};
-        CrearControlesRetro();
-        Regla(254,465,658,1);
-        Boton(instalar,"",254,479,217,true);instalar.TabIndex=20;
-        instalar.Click+=delegate{if(actual)Guardar(false);else Cambiar(true);};
-        Boton(jugar,"Save and play",482,479,164,false);jugar.TabIndex=21;jugar.Click+=delegate{Guardar(true);};
-        Boton(quitar,"Uninstall",779,479,133,false);quitar.TabIndex=22;quitar.Click+=delegate{Cambiar(false);};
-        estado.SetBounds(255,522,657,29);estado.Font=new Font("Segoe UI",9);estado.ForeColor=suave;Controls.Add(estado);
-        RevisarCarpeta(); ActiveControl=fps;
+        Rotulo("Change settings while playing",234,177,518,28,13,tinta,true);
+        Rotulo("Press F8 on your keyboard or Select + Start together on your controller.",234,211,518,50,10,tinta,false);
+        Regla(234,266,520,1);
+        Boton(instalar,"Install",234,280,208,true);instalar.TabIndex=2;
+        instalar.Click+=delegate{
+            if(!actual){Cambiar(true);return;}
+            try {Process.Start(new ProcessStartInfo("steam://rungameid/1026680"){UseShellExecute=true});}
+            catch(Exception e){estado.Text=e.Message;}
+        };
+        Boton(quitar,"Uninstall",645,280,109,false);quitar.TabIndex=3;quitar.Click+=delegate{Cambiar(false);};
+        estado.SetBounds(234,326,520,42);estado.Font=new Font("Segoe UI",9);estado.ForeColor=suave;Controls.Add(estado);
+        RevisarCarpeta();ActiveControl=instalar;
     }
     protected override void OnLoad(EventArgs e) {
         base.OnLoad(e);
@@ -325,17 +262,16 @@ internal sealed partial class Ventana : Form {
     bool actual;
     void ActualizarAcciones(bool instalado) {
         actual=instalado;
-        instalar.Text=actual?"Save settings":"Install with these settings";
-        jugar.Enabled=actual;
+        instalar.Text=actual?"Play on Steam":"Install";
+        quitar.Visible=actual||File.Exists(Path.Combine(carpeta.Text.Trim(),"FF8_geometry.installed"));
     }
     void RevisarCarpeta() {
         string ruta=carpeta.Text.Trim();
         if(String.Equals(ruta,ultimaCarpeta,StringComparison.OrdinalIgnoreCase))return;
         try {
-            Cargar();
             ActualizarAcciones(Juego.VersionActual(ruta));
             ultimaCarpeta=ruta;
-            estado.Text=actual?"FF8 Reborn is installed. Settings take effect the next time you launch the game.":"Close the game and its launcher before installing.";
+            estado.Text=actual?"FF8 Reborn is installed.":"Close the game and its launcher before installing.";
         } catch(Exception e){ActualizarAcciones(false);estado.Text=e.Message;}
     }
     void Cambiar(bool quiereInstalar) {
@@ -343,11 +279,7 @@ internal sealed partial class Ventana : Form {
         try {
             estado.Text=Juego.Cambiar(carpeta.Text.Trim(),quiereInstalar);
             ActualizarAcciones(quiereInstalar);
-            if(quiereInstalar){
-                try { EscribirAjustes(); }
-                catch(Exception e){estado.Text="FF8 Reborn is installed. Settings could not be saved. "+e.Message;return;}
-                estado.Text="FF8 Reborn is installed with your settings.";
-            }
+
         }
         catch(UnauthorizedAccessException) { estado.Text="Windows denied access to this folder. Close the installer, then choose Run as administrator."; }
         catch(Exception error) { estado.Text=error.Message; }

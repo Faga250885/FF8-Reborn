@@ -1,165 +1,223 @@
-# Galería de capturas
+# Galería de juego
 
 [FF8 Reborn](../README.es.md) · [English](GALLERY.md)
 
-Las comparaciones de filtros usan fotogramas guardados del juego procesados por el mod. Los ejemplos de pantalla ancha, mapa y difuminado son capturas de juego.
+Capturas tomadas directamente en FFVIII Remastered de Steam con FF8 Reborn activo. Las vistas previas caben en esta página. Pulsa **Abrir original** para ver el JPG de Steam a 2560 × 1440. Si el navegador lo ajusta a la ventana, haz clic en la imagen con la lupa para verla al 100 %.
 
-<a name="hd-blend"></a>
+<a name="features"></a>
 
-## 01 · HD Blend
+## Funciones generales
 
-![HD Blend](images/hd-blend.jpg)
+![Funciones generales](images/features.gif)
 
-El filtro HD Blend sobre una calle prerenderizada. Fíjate en el contorno del personaje en primer plano.
+<a name="widescreen"></a>
 
-[← Anterior](#world-hd) · [Ver a tamaño completo](images/hd-blend.jpg) · [Siguiente →](#field-original)
+### Pantalla ancha
 
-<a name="field-original"></a>
+[![Pantalla ancha](images/widescreen.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/widescreen.jpg)
 
-## 02 · Escenario original
+La cámara del mapamundi en pantalla ancha.
 
-![Escenario original](images/field-original.jpg)
+[← Anterior](#fps-original) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/widescreen.jpg) · [Siguiente →](#battle)
 
-El mismo fotograma con el filtro apagado.
+<a name="battle"></a>
 
-[← Anterior](#hd-blend) · [Ver a tamaño completo](images/field-original.jpg) · [Siguiente →](#recommended)
+### Batalla panorámica
 
-<a name="recommended"></a>
+[![Batalla panorámica](images/battle.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/battle.jpg)
 
-## 03 · FF8 Reborn (recomendado)
+Encuentro normal en Galbadia. El menú de comandos y el estado del grupo ocupan las esquinas opuestas de la vista panorámica.
 
-![FF8 Reborn (recomendado)](images/recommended.jpg)
+[← Anterior](#widescreen) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/battle.jpg) · [Siguiente →](#frame-rate)
 
-El aspecto CRT predeterminado de 320 líneas en el mismo fotograma.
+<a name="frame-rate"></a>
 
-[← Anterior](#field-original) · [Ver a tamaño completo](images/recommended.jpg) · [Siguiente →](#sharp)
+### Objetivo de 120 FPS
 
-<a name="sharp"></a>
+[![Objetivo de 120 FPS](images/frame-rate.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/frame-rate.jpg)
 
-## 04 · PS1 Sharp
+Una medición independiente de diez segundos con PresentMon en el mapamundi cerca de Deling a 2560 × 1440 registró 118,2 cuadros mostrados por segundo en este PC. La captura muestra el ajuste.
 
-![PS1 Sharp](images/sharp.jpg)
-
-Compara el pelo, la ropa y las letras de neón con las tres primeras vistas.
-
-[← Anterior](#recommended) · [Ver a tamaño completo](images/sharp.jpg) · [Siguiente →](#soft-crt)
-
-<a name="soft-crt"></a>
-
-## 05 · Soft CRT
-
-![Soft CRT](images/soft-crt.jpg)
-
-Líneas de barrido y máscara de fósforo sobre la misma calle.
-
-[← Anterior](#sharp) · [Ver a tamaño completo](images/soft-crt.jpg) · [Siguiente →](#battle-wide)
-
-<a name="battle-wide"></a>
-
-## 06 · Batalla panorámica
-
-![Batalla panorámica](images/battle-wide.jpg)
-
-La lista de objetos se ancla a la izquierda y el estado del grupo a la derecha.
-
-[← Anterior](#soft-crt) · [Ver a tamaño completo](images/battle-wide.jpg) · [Siguiente →](#world-wide)
-
-<a name="world-wide"></a>
-
-## 07 · Mapamundi panorámico
-
-![Mapamundi panorámico](images/world-wide.jpg)
-
-Exploración con el minimapa circular en el borde derecho.
-
-[← Anterior](#battle-wide) · [Ver a tamaño completo](images/world-wide.jpg) · [Siguiente →](#world-overlay)
-
-<a name="world-overlay"></a>
-
-## 08 · Mapa superpuesto
-
-![Mapa superpuesto](images/world-overlay.jpg)
-
-La segunda vista del minimapa se alinea también a la derecha.
-
-[← Anterior](#world-wide) · [Ver a tamaño completo](images/world-overlay.jpg) · [Siguiente →](#atlas)
+[← Anterior](#battle) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/frame-rate.jpg) · [Siguiente →](#atlas)
 
 <a name="atlas"></a>
 
-## 09 · Mapa HD a pantalla completa
+### Mapa ilustrado Reborn
 
-![Mapa HD a pantalla completa](images/atlas.jpg)
+[![Mapa ilustrado Reborn](images/atlas.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/atlas.jpg)
 
-El mapa centrado conserva sus proporciones. El cursor señala Deling.
+El atlas a pantalla completa conserva sus proporciones.
 
-[← Anterior](#world-overlay) · [Ver a tamaño completo](images/atlas.jpg) · [Siguiente →](#hall)
+[← Anterior](#frame-rate) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/atlas.jpg) · [Siguiente →](#atlas-original)
 
-<a name="hall"></a>
+<a name="atlas-original"></a>
 
-## 10 · Difuminado lateral en un pasillo
+### Mapa original
 
-![Difuminado lateral en un pasillo](images/hall.jpg)
+[![Mapa original](images/atlas-original.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/atlas-original.jpg)
 
-Los laterales toman sus colores de la escena visible.
+El diseño original del juego en la vista del mapamundi a pantalla completa.
 
-[← Anterior](#atlas) · [Ver a tamaño completo](images/hall.jpg) · [Siguiente →](#infirmary)
+[← Anterior](#atlas) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/atlas-original.jpg) · [Siguiente →](#mini-map)
 
-<a name="infirmary"></a>
+<a name="mini-map"></a>
 
-## 11 · Difuminado lateral en la enfermería
+### Minimapa
 
-![Difuminado lateral en la enfermería](images/infirmary.jpg)
+[![Minimapa](images/mini-map.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/mini-map.jpg)
 
-En una sala más luminosa se aprecia cómo el efecto cambia con la escena.
+El minimapa se alinea a la derecha durante la exploración.
 
-[← Anterior](#hall) · [Ver a tamaño completo](images/infirmary.jpg) · [Siguiente →](#menu)
+[← Anterior](#atlas-original) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/mini-map.jpg) · [Siguiente →](#sides-on)
 
-<a name="menu"></a>
+<a name="sides-on"></a>
 
-## 12 · Menú de ajustes en vivo
+### Laterales difuminados activados
 
-![Menú de ajustes en vivo](images/settings.png)
+[![Laterales difuminados activados](images/sides-on.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sides-on.jpg)
 
-Abre el panel con F8 o Select + Start. Los ajustes de pantalla y los perfiles del filtro son independientes.
+Disponible en todos los escenarios prerenderizados en pantalla ancha. Esta calle es un ejemplo.
 
-[← Anterior](#infirmary) · [Ver a tamaño completo](images/settings.png) · [Siguiente →](#installer)
+[← Anterior](#mini-map) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sides-on.jpg) · [Siguiente →](#sides-off)
 
-<a name="installer"></a>
+<a name="sides-off"></a>
 
-## 13 · Instalador para Windows
+### Laterales difuminados desactivados
 
-![Instalador para Windows](images/installer.png)
+[![Laterales difuminados desactivados](images/sides-off.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sides-off.jpg)
 
-El instalador reúne los ajustes de pantalla, el filtro y su vista previa en una sola pantalla.
+El escenario con el relleno lateral desactivado.
 
-[← Anterior](#menu) · [Ver a tamaño completo](images/installer.png) · [Siguiente →](#battle-crt)
+[← Anterior](#sides-on) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sides-off.jpg) · [Siguiente →](#classic)
 
-<a name="battle-crt"></a>
+<a name="classic"></a>
 
-## 14 · Televisor CRT en batalla
+### Formato original 4:3
 
-![Televisor CRT en batalla](images/battle-crt.jpg)
+[![Formato original 4:3](images/classic.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/classic.jpg)
 
-El perfil PS1 · CRT TV aplicado a una captura de batalla.
+El encuadre original en el mismo tramo de carretera.
 
-[← Anterior](#installer) · [Ver a tamaño completo](images/battle-crt.jpg) · [Siguiente →](#battle-digital)
+[← Anterior](#sides-off) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/classic.jpg) · [Siguiente →](#fps-60)
 
-<a name="battle-digital"></a>
+<a name="fps-60"></a>
 
-## 15 · PS1 Digital en batalla
+### Objetivo de 60 FPS
 
-![PS1 Digital en batalla](images/battle-digital.jpg)
+[![Objetivo de 60 FPS](images/fps-60.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-60.jpg)
 
-El mismo fotograma de batalla con la apariencia digital de PlayStation.
+El panel en vivo con el objetivo en 60.
 
-[← Anterior](#battle-crt) · [Ver a tamaño completo](images/battle-digital.jpg) · [Siguiente →](#world-hd)
+[← Anterior](#classic) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-60.jpg) · [Siguiente →](#fps-original)
 
-<a name="world-hd"></a>
+<a name="fps-original"></a>
 
-## 16 · HD Blend en el mapamundi
+### FPS originales
 
-![HD Blend en el mapamundi](images/world-hd.jpg)
+[![FPS originales](images/fps-original.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-original.jpg)
 
-El filtro adaptativo aplicado a un fotograma de exploración.
+El ajuste Original presenta los cuadros a la cadencia del juego.
 
-[← Anterior](#battle-digital) · [Ver a tamaño completo](images/world-hd.jpg) · [Siguiente →](#hd-blend)
+[← Anterior](#fps-60) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-original.jpg) · [Siguiente →](#widescreen)
+
+<a name="filters"></a>
+
+## Filtros gráficos
+
+![Filtros gráficos](images/filters.gif)
+
+Un mismo encuadre frente al Hotel Galbadia, en Deling, con el panel cerrado. Personalizado guarda los ajustes de cada jugador.
+
+**Originales a 2560 × 1440**
+
+[Off](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/off.jpg) · [PS1 Digital](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/digital.jpg) · [Soft CRT](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/soft.jpg) · [PS1 · RGB Monitor](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/rgb.jpg) · [PS1 Backgrounds](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/backgrounds.jpg) · [PS1 · CRT TV](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/tv.jpg) · [PS1 Sharp](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [HD Blend](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [FF8 Reborn (recommended)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg)
+
+<a name="off"></a>
+
+### Off
+
+[![Off](images/off.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/off.jpg)
+
+Referencia sin filtro.
+
+[← Anterior](#recommended) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/off.jpg) · [Siguiente →](#digital)
+
+<a name="digital"></a>
+
+### PS1 Digital
+
+[![PS1 Digital](images/digital.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/digital.jpg)
+
+240 líneas con tramado intenso.
+
+[← Anterior](#off) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/digital.jpg) · [Siguiente →](#soft)
+
+<a name="soft"></a>
+
+### Soft CRT
+
+[![Soft CRT](images/soft.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/soft.jpg)
+
+Cuadrícula suave con líneas de barrido y algo de resplandor.
+
+[← Anterior](#digital) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/soft.jpg) · [Siguiente →](#rgb)
+
+<a name="rgb"></a>
+
+### PS1 · RGB Monitor
+
+[![PS1 · RGB Monitor](images/rgb.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/rgb.jpg)
+
+Las líneas de barrido más intensas de estos perfiles.
+
+[← Anterior](#soft) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/rgb.jpg) · [Siguiente →](#backgrounds)
+
+<a name="backgrounds"></a>
+
+### PS1 Backgrounds
+
+[![PS1 Backgrounds](images/backgrounds.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/backgrounds.jpg)
+
+Imagen a baja resolución con contornos suavizados.
+
+[← Anterior](#rgb) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/backgrounds.jpg) · [Siguiente →](#tv)
+
+<a name="tv"></a>
+
+### PS1 · CRT TV
+
+[![PS1 · CRT TV](images/tv.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/tv.jpg)
+
+240 líneas con líneas de barrido y resplandor suaves.
+
+[← Anterior](#backgrounds) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/tv.jpg) · [Siguiente →](#sharp)
+
+<a name="sharp"></a>
+
+### PS1 Sharp
+
+[![PS1 Sharp](images/sharp.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg)
+
+360 líneas con suavizado moderado.
+
+[← Anterior](#tv) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [Siguiente →](#hd-blend)
+
+<a name="hd-blend"></a>
+
+### HD Blend
+
+[![HD Blend](images/hd-blend.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg)
+
+480 líneas y suavizado de los contornos de los personajes.
+
+[← Anterior](#sharp) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [Siguiente →](#recommended)
+
+<a name="recommended"></a>
+
+### FF8 Reborn (recommended)
+
+[![FF8 Reborn (recommended)](images/recommended.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg)
+
+El perfil CRT recomendado de 320 líneas.
+
+[← Anterior](#hd-blend) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg) · [Siguiente →](#off)
