@@ -21,6 +21,11 @@
 // Geometry replay, never optical flow. All GL work stays on the game's thread.
 // Unsupported frames stay native. Replay must pass an image parity test first.
 namespace geo {
+#ifdef GEO_STEAM_DECK
+static constexpr bool deck_renderer=true;
+#else
+static constexpr bool deck_renderer=false;
+#endif
 #define API_LIST(X) \
  X(PFNGLACTIVETEXTUREPROC,ActiveTexture) X(PFNGLCLIENTACTIVETEXTUREPROC,ClientActiveTexture) \
  X(PFNGLUSEPROGRAMPROC,UseProgram) X(PFNGLGETPROGRAMIVPROC,GetProgramiv) \
@@ -208,13 +213,13 @@ static void resize(Surface&s,int w,int h,bool depth=true,bool texture=false,GLen
     pBindFramebuffer(GL_READ_FRAMEBUFFER,r);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,d);pBindRenderbuffer(GL_RENDERBUFFER,b);glBindTexture(GL_TEXTURE_2D,tex);
     demand(complete,"framebuffer creation failed");s.w=w;s.h=h;s.has_depth=depth;s.has_stencil=packed;s.format=format;
 }
-static void blit(GLuint from,GLuint to,int w,int h,int tw,int th,GLbitfield bits,int inset_x=0,int inset_y=0) {
+static void blit(GLuint from,GLuint to,int w,int h,int tw,int th,GLbitfield bits,int inset_x=0,int inset_y=0,int dest_y=0) {
     GLint r,d,rb,db;glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&r);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&d);
     glGetIntegerv(GL_READ_BUFFER,&rb);glGetIntegerv(GL_DRAW_BUFFER,&db);
     glPushAttrib(GL_SCISSOR_BIT);glDisable(GL_SCISSOR_TEST);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,from);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,to);
     glReadBuffer(from?GL_COLOR_ATTACHMENT0:GL_BACK);glDrawBuffer(to?GL_COLOR_ATTACHMENT0:GL_BACK);
-    pBlitFramebuffer(inset_x,inset_y,w-inset_x,h-inset_y,0,0,tw,th,bits,
+    pBlitFramebuffer(inset_x,inset_y,w-inset_x,h-inset_y,0,dest_y,tw,dest_y+th,bits,
                      (inset_x||inset_y)?GL_LINEAR:GL_NEAREST);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,r);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,d);
     glReadBuffer(rb);glDrawBuffer(db);glPopAttrib();
@@ -371,11 +376,13 @@ static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsig
     unsigned sampled=0;
     for(const auto& u:s.uniforms)if(u.type==GL_SAMPLER_2D)sampled|=1u<<u.i[0];
     for(int j=0;j<4;j++){pActiveTexture(GL_TEXTURE0+j);auto&t=s.texture[j];
-        t.enabled=glIsEnabled(GL_TEXTURE_2D);
+        const bool unused_sampler=deck_renderer&&inputs&&s.program&&!(sampled&(1u<<j));
+        if(!unused_sampler)t.enabled=glIsEnabled(GL_TEXTURE_2D);
         const bool used=!inputs||(s.program?bool(sampled&(1u<<j)):t.enabled);
         if(used)glGetIntegerv(GL_TEXTURE_BINDING_2D,&t.id);
         if(t.id)t.parameters=texture_parameters();
-        glGetTexEnviv(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,&t.env);glGetFloatv(GL_TEXTURE_MATRIX,t.matrix);
+        if(!deck_renderer||used)glGetTexEnviv(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,&t.env);
+        glGetFloatv(GL_TEXTURE_MATRIX,t.matrix);
         if(!used){t.enabled=false;t.env=GL_MODULATE;}
         if(t.enabled&&t.env!=GL_MODULATE&&t.env!=GL_REPLACE&&t.env!=GL_DECAL){pActiveTexture(active);demand(false,"texture combining unsupported");}}
     pActiveTexture(active);return s;
@@ -402,7 +409,14 @@ static void set_state(const State&s,const State* prior,bool restore_view) {
     if(!prior||restore_view||memcmp(s.scissor,prior->scissor,sizeof(s.scissor)))glScissor(s.scissor[0],s.scissor[1],s.scissor[2],s.scissor[3]);
     if(!prior||restore_view||memcmp(s.projection,prior->projection,sizeof(s.projection))){glMatrixMode(GL_PROJECTION);glLoadMatrixf(s.projection);}
     if(!prior||memcmp(s.model,prior->model,sizeof(s.model))){glMatrixMode(GL_MODELVIEW);glLoadMatrixf(s.model);}
-    if(!prior||memcmp(&s,&*prior,offsetof(State,model))){
+    // Viewport, scissor and program are handled separately. On Proton their
+    // changes must not re-issue unrelated blend, mask and raster settings.
+    const size_t raster_begin=deck_renderer?offsetof(State,depth_func):0;
+    const bool raster_changed=!prior||(deck_renderer?
+        memcmp(&s.depth_func,&prior->depth_func,offsetof(State,program)-raster_begin)||
+        memcmp(&s.depth,&prior->depth,offsetof(State,model)-offsetof(State,depth)):
+        memcmp(&s,prior,offsetof(State,model)));
+    if(raster_changed){
     cap(GL_DEPTH_TEST,s.depth);cap(GL_BLEND,s.blend);cap(GL_CULL_FACE,s.cull);cap(GL_ALPHA_TEST,s.alpha);
     cap(GL_SCISSOR_TEST,s.scissor_on);cap(GL_COLOR_LOGIC_OP,s.logic_on);cap(GL_POLYGON_OFFSET_FILL,s.offset_fill);
     cap(GL_FRAMEBUFFER_SRGB,s.srgb);
@@ -417,7 +431,13 @@ static void set_state(const State&s,const State* prior,bool restore_view) {
     }
     // Texture parameters belong to the texture object, even when several units
     // sample it. Restore the four units in native order whenever one changes.
-    if(!prior||!same_texture_units(s,*prior))for(int j=0;j<4;j++){pActiveTexture(GL_TEXTURE0+j);const auto&t=s.texture[j];cap(GL_TEXTURE_2D,t.enabled);
+    if(!prior||!same_texture_units(s,*prior))for(int j=0;j<4;j++){const auto&t=s.texture[j];
+        if(deck_renderer&&prior&&!t.id&&!prior->texture[j].id&&
+           !memcmp(&t,&prior->texture[j],offsetof(TextureState,copy))){
+            if(j==3)pActiveTexture(GL_TEXTURE3);
+            continue;
+        }
+        pActiveTexture(GL_TEXTURE0+j);cap(GL_TEXTURE_2D,t.enabled);
         auto replacement=replay_textures.find(t.id);
         GLuint texture=t.copy?t.copy->id:(replacement!=replay_textures.end()?replacement->second:(glIsTexture(t.id)?t.id:0));
         glBindTexture(GL_TEXTURE_2D,texture);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,t.env);
@@ -876,6 +896,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     }
     size_t span_index=0;
+    bool packed_arrays_bound=false;
     auto draw_op=[&](const Op&op){
         if(!last_draw||op.target!=last_draw->target){
             GLuint dest=op.target?replay_targets.at(op.target).fbo:target;
@@ -904,12 +925,22 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         const bool card=!op.card_before.empty()&&alpha<1;
         if(uploaded&&card){pBindBuffer(GL_ARRAY_BUFFER,0);base=reinterpret_cast<uintptr_t>(vertices);}
         struct Rebind {bool active; ~Rebind(){if(active)pBindBuffer(GL_ARRAY_BUFFER,vertex_stream);}} rebind{uploaded&&card};
-        auto address=[&](size_t offset){return reinterpret_cast<const void*>(base+offset);};
-        glVertexPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,p)));
-        glColorPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,c)));
-        glNormalPointer(GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,n)));
-        for(int j=0;j<4;j++){pClientActiveTexture(GL_TEXTURE0+j);
-            glTexCoordPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,uv)+j*sizeof(vertices[0].uv[0])));}
+        // A shader can read gl_VertexID. Keep its original first vertex.
+        const bool shared=deck_renderer&&stream&&!packed.empty()&&!card&&!op.state.program;
+        GLint first=0;
+        if(shared){
+            first=GLint(spans[span_index-1].offset/sizeof(Vertex));
+            base=uploaded?0:reinterpret_cast<uintptr_t>(packed.data());
+        }
+        if(!shared||!packed_arrays_bound){
+            auto address=[&](size_t offset){return reinterpret_cast<const void*>(base+offset);};
+            glVertexPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,p)));
+            glColorPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,c)));
+            glNormalPointer(GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,n)));
+            for(int j=0;j<4;j++){pClientActiveTexture(GL_TEXTURE0+j);
+                glTexCoordPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,uv)+j*sizeof(vertices[0].uv[0])));}
+        }
+        packed_arrays_bound=shared;
         if(card){
             last_draw=nullptr;
             // Positions stay fixed across the two draws: there is no ghost of
@@ -928,7 +959,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
                 glDrawArrays(op.mode,0,(GLsizei)op.vertices.size());}
             return;
         }
-        glDrawArrays(op.mode,0,vertex_count);
+        glDrawArrays(op.mode,first,vertex_count);
     };
     visit([&](const Op& op){
         draw_op(op);
@@ -947,6 +978,20 @@ static int game_mode();
 static int presentation_mode=-1;
 static std::vector<OutgoingDraw> checkpoint_outgoing;
 #include "presentation_clock.h"
+static double output_period(){
+    const double requested=1./std::max(display_settings.fps,1);
+    return deck_renderer?std::max(requested,presentation_clock.refresh_period):requested;
+}
+// Once the game's own frames run late, reserve its rendering thread for the
+// next source frame. The scheduler can still present during actual idle waits.
+static unsigned deck_busy_frames=0;
+static bool deck_native_layout_wait=false;
+static void track_source_budget(int mode,double interval,bool continuous){
+    if(!deck_renderer||!continuous){deck_busy_frames=0;return;}
+    const double native_period=mode==3?1./15.:mode==6?1./60.:1./30.;
+    if(interval>native_period*1.12)deck_busy_frames=8;
+    else if(deck_busy_frames)--deck_busy_frames;
+}
 static double previous_origin=0,previous_period=1./30.;
 static bool prepared_previous=false;
 static unsigned displayed_source=0;
@@ -955,7 +1000,7 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     presentation_clock.draw_started=t;
     if(field_prefix.active){
         const double same_pair_end=old?std::min(origin,previous_origin+previous_period):origin+period;
-        field_prefix.next(same_pair_end,1./display_settings.fps,presentation_clock.replay_cost);
+        field_prefix.next(same_pair_end,output_period(),presentation_clock.replay_cost);
     }
     float alpha=(float)std::clamp((t-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
     if(old){std::swap(current,previous);std::swap(outgoing_draws,checkpoint_outgoing);}
@@ -965,9 +1010,10 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     displayed_source=sources-(old&&sources?1:0);return alpha;
 }
 static void advance_output(){
-    next_output=presentation_clock.next_slot(next_output,now(),1./display_settings.fps);
+    next_output=presentation_clock.next_slot(next_output,now(),output_period());
 }
 static void matching_pump(){
+    if(deck_busy_frames)return;
     present_reason=6;qa_stage(6);
     // Publish is pending: previous still contains the fully prepared pair
     // shown on the preceding tick. Temporarily replay it at CPU checkpoints.
@@ -1068,7 +1114,7 @@ static void correspondence_audit(const char*name="FF8_geometry_correspondence.bi
             for(const auto&v:op.vertices){fwrite(v.p,sizeof(v.p),1,f);fwrite(v.uv,sizeof(v.uv),1,f);}}}
     fclose(f);log("bounded correspondence audit saved: ");log(name);log("\n");
 }
-static void comparison_image(const std::vector<BYTE>&a,const std::vector<BYTE>&b,int mode,unsigned serial,int sw=160,int sh=90){
+static void comparison_image(const BYTE* a,const BYTE* b,int mode,unsigned serial,int sw=160,int sh=90){
     const int w=3*sw,h=sh;std::vector<BYTE> pixels(w*h*3);
     for(int y=0;y<h;y++)for(int x=0;x<sw;x++)for(int ch=0;ch<3;ch++){
         int at=4*(y*sw+x)+2-ch;pixels[3*(y*w+x)+ch]=a[at];pixels[3*(y*w+x+sw)+ch]=b[at];
@@ -1098,7 +1144,7 @@ static void target_comparisons(int mode){
         blit(original,a.fbo,t.w,t.h,w,h,GL_COLOR_BUFFER_BIT);blit(reconstructed,b.fbo,t.w,t.h,w,h,GL_COLOR_BUFFER_BIT);
         pBindFramebuffer(GL_READ_FRAMEBUFFER,a.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,left.data());
         pBindFramebuffer(GL_READ_FRAMEBUFFER,b.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,right.data());
-        comparison_image(left,right,mode,1000+entry.first,w,h);
+        comparison_image(left.data(),right.data(),mode,1000+entry.first,w,h);
         double error=0;unsigned bad=0;for(size_t i=0;i<left.size();i++)if(i%4!=3){int delta=abs(int(left[i])-int(right[i]));error+=delta;bad+=delta>8;}
         char line[160];snprintf(line,sizeof(line),"stage %u mean %.5f bad %u of %d\n",entry.first,error/(w*h*3),bad,w*h*3);log(line);
     }
@@ -1130,7 +1176,9 @@ struct WorldParityTimes {
 static WorldParityTimes world_parity_times;
 static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times=nullptr){
     const double begin=times?now():0;
-    resize(test_target,width,height);resize(reference_target,width,height,false);resize(sample_a,160,90,false);resize(sample_b,160,90,false);
+    resize(test_target,width,height);resize(reference_target,width,height,false);
+    resize(sample_a,160,deck_renderer?180:90,false);
+    if(!deck_renderer)resize(sample_b,160,90,false);
     replay(test_target.fbo,1);
     const double drawn=times?now():0;
     // Normalize both sources to the same offscreen orientation before scaling.
@@ -1138,29 +1186,32 @@ static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times
     // pick adjacent source rows at texel-boundary ties on the NVIDIA driver.
     blit(native_source,reference_target.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
     const double copied=times?now():0;
-    blit(reference_target.fbo,sample_a.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);blit(test_target.fbo,sample_b.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
+    blit(reference_target.fbo,sample_a.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
+    blit(test_target.fbo,deck_renderer?sample_a.fbo:sample_b.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT,0,0,deck_renderer?90:0);
     if(times){
         times->replay+=drawn-begin;times->copy+=copied-drawn;times->samples+=now()-copied;
     }
 }
 static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false){
-    std::vector<BYTE>a(parity_plane_bytes),b(a.size());
+    static std::vector<BYTE> samples(2*parity_plane_bytes);
+    BYTE* a=samples.data();
+    BYTE* b=a+parity_plane_bytes;
     bool copied=false;
     if(queued){
         const GLenum checkpoint_error=glGetError();
         if(!submission_error)submission_error=checkpoint_error;
-        copied=world_readback.copy(a.data(),b.data());
+        copied=world_readback.copy(a,b);
     }
     if(!copied){
         ParityReadState guard;
         pBindBuffer(GL_PIXEL_PACK_BUFFER,0);
-        ParityReadState::read(sample_a.fbo,a.data());
-        ParityReadState::read(sample_b.fbo,b.data());
+        ParityReadState::read(sample_a.fbo,a,deck_renderer?180:90);
+        if(!deck_renderer)ParityReadState::read(sample_b.fbo,b);
     }
-    double error=0;unsigned bad=0;for(size_t i=0;i<a.size();i++)if(i%4!=3){int d=abs(int(a[i])-int(b[i]));error+=d;bad+=d>8;}
+    double error=0;unsigned bad=0;for(size_t i=0;i<parity_plane_bytes;i++)if(i%4!=3){int d=abs(int(a[i])-int(b[i]));error+=d;bad+=d>8;}
     error/=160*90*3;GLenum error_code=glGetError();if(submission_error)error_code=submission_error;bool ok=!error_code&&error<0.75&&bad<160*90*3/100;
     current.infirmary_room=current.mode==1?infirmary::room_id():-1;
-    current.infirmary_top=current.infirmary_room>=0?infirmary::camera_top(current.infirmary_room,a):-1;
+    current.infirmary_top=current.infirmary_room>=0?infirmary::camera_top(current.infirmary_room,samples):-1;
     field_blur::prepare(current);
     if(!ok){char line[180];snprintf(line,sizeof(line),"parity rejected: mean %.4f bad %u ops %zu vertices %u GL 0x%x\n",error,bad,current.ops.size(),current.vertex_count,error_code);
         if(parity_fail%30==0)log(line);
@@ -1345,12 +1396,23 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(pair && mode==2 && !was_presenting && !atlas_open &&
            WideView(previous,true).full_map)pair=false;
         const bool scene_entry=candidate&&display_settings.wide&&(current.layout()!=mode||!pair||dt<0.008||dt>0.15);
-        if(candidate&&(display_settings.fps==0||atlas_open||scene_entry)){
+        track_source_budget(mode,dt,pair&&display_settings.fps!=0);
+        // A prerendered field has a fixed camera. At the original frame rate
+        // the game already composed the actors, masks and animated tiles.
+        if(deck_renderer&&candidate&&display_settings.fps==0&&display_settings.wide&&
+           current.layout()==1&&pair&&!current.menu_edge&&transition.outer_width&&field_blur::preferred){
+            field_blur::prepare(current);
+            if(current.reactive_sides){
+                native_scaled=present_native_layout(current,transition);
+                native_endpoint=native_scaled;
+            }
+        }
+        if(!native_endpoint&&candidate&&(display_settings.fps==0||atlas_open||scene_entry)){
             // One endpoint per game swap. Keep the native wait and swap interval.
             if((display_settings.wide||(display_settings.atlas&&mode==2))&&parity()){
                 replay(0,1,true);native_endpoint=true;
             }
-        }else if(candidate&&dt>=0.008&&dt<=0.15){
+        }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
             // Only the non-wide, alpha=1 endpoint is validated. World matching
             // constructs movement/stride metadata without modifying that image.
             const bool early_world=mode==2&&pair&&world_readback.available();
@@ -1376,7 +1438,7 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
             // A GPU readback can span the next deadline. Finish one prepared
             // intermediate frame before blocking for the endpoint comparison.
-            if(was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
+            if(!deck_busy_frames&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
                 present_reason=9;qa_stage(9);present_during_wait(true);advance_output();}
             qa_stage(10);phase=now();
             const bool valid=early_world?collect_parity(submit_error,queued_world):parity();
@@ -1419,12 +1481,18 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(can_present&&!interval_changed){set_interval(0);interval_changed=true;}
         if(!can_present&&interval_changed){set_interval(saved_interval);interval_changed=false;}}
     present_reason=7;qa_stage(11);BOOL result=TRUE;
+    const double layout_seconds=deck_renderer?now()-t:0;
     if(!can_present||output_due){
         result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled);
         if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
         if(can_present){outputs++;advance_output();}
     }
-    native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
+    deck_native_layout_wait=deck_renderer&&!can_present&&!display_settings.fps&&
+        display_settings.wide&&(native_endpoint||native_scaled)&&(current.mode>=1&&current.mode<=3||current.mode==6);
+    if(deck_native_layout_wait)
+        native_frame_wait.start(current.mode,t,dt,layout_seconds,true);
+    else
+        native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
     stats();return result;
 }
 // Users can also choose original frame rate, original aspect and original
@@ -1458,6 +1526,7 @@ static void pump_due(){
     catch(const std::exception&e){can_present=false;log("mid-frame presentation fallback: ");log(e.what());log("\n");}
 }
 static void service_at(int reason){
+    if(deck_busy_frames&&reason!=4)return;
     if(GetCurrentThreadId()!=thread||!loaded||inside)return;
     present_reason=reason;qa_stage(reason);pump_due();
 }
@@ -1481,7 +1550,7 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         requested_wait+=requested;reclaimed_wait+=requested-duration;++frame_waits;
     }
     const double end=start+duration;
-    const bool repeated_field=presentation_mode==1&&duration>=1./display_settings.fps+2*presentation_clock.replay_cost+.0005;
+    const bool repeated_field=presentation_mode==1&&duration>=output_period()+2*presentation_clock.replay_cost+.0005;
     FieldPrefixCache::Window prefix_window(field_prefix,end,repeated_field);
     pacing_callback=true;
     while(can_present){
@@ -1512,6 +1581,17 @@ static VOID WINAPI sleep_hook(DWORD milliseconds){
 #ifdef GEO_NATIVE_CAPTURE
 static void (__cdecl *native_delay_ms)(unsigned);
 static void __cdecl draw_within_delay(unsigned milliseconds){
+    // Widescreen still draws an endpoint at original FPS. Credit only the
+    // measured layout work that overruns the game's own next deadline.
+    if(deck_native_layout_wait&&!can_present&&loaded&&GetCurrentThreadId()==thread&&milliseconds&&milliseconds<=150){
+        double requested=milliseconds*.001;
+        const double remaining=native_frame_wait.remaining(now(),requested);
+        if(remaining<requested){
+            const unsigned adjusted=static_cast<unsigned>(std::ceil(remaining*1000.));
+            if(adjusted)native_delay_ms(adjusted);
+            return;
+        }
+    }
     if(!draw_within_wait(milliseconds,true))native_delay_ms(milliseconds);
 }
 static bool install_game_delay(){
@@ -1573,6 +1653,7 @@ static void forget_deleted_context(){
     retro_panel_draw::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;
     retro_display::forget();
+    deck_busy_frames=0;deck_native_layout_wait=false;
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;

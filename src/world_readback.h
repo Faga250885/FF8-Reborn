@@ -13,9 +13,9 @@ struct ParityReadState {
         pBindFramebuffer(GL_READ_FRAMEBUFFER,fbo);glReadBuffer(buffer);
         glPopClientAttrib();pBindBuffer(GL_PIXEL_PACK_BUFFER,pack);
     }
-    static void read(GLuint src,void* out){
+    static void read(GLuint src,void* out,int rows=90){
         pBindFramebuffer(GL_READ_FRAMEBUFFER,src);glReadBuffer(GL_COLOR_ATTACHMENT0);
-        glReadPixels(0,0,160,90,GL_RGBA,GL_UNSIGNED_BYTE,out);
+        glReadPixels(0,0,160,rows,GL_RGBA,GL_UNSIGNED_BYTE,out);
     }
 };
 struct WorldReadback {
@@ -56,8 +56,8 @@ struct WorldReadback {
                     allocated=size==2*parity_plane_bytes;
                 }
                 if(allocated){
-                    ParityReadState::read(sample_a.fbo,nullptr);
-                    ParityReadState::read(sample_b.fbo,reinterpret_cast<void*>(parity_plane_bytes));
+                    ParityReadState::read(sample_a.fbo,nullptr,deck_renderer?180:90);
+                    if(!deck_renderer)ParityReadState::read(sample_b.fbo,reinterpret_cast<void*>(parity_plane_bytes));
                 }
             }
             const GLenum error=glGetError();

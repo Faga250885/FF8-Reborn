@@ -17,6 +17,8 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Steam Deck (SteamOS, experimental)
 
+An optional [Deck performance preview](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.2.2-deck.1) is available for testing. It uses a renderer built specifically for Deck. Widescreen and increased frame rates still need gameplay validation on the device.
+
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
 2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
@@ -31,6 +33,8 @@ To use just the filters, open the in-game panel with **View + Menu**. Set **Fram
 Setup recognizes the GOG edition. When both stores are detected, you can select the installation. The GOG 1.0.3 engine differs from Steam’s and still needs a renderer port and gameplay validation.
 
 ## Windows requirements
+
+FF8 Reborn has no measured minimum GPU for 60 or 120 FPS. The 120 FPS target gives the CPU and GPU about 8.3 ms per output frame. Resolution and scene complexity matter. A 10-second world-map run on a Ryzen 5 7600X and RTX 5070 at 2560 × 1440 averaged 118.2 displayed FPS. [Frame-rate measurement](docs/GALLERY.md#frame-rate)
 
 - A Windows PC and the Steam account that owns [FINAL FANTASY VIII Remastered (app 1026680)](https://store.steampowered.com/app/1026680/FINAL_FANTASY_VIII__REMASTERED/).
 - The supported Windows Steam build with `FFVIII_EFIGS.dll`. The installer checks the engine and original audio DLL before making changes. The 2013 PC release and the original PlayStation game use different engines.

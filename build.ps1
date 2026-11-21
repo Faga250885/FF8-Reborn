@@ -26,5 +26,9 @@ $sources='Instalador.cs','Portada.cs'|ForEach-Object{Join-Path $installer $_}
 $atlas=Join-Path $installer 'Atlas.jpg'
 & $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll "/resource:$payload,mod.gz" "/resource:$atlas,atlas.jpg" "/out:$exe" @sources $package
 if($LASTEXITCODE){throw 'Installer build failed.'}
-& (Join-Path $installer 'package-deck.ps1') -Renderer $dll -Output (Join-Path $out 'FF8-Reborn-Deck.pyz') -Zig $Zig
+$deckDir=(New-Item -ItemType Directory -Force -Path (Join-Path $out 'deck')).FullName
+$deckDll=Join-Path $deckDir 'libvgmstream.dll'
+& $Zig c++ -target x86-windows-gnu -std=c++17 -O2 -s "-I$headers" -DGEO_NATIVE_CAPTURE -DGEO_STEAM_DECK -shared (Join-Path $src 'geometry.cpp') (Join-Path $src 'libvgmstream_proxy.def') -o $deckDll -lopengl32 -lgdi32 -luser32 -lcomctl32
+if($LASTEXITCODE){throw 'Steam Deck renderer build failed.'}
+& (Join-Path $installer 'package-deck.ps1') -Renderer $deckDll -Output (Join-Path $out 'FF8-Reborn-Deck.pyz') -Zig $Zig
 Write-Output $exe

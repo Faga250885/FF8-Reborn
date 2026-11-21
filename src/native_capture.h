@@ -41,13 +41,15 @@ static bool fetch(uint32_t addr,void*out,size_t length){
     return true;
 }
 static void __cdecl projected(void*cpu){
+    const bool track_pose=!deck_renderer||(enabled&&display_settings.fps!=0);
+    if(!track_pose&&(!enabled||!display_settings.wide)){original(cpu);return;}
     uint32_t sp,args[3]{},source=0,buffer=0,tag=0;uint16_t count=0;
     memcpy(&sp,(BYTE*)cpu+0x2c,4);
     bool valid=sp<=UINT32_MAX-16&&fetch(sp+4,args,12)&&fetch(args[1],&source,4)&&
         fetch(args[2],&buffer,4)&&fetch(source,&count,2)&&count&&count<=4096&&
         source<=UINT32_MAX-2u-6u*count&&buffer<=UINT32_MAX-8u*count;
     // The original function sees the caller's context and stack unchanged.
-    uint32_t saved[4]{};bool frame_ok=sp<=UINT32_MAX-40&&fetch(sp+20,saved,sizeof(saved));
+    uint32_t saved[4]{};bool frame_ok=track_pose&&sp<=UINT32_MAX-40&&fetch(sp+20,saved,sizeof(saved));
     // The native projector bounds are in half-resolution pixels. Let its
     // normal clipping and near-plane handling run on a wider horizontal range.
     int16_t* clip=valid&&enabled&&display_settings.wide&&args[0]<=UINT32_MAX-28?(int16_t*)writable_guest(args[0]+20,8):nullptr;
@@ -56,6 +58,7 @@ static void __cdecl projected(void*cpu){
     if(expanded){left=clip[0];span=clip[2];clip[0]=std::min<int>(left,-480);clip[2]=std::max<int>(left+span,800)-clip[0];}
     original(cpu);
     if(expanded){clip[0]=left;clip[2]=span;}
+    if(!track_pose&&!stage_drawing)return;
     // This marker is populated by EFIGS immediately before/after this call.
     memcpy(&tag,(BYTE*)engine+0x1771cd4,4);
     // EDI of the body caller is the actor row. Only accept exact bank
@@ -83,6 +86,7 @@ static void __cdecl projected(void*cpu){
             i+=n;
         }
     }
+    if(!track_pose)return;
     AcquireSRWLockExclusive(&lock);
     calls++;
     if(valid&&!overflow)try{
