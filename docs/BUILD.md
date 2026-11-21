@@ -8,7 +8,7 @@ From the repository root, point the script to the include directory containing `
 .\build.ps1 -GlewInclude 'C:\deps\glew\include' -Zig 'C:\tools\zig\zig.exe'
 ```
 
-The outputs are `dist/FF8-Reborn-Setup.exe` and `dist/FF8-Reborn-Deck.pyz`. The latter bundles the same renderer with the Python 3 SteamOS installer. The script builds the x86 renderer, strips debug symbols, compresses the mod DLL, embeds its SHA-256 and builds the Windows Forms installer. The original game, Steamworks runtime and original audio library come from the user's Steam installation.
+The outputs are `dist/FF8-Reborn-Setup.exe` for Windows, `dist/FF8-Reborn-Deck-Setup` for the SteamOS desktop and `dist/FF8-Reborn-Deck.pyz` for the Linux command line. The SteamOS executable is a static x86-64 Linux launcher with the Python installer archive appended. It opens the bundled installer with the system Python and displays Zenity dialogs. All three packages contain the same renderer. The original game, Steamworks runtime and original audio library come from the user's Steam installation.
 
 The renderer and filter are in `src/`. The setup window and installation checks are in `installer/`. Steam ownership is checked using the game's initialized Steam session. [Steamworks ownership API](https://partner.steamgames.com/doc/api/ISteamApps#GetAppOwner).
 

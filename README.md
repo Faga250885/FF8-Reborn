@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Download the Windows installer](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · [Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -15,16 +15,11 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 ## Steam Deck (SteamOS, experimental)
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and save the [Steam Deck installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.2.0/FF8-Reborn-Deck.pyz) to your downloads folder.
-3. Open Konsole in the folder containing the download and run:
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup).
+3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
+4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-   ```sh
-   python3 FF8-Reborn-Deck.pyz
-   ```
-
-4. Return to Gaming Mode and launch FFVIII from your Steam library. Press **View + Menu** together to open the panel.
-
-The installer looks in registered Steam libraries, including microSD storage. To choose a library, add `--library "/path/to/library"` (the folder containing `steamapps`). To uninstall, close the game and run the same command with `--uninstall`. It requires Python 3.8 or newer and runs under your normal user account.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck.pyz) is also available.
 
 Installation and restoration were tested on Linux with original Steam game files. Gameplay under Proton on physical Deck hardware, including controls and frame pacing, still needs testing.
 

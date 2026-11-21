@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -110,19 +111,7 @@ def apply(game, payload, version, uninstall):
         write_atomic(marker, version.upper().encode("ascii"))
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Install FF8 Reborn in your Steam library.")
-    parser.add_argument("--library", type=Path, help="Steam library folder containing steamapps")
-    parser.add_argument("--uninstall", action="store_true", help="restore the original audio DLL")
-    args = parser.parse_args()
-    roots = [args.library.expanduser()] if args.library else libraries(Path.home())
-    games = sorted({game for root in roots if (game := game_folder(root))})
-    if not games:
-        raise ValueError("Game not found. Install FFVIII Remastered in Steam or specify --library PATH.")
-    if len(games) > 1:
-        raise ValueError("Multiple copies found. Run again with --library followed by one of:\n" +
-                         "\n".join(str(root) for root in roots if game_folder(root)))
-    game = games[0]
+def install_game(game, uninstall):
     with zipfile.ZipFile(sys.argv[0]) as package:
         payload = package.read("libvgmstream.dll")
         version = package.read("renderer.sha256").decode("ascii").strip().lower()
@@ -131,10 +120,76 @@ def main():
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if game_running():
             raise ValueError("Close the game and its launcher first.")
-        apply(game, payload, version, args.uninstall)
+        apply(game, payload, version, uninstall)
     finally:
         os.close(fd)
-    print(("Original DLL restored in " if args.uninstall else "FF8 Reborn installed in ") + str(game))
+    return ("Original DLL restored in " if uninstall else "FF8 Reborn installed in ") + str(game)
+
+
+def dialog(*args):
+    result = subprocess.run(["zenity", "--title=FF8 Reborn", *args], stdout=subprocess.PIPE, text=True)
+    if result.returncode == 1:
+        return None
+    result.check_returncode()
+    return result.stdout.rstrip("\n")
+
+
+def graphical_install(games):
+    if not games:
+        folder = dialog("--file-selection", "--directory", "--title=Choose the Steam library containing steamapps")
+        if not folder:
+            return
+        game = game_folder(Path(folder))
+        if not game:
+            raise ValueError("FFVIII Remastered was not found in this library. Choose the folder containing steamapps.")
+    elif len(games) == 1:
+        game = games[0]
+    else:
+        folder = dialog("--list", "--column=Game folder", "--width=700", *map(str, games))
+        if not folder:
+            return
+        game = Path(folder)
+
+    installed = (game / "FF8_geometry.installed").is_file() or (game / "libvgmstream_orig.dll").is_file()
+    if installed:
+        action = dialog("--list", "--radiolist", "--column=", "--column=Action", "--no-markup",
+                        "--text", str(game), "TRUE", "Update or repair", "FALSE", "Uninstall")
+        if not action:
+            return
+        uninstall = action == "Uninstall"
+    else:
+        if dialog("--question", "--no-markup", "--ok-label=Install", "--cancel-label=Cancel",
+                  "--text", "Install FF8 Reborn here?\n\n" + str(game)) is None:
+            return
+        uninstall = False
+    message = install_game(game, uninstall)
+    if not uninstall:
+        message += "\n\nReturn to Gaming Mode and launch the game from Steam."
+    dialog("--info", "--no-markup", "--text", message)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Install FF8 Reborn in your Steam library.")
+    parser.add_argument("--library", type=Path, help="Steam library folder containing steamapps")
+    parser.add_argument("--uninstall", action="store_true", help="restore the original audio DLL")
+    parser.add_argument("--gui", action="store_true", help="open the graphical installer")
+    args = parser.parse_args()
+    try:
+        roots = [args.library.expanduser()] if args.library else libraries(Path.home())
+        games = sorted({game for root in roots if (game := game_folder(root))})
+        if args.gui:
+            graphical_install(games)
+            return
+        if not games:
+            raise ValueError("Game not found. Install FFVIII Remastered in Steam or specify --library PATH.")
+        if len(games) > 1:
+            raise ValueError("Multiple copies found. Run again with --library followed by one of:\n" +
+                             "\n".join(str(root) for root in roots if game_folder(root)))
+        print(install_game(games[0], args.uninstall))
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
+        if args.gui:
+            dialog("--error", "--no-markup", "--text", str(error))
+        raise
 
 
 if __name__ == "__main__":

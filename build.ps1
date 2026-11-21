@@ -26,5 +26,5 @@ $sources='Instalador.cs','Portada.cs'|ForEach-Object{Join-Path $installer $_}
 $atlas=Join-Path $installer 'Atlas.jpg'
 & $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll "/resource:$payload,mod.gz" "/resource:$atlas,atlas.jpg" "/out:$exe" @sources $package
 if($LASTEXITCODE){throw 'Installer build failed.'}
-& (Join-Path $installer 'package-deck.ps1') -Renderer $dll -Output (Join-Path $out 'FF8-Reborn-Deck.pyz')
+& (Join-Path $installer 'package-deck.ps1') -Renderer $dll -Output (Join-Path $out 'FF8-Reborn-Deck.pyz') -Zig $Zig
 Write-Output $exe
