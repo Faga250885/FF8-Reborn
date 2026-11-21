@@ -1,0 +1,160 @@
+// Rasterize text at the drawable resolution only when the panel changes.
+// A normal presentation of the open panel is one GPU-to-GPU rectangle blit.
+namespace retro_panel_draw {
+static Surface panel;
+static std::array<int,23> last_state{};
+static bool painted=false;
+constexpr int design_w=404,design_h=630;
+static int row_top(int id,bool restore_visible){
+    int index=retro_panel::visual_index(id);
+    if(!restore_visible&&index>retro_panel::visual_index(retro_panel::Restore))--index;
+    return 78+index*29+(index>=4?32:0);
+}
+
+struct Canvas {
+    HDC dc=nullptr;
+    HBITMAP bitmap=nullptr;
+    HGDIOBJ old_bitmap=nullptr,old_font=nullptr;
+    HFONT fonts[3]={};
+    unsigned char* pixels=nullptr;
+    double scale;
+    int width,height;
+    int px(double v) const{return int(std::lround(v*scale));}
+    Canvas(int w,int h):scale(double(w)/design_w),width(w),height(h){
+        dc=CreateCompatibleDC(nullptr);
+        if(!dc)return;
+        BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+        // Positive height gives BGRA rows in the same bottom-to-top order as GL.
+        info.bmiHeader.biWidth=w;info.bmiHeader.biHeight=h;
+        info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
+        info.bmiHeader.biCompression=BI_RGB;
+        void* bits=nullptr;
+        bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bits,nullptr,0);
+        if(!bitmap||!bits)return;
+        old_bitmap=SelectObject(dc,bitmap);
+        if(!old_bitmap||old_bitmap==HGDI_ERROR)return;
+        old_font=GetCurrentObject(dc,OBJ_FONT);
+        const int heights[]={14,17,24},weights[]={FW_SEMIBOLD,FW_NORMAL,FW_SEMIBOLD};
+        for(int i=0;i<3;i++)fonts[i]=CreateFontW(-std::max(1,px(heights[i])),0,0,0,weights[i],
+            FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
+            ANTIALIASED_QUALITY,DEFAULT_PITCH|FF_SWISS,L"Segoe UI");
+        SetBkMode(dc,TRANSPARENT);pixels=static_cast<unsigned char*>(bits);
+    }
+    ~Canvas(){
+        if(old_font)SelectObject(dc,old_font);
+        if(old_bitmap&&old_bitmap!=HGDI_ERROR)SelectObject(dc,old_bitmap);
+        for(HFONT f:fonts)if(f)DeleteObject(f);
+        if(bitmap)DeleteObject(bitmap);
+        if(dc)DeleteDC(dc);
+    }
+    void box(int x,int y,int r,int b,COLORREF colour){
+        RECT rect{px(x),px(y),px(r),px(b)};
+        SetDCBrushColor(dc,colour);FillRect(dc,&rect,(HBRUSH)GetStockObject(DC_BRUSH));
+    }
+    void label(const wchar_t* str,int x,int y,int r,int b,int font,COLORREF colour,bool right=false){
+        RECT rect{px(x),px(y),px(r),px(b)};
+        if(fonts[font])SelectObject(dc,fonts[font]);
+        SetTextColor(dc,colour);
+        DrawTextW(dc,str,-1,&rect,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX|(right?DT_RIGHT:DT_LEFT));
+    }
+};
+
+static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed){
+    const COLORREF body=RGB(23,31,35),border=RGB(96,119,120),accent=RGB(125,226,200);
+    const COLORREF text=RGB(238,243,243),secondary=RGB(181,201,199),muted=RGB(130,146,148);
+    c.box(0,0,design_w,design_h,border);c.box(1,1,design_w-1,design_h-1,body);
+    c.label(L"FF8 REBORN",17,5,160,26,0,accent);
+    c.label(L"Settings",16,23,270,56,2,text);
+    if(bypass)c.label(L"Original view",243,18,387,47,0,secondary,true);
+    c.label(L"Display settings",17,52,260,76,0,accent);
+    c.label(L"Auto-save",246,52,387,76,0,secondary,true);
+    c.box(16,195,388,196,RGB(61,77,80));
+    c.label(L"Screen filter",17,198,388,224,0,accent);
+    using namespace retro_panel;
+    const bool restore_visible=can_restore(s);
+    if(dirty||active_profile==custom){
+        std::wstring base=std::wstring(L"Based on ")+(base_profile()==8?L"FF8 Reborn":names[base_profile()]);
+        c.label(base.c_str(),122,198,387,224,0,secondary,true);
+    }
+    const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",
+                              L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing"};
+    const int values[]={0,s.lines,s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness};
+    for(int i=0;i<8;i++){
+        const int top=row_top(i,restore_visible);
+        const bool current=selected==i;
+        const bool editable=i==0||(s.mode!=0&&(!(i>=3&&i<=5)||s.mode==2));
+        if(current){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
+        c.label(labels[i],18,top,226,top+28,1,editable?text:muted);
+        if(!i){
+            const int profile=retro_panel::dirty?retro_panel::custom:retro_panel::active_profile;
+            c.label(retro_panel::names[profile],111,top,385,top+28,1,accent,true);
+        }else{
+            wchar_t value[30];
+            swprintf(value,30,i==1?L"%d lines":L"%d %%",values[i]);
+            if(i!=1){
+                c.box(259,top+13,315,top+16,RGB(56,73,76));
+                const int end=259+int(std::lround(56*values[i]/100.0));
+                if(end>259)c.box(259,top+13,end,top+16,editable?accent:muted);
+            }
+            c.label(value,318-(i==1?42:0),top,385,top+28,1,editable?secondary:muted,true);
+        }
+    }
+    const wchar_t* extra[]={L"Filter type",L"Full-screen map",L"Aspect ratio",L"Frame rate",L"Blurred sidebars",
+                            active_profile==custom?L"Save my changes":custom_exists?L"Save to my custom profile":L"Create a custom copy",
+                            L"Restore filter defaults"};
+    const wchar_t* value[]={s.mode==0?L"Off":s.mode==1?L"Pixelated":L"CRT",display_settings.atlas?L"Reborn":L"Original",
+        display_settings.wide?L"Widescreen":L"Original (4:3)",display_settings.fps==0?L"Original":display_settings.fps==60?L"60":L"120",
+        display_settings.field_sides?L"On":L"Off"};
+    for(int i=FilterType;i<RowCount;i++){
+        if(i==Restore&&!restore_visible)continue;
+        const int top=row_top(i,restore_visible);
+        if(selected==i){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
+        c.label(extra[i-FilterType],18,top,385,top+28,1,text);
+        if(i<=Sides)c.label(value[i-FilterType],220,top,385,top+28,1,accent,true);
+    }
+    const int footer=row_top(SaveCustom,restore_visible)+32;
+    c.box(16,footer,388,footer+1,RGB(61,77,80));
+    std::wstring state=failed?L"Couldn’t save your changes. Try again.":
+        selected==Restore?L"Restore the original settings for this filter.":
+        selected==SaveCustom&&active_profile!=custom&&custom_exists?L"This will replace your saved custom profile.":
+        needs_choice?L"Save your changes or press Esc / B to discard.":
+        active_profile==custom?L"Changes are saved to your custom profile.":
+        L"Use this filter as the starting point for your copy.";
+    c.label(state.c_str(),13,footer+4,393,footer+27,0,failed?RGB(255,185,134):secondary);
+    c.label(L"Arrows / D-pad: adjust · Enter / A: select",13,footer+29,393,footer+51,0,text);
+    c.label(L"F8 / Select + Start: close · Esc / B: cancel",13,footer+51,393,footer+75,0,text);
+}
+static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,int h,bool bypass=false){
+    if(w<24||h<24)return false;
+    const int height=design_h-(retro_panel::can_restore(settings)?0:29);
+    const double scale=std::min({std::clamp(h/900.,.8,3.0),
+                                 double(w)/(design_w+32),double(h)/(design_h+32)});
+    const int pw=int(std::lround(design_w*scale)),ph=int(std::lround(height*scale));
+    const int margin=int(std::lround(16*scale));
+    const bool failed=retro_panel::save_failed();
+    const std::array<int,23> state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
+                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base};
+    if(!painted||last_state!=state){
+        Canvas canvas(pw,ph);
+        if(!canvas.pixels)return false;
+        render(canvas,settings,selected,bypass,failed);
+        GdiFlush();
+        for(size_t at=3;at<size_t(pw)*ph*4;at+=4)canvas.pixels[at]=255;
+        try{retro_display::allocate(panel,pw,ph);}
+        catch(const std::exception&){return false;}
+        PixelTransferGuard transfer;
+        GLint texture=0;glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);
+        glBindTexture(GL_TEXTURE_2D,panel.color);
+        glTexSubImage2D(GL_TEXTURE_2D,0,0,0,pw,ph,GL_BGRA,GL_UNSIGNED_BYTE,canvas.pixels);
+        glBindTexture(GL_TEXTURE_2D,texture);
+        last_state=state;painted=true;
+    }
+    retro_display::inspect_context();
+    retro_display::TargetState state_guard(target,false);
+    pBindFramebuffer(GL_READ_FRAMEBUFFER,panel.fbo);
+    pBlitFramebuffer(0,0,pw,ph,margin,h-margin-ph,margin+pw,h-margin,
+                     GL_COLOR_BUFFER_BIT,GL_NEAREST);
+    return true;
+}
+static void forget(){panel={};painted=false;}
+}

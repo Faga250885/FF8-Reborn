@@ -1,0 +1,19 @@
+LIBRARY libvgmstream
+EXPORTS
+    allocate_vgmstream=libvgmstream_orig.allocate_vgmstream @1
+    close_vgmstream=libvgmstream_orig.close_vgmstream @2
+    decode_vgmstream=libvgmstream_orig.decode_vgmstream @3
+    decode_vgmstream_mem=libvgmstream_orig.decode_vgmstream_mem @4
+    describe_vgmstream=libvgmstream_orig.describe_vgmstream @5
+    get_vgmstream_frame_size=libvgmstream_orig.get_vgmstream_frame_size @6
+    get_vgmstream_play_samples=libvgmstream_orig.get_vgmstream_play_samples @7
+    get_vgmstream_samples_per_frame=libvgmstream_orig.get_vgmstream_samples_per_frame @8
+    get_vgmstream_samples_per_shortframe=libvgmstream_orig.get_vgmstream_samples_per_shortframe @9
+    get_vgmstream_shortframe_size=libvgmstream_orig.get_vgmstream_shortframe_size @10
+    init_vgmstream=libvgmstream_orig.init_vgmstream @11
+    init_vgmstream_from_STREAMFILE=libvgmstream_orig.init_vgmstream_from_STREAMFILE @12
+    render_vgmstream=libvgmstream_orig.render_vgmstream @13
+    reset_vgmstream=libvgmstream_orig.reset_vgmstream @14
+    try_dual_file_stereo=libvgmstream_orig.try_dual_file_stereo @15
+    vgmstream_do_loop=libvgmstream_orig.vgmstream_do_loop @16
+    vgmstream_samples_to_do=libvgmstream_orig.vgmstream_samples_to_do @17
