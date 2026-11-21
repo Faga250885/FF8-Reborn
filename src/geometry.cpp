@@ -167,8 +167,15 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr) {
         }
     }return out;
 }
-static void apply_uniforms(GLuint program,const std::vector<Uniform>& values) {
-    pUseProgram(program);for(const auto&u:values){const GLfloat*f=u.f.data();const GLint*i=u.i.data();
+static void apply_uniforms(GLuint program,const std::vector<Uniform>& values,const std::vector<Uniform>* previous=nullptr) {
+    if(!previous)pUseProgram(program);
+    for(size_t index=0;index<values.size();++index){
+        const auto& u=values[index];
+        if(previous&&index<previous->size()){
+            const auto& before=(*previous)[index];
+            if(u.location==before.location&&u.type==before.type&&u.f==before.f&&u.i==before.i)continue;
+        }
+        const GLfloat*f=u.f.data();const GLint*i=u.i.data();
         switch(u.type){
         case GL_FLOAT:pUniform1fv(u.location,1,f);break;case GL_FLOAT_VEC2:pUniform2fv(u.location,1,f);break;
         case GL_FLOAT_VEC3:pUniform3fv(u.location,1,f);break;case GL_FLOAT_VEC4:pUniform4fv(u.location,1,f);break;
@@ -349,7 +356,7 @@ struct State {
     GLfloat blend_color[4],clear_color[4],alpha_ref,offset_factor,offset_units,line_width,point_size;
     GLint clear_stencil;float model[16],projection[16];TextureState texture[4];std::vector<Uniform> uniforms;
 };
-static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsigned* inputs=nullptr) {
+static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsigned* inputs=nullptr,bool terrain_draw=false) {
     State s{};GLint active;glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
     if(extra)read_extra(*extra,stencil_clear);
     for(int j=0;j<6;j++)demand(!glIsEnabled(GL_CLIP_PLANE0+j),"clip planes unsupported");
@@ -363,15 +370,27 @@ static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsig
     s.offset_fill=glIsEnabled(GL_POLYGON_OFFSET_FILL);
     s.srgb=glIsEnabled(GL_FRAMEBUFFER_SRGB);
 #define GI(key,field) glGetIntegerv(key,&s.field)
-    GI(GL_DEPTH_FUNC,depth_func);GI(GL_CULL_FACE_MODE,cull_face);GI(GL_FRONT_FACE,front_face);GI(GL_ALPHA_TEST_FUNC,alpha_func);
-    GI(GL_SHADE_MODEL,shade);GI(GL_LOGIC_OP_MODE,logic);GI(GL_BLEND_SRC_RGB,src_rgb);GI(GL_BLEND_DST_RGB,dst_rgb);
-    GI(GL_BLEND_SRC_ALPHA,src_alpha);GI(GL_BLEND_DST_ALPHA,dst_alpha);GI(GL_BLEND_EQUATION_RGB,eq_rgb);GI(GL_BLEND_EQUATION_ALPHA,eq_alpha);
-    GI(GL_STENCIL_CLEAR_VALUE,clear_stencil);
+    GI(GL_FRONT_FACE,front_face);GI(GL_SHADE_MODEL,shade);
+    if(!terrain_draw||s.depth){GI(GL_DEPTH_FUNC,depth_func);}else s.depth_func=GL_LESS;
+    if(!terrain_draw||s.cull){GI(GL_CULL_FACE_MODE,cull_face);}else s.cull_face=GL_BACK;
+    if(!terrain_draw||s.alpha){GI(GL_ALPHA_TEST_FUNC,alpha_func);glGetFloatv(GL_ALPHA_TEST_REF,&s.alpha_ref);}else s.alpha_func=GL_ALWAYS;
+    if(!terrain_draw||s.logic_on){GI(GL_LOGIC_OP_MODE,logic);}else s.logic=GL_COPY;
+    if(!terrain_draw||s.blend){
+        GI(GL_BLEND_SRC_RGB,src_rgb);GI(GL_BLEND_DST_RGB,dst_rgb);
+        GI(GL_BLEND_SRC_ALPHA,src_alpha);GI(GL_BLEND_DST_ALPHA,dst_alpha);GI(GL_BLEND_EQUATION_RGB,eq_rgb);GI(GL_BLEND_EQUATION_ALPHA,eq_alpha);
+        glGetFloatv(GL_BLEND_COLOR,s.blend_color);
+    }else{s.src_rgb=s.src_alpha=GL_ONE;s.dst_rgb=s.dst_alpha=GL_ZERO;s.eq_rgb=s.eq_alpha=GL_FUNC_ADD;}
+    // A clear is recorded separately with its actual masks and clear values.
+    if(!terrain_draw){
+        GI(GL_STENCIL_CLEAR_VALUE,clear_stencil);
+        glGetDoublev(GL_DEPTH_CLEAR_VALUE,&s.clear_depth);glGetFloatv(GL_COLOR_CLEAR_VALUE,s.clear_color);
+    }else s.clear_depth=1;
 #undef GI
     glGetIntegerv(GL_POLYGON_MODE,s.polygon);glGetBooleanv(GL_COLOR_WRITEMASK,s.mask);glGetBooleanv(GL_DEPTH_WRITEMASK,&s.depth_mask);
-    glGetDoublev(GL_DEPTH_RANGE,s.depth_range);glGetDoublev(GL_DEPTH_CLEAR_VALUE,&s.clear_depth);
-    glGetFloatv(GL_BLEND_COLOR,s.blend_color);glGetFloatv(GL_COLOR_CLEAR_VALUE,s.clear_color);glGetFloatv(GL_ALPHA_TEST_REF,&s.alpha_ref);
-    glGetFloatv(GL_POLYGON_OFFSET_FACTOR,&s.offset_factor);glGetFloatv(GL_POLYGON_OFFSET_UNITS,&s.offset_units);
+    glGetDoublev(GL_DEPTH_RANGE,s.depth_range);
+    if(!terrain_draw||s.offset_fill){
+        glGetFloatv(GL_POLYGON_OFFSET_FACTOR,&s.offset_factor);glGetFloatv(GL_POLYGON_OFFSET_UNITS,&s.offset_units);
+    }
     glGetFloatv(GL_LINE_WIDTH,&s.line_width);glGetFloatv(GL_POINT_SIZE,&s.point_size);
     // Query only units restored below; reject combining until implemented.
     unsigned sampled=0;
@@ -404,7 +423,8 @@ static bool same_uniforms(const State& a,const State& b){
     }
     return true;
 }
-static void set_state(const State&s,const State* prior,bool restore_view) {
+using SamplerState=std::unordered_map<GLuint,TextureParameters>;
+static void set_state(const State&s,const State* prior,bool restore_view,SamplerState* samplers=nullptr) {
     // The wide camera overrides only viewport, scissor and projection.
     if(!prior||restore_view||memcmp(s.viewport,prior->viewport,sizeof(s.viewport)))glViewport(s.viewport[0],s.viewport[1],s.viewport[2],s.viewport[3]);
     if(!prior||restore_view||memcmp(s.scissor,prior->scissor,sizeof(s.scissor)))glScissor(s.scissor[0],s.scissor[1],s.scissor[2],s.scissor[3]);
@@ -438,13 +458,27 @@ static void set_state(const State&s,const State* prior,bool restore_view) {
             if(j==3)pActiveTexture(GL_TEXTURE3);
             continue;
         }
-        pActiveTexture(GL_TEXTURE0+j);cap(GL_TEXTURE_2D,t.enabled);
+        pActiveTexture(GL_TEXTURE0+j);
+        const TextureState* previous_unit=samplers&&prior?&prior->texture[j]:nullptr;
+        if(!previous_unit||t.enabled!=previous_unit->enabled)cap(GL_TEXTURE_2D,t.enabled);
         auto replacement=replay_textures.find(t.id);
         GLuint texture=t.copy?t.copy->id:(replacement!=replay_textures.end()?replacement->second:(glIsTexture(t.id)?t.id:0));
-        glBindTexture(GL_TEXTURE_2D,texture);glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,t.env);
-        if(texture)apply_texture_parameters(t.parameters);
-        glMatrixMode(GL_TEXTURE);glLoadMatrixf(t.matrix);}
-    if(!prior||!same_uniforms(s,*prior))apply_uniforms(s.program,s.uniforms);
+        glBindTexture(GL_TEXTURE_2D,texture);
+        if(!previous_unit||t.env!=previous_unit->env)glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,t.env);
+        if(texture){
+            bool changed=true;
+            if(samplers){
+                auto entry=samplers->try_emplace(texture,t.parameters);
+                changed=entry.second||memcmp(&entry.first->second,&t.parameters,sizeof(t.parameters));
+                if(changed)entry.first->second=t.parameters;
+            }
+            if(changed)apply_texture_parameters(t.parameters);
+        }
+        if(!previous_unit||memcmp(t.matrix,previous_unit->matrix,sizeof(t.matrix))){
+            glMatrixMode(GL_TEXTURE);glLoadMatrixf(t.matrix);
+        }}
+    if(samplers&&prior&&s.program==prior->program)apply_uniforms(s.program,s.uniforms,&prior->uniforms);
+    else if(!prior||!same_uniforms(s,*prior))apply_uniforms(s.program,s.uniforms);
 }
 struct Vertex {float p[4],c[4],uv[4][4],n[3];};
 #include "stride_curve.h"
@@ -649,7 +683,9 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
     std::vector<unsigned> ids(count);unsigned maxid=0;
     for(int i=0;i<count;i++){unsigned v=0;memcpy(&v,(const BYTE*)indices+i*bytes,bytes);ids[i]=v;maxid=std::max(maxid,v);}
     demand(maxid<1000000,"index range too large");
-    unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs);op.vertices.resize(count);
+    const bool terrain_draw=deck_renderer&&display_settings.wide&&!display_settings.fps&&
+        current.mode==2&&capture_target&&mode==GL_TRIANGLES;
+    unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,terrain_draw);op.vertices.resize(count);
     auto pos=array(GL_VERTEX_ARRAY,GL_VERTEX_ARRAY_POINTER,GL_VERTEX_ARRAY_SIZE,GL_VERTEX_ARRAY_TYPE,GL_VERTEX_ARRAY_STRIDE,GL_VERTEX_ARRAY_BUFFER_BINDING);
     auto color=(inputs&4)?array(GL_COLOR_ARRAY,GL_COLOR_ARRAY_POINTER,GL_COLOR_ARRAY_SIZE,GL_COLOR_ARRAY_TYPE,GL_COLOR_ARRAY_STRIDE,GL_COLOR_ARRAY_BUFFER_BINDING):Array{};
     auto normal=(inputs&2)?array(GL_NORMAL_ARRAY,GL_NORMAL_ARRAY_POINTER,0,GL_NORMAL_ARRAY_TYPE,GL_NORMAL_ARRAY_STRIDE,GL_NORMAL_ARRAY_BUFFER_BINDING):Array{};
@@ -706,10 +742,15 @@ static void qa_stage(int reason){
 static void service_at(int);
 static void present_during_wait(bool force_previous=false);
 static void pump_due();
+static double world_capture_time=0;
 static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*indices){
     double began=loaded?now():0;
     try{if(count>0)record_draw(mode,count,type,indices);}catch(const std::exception&e){fail_frame(e.what());}
-    if(began&&!inside){capture_seconds+=now()-began;capture_count++;}
+    if(began&&!inside){
+        const double elapsed=now()-began;
+        capture_seconds+=elapsed;capture_count++;
+        if(deck_renderer&&current.mode==2&&display_settings.wide&&!display_settings.fps)world_capture_time+=elapsed;
+    }
     real_draw(mode,count,type,indices);
     service_at(1);
 }
@@ -905,6 +946,10 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     }
     size_t span_index=0;
     bool packed_arrays_bound=false;
+    // Only the renderer can change GL state between these calls. Forget the
+    // cache before the game resumes or a custom atlas touches the bindings.
+    const bool native_world=deck_renderer&&!display_settings.fps&&current.mode==2&&current.layout()==2&&!view.full_map;
+    SamplerState world_samplers;
     auto draw_op=[&](const Op&op){
         if(!last_draw||op.target!=last_draw->target){
             GLuint dest=op.target?replay_targets.at(op.target).fbo:target;
@@ -922,11 +967,18 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
             vertices=prepare(op,vertex_count);
             base=reinterpret_cast<uintptr_t>(vertices);
         }
-        set_state(op.state,last_draw?&last_draw->state:nullptr,view.outer_width!=0);
+        const bool same_world_view=native_world&&view.outer_width&&last_draw&&
+            op.target&&op.target==last_draw->target&&!op.clear&&!last_draw->clear&&
+            op.state.scissor_on==last_draw->state.scissor_on&&
+            !memcmp(op.state.viewport,last_draw->state.viewport,sizeof(op.state.viewport))&&
+            !memcmp(op.state.scissor,last_draw->state.scissor,sizeof(op.state.scissor))&&
+            !memcmp(op.state.projection,last_draw->state.projection,sizeof(op.state.projection))&&
+            view.world_map_draw(op)==view.world_map_draw(*last_draw);
+        set_state(op.state,last_draw?&last_draw->state:nullptr,view.outer_width&&!same_world_view,native_world?&world_samplers:nullptr);
         if(!last_draw||memcmp(&op.raster,&last_draw->raster,sizeof(op.raster)))apply_extra(op.raster);
         last_draw=&op;
-        view.apply(op);
-        if(display_settings.atlas&&view.full_map==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;}
+        if(!same_world_view)view.apply(op);
+        if(display_settings.atlas&&view.full_map==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;world_samplers.clear();}
         if(op.clear){real_clear(op.clear);return;}
         // Card transitions intentionally switch between client arrays. Use
         // the packed CPU vertices for that draw and rebind the stream after it.
@@ -1252,11 +1304,22 @@ static void publish(){
 }
 static unsigned frame_waits=0;
 static double requested_wait=0,reclaimed_wait=0;
+struct WorldFrameStats {
+    unsigned frames=0,draws=0;
+    double intervals=0,capture=0,layout=0,swap=0;
+};
+static WorldFrameStats world_frame_stats;
 static void stats(){static double last=0;static unsigned ps=0,po=0;
     double t=now();if(t-last<5)return;char line[320];snprintf(line,sizeof(line),
         "source %.2f/s | geometry presents %.2f/s | moved draws %u | parity pass %u fail %u | waits %u | %s\n",
         (sources-ps)/(t-last),(outputs-po)/(t-last),moving_draws,parity_ok,parity_fail,waits,can_present?"geometry":"native");
     log(line);ps=sources;po=outputs;last=t;
+    if(world_frame_stats.frames){
+        const auto& w=world_frame_stats;
+        snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | indexed capture %.2f ms | validation and layout %.2f ms | filter and swap %.2f ms\n",
+            w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.swap/w.frames);
+        log(line);world_frame_stats={};
+    }
     if(frame_waits){
         snprintf(line,sizeof(line),"frame limiter %u waits | requested %.3f ms | drawing credited %.3f ms per wait\n",
                  frame_waits,1000*requested_wait/frame_waits,1000*reclaimed_wait/frame_waits);log(line);
@@ -1353,6 +1416,7 @@ static BOOL WINAPI swap_hook(HDC handle){
     double t=now(),dt=last_swap?t-last_swap:0;last_swap=t;sources++;bool was_presenting=can_present;can_present=false;bool saved=false;
     previous_origin=origin;previous_period=period;prepared_previous=false;
     float displayed_alpha=-1;bool output_due=true,native_endpoint=false,published=false,native_scaled=false;
+    bool measure_world=false;
     try {
         int mode=game_mode();
         bool candidate=enabled&&building.valid&&building.started&&!building.ops.empty();
@@ -1399,6 +1463,9 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
+        measure_world=deck_renderer&&candidate&&display_settings.wide&&!display_settings.fps&&mode==2&&
+            previous.mode==2&&current.layout()==2&&transition.outer_width&&!atlas_open&&!current.menu_edge&&
+            current.travel==Frame::Travel::none&&dt>0&&dt<.25;
         // The atlas is a 2D interface inside world mode. Never match an atlas
         // capture with terrain, or replay a stale pointer during a native wait.
         if(pair && mode==2 && !was_presenting && !atlas_open &&
@@ -1501,6 +1568,12 @@ static BOOL WINAPI swap_hook(HDC handle){
         native_frame_wait.start(current.mode,t,dt,layout_seconds,true);
     else
         native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
+    if(measure_world){
+        auto& w=world_frame_stats;
+        ++w.frames;w.draws+=unsigned(current.ops.size());w.intervals+=dt;
+        w.capture+=world_capture_time;w.layout+=layout_seconds;w.swap+=now()-t-layout_seconds;
+    }
+    world_capture_time=0;
     stats();return result;
 }
 // Users can also choose original frame rate, original aspect and original
@@ -1661,7 +1734,7 @@ static void forget_deleted_context(){
     retro_panel_draw::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;
     retro_display::forget();
-    deck_busy_frames=0;deck_native_layout_wait=false;
+    deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;
