@@ -12,15 +12,7 @@ struct SurfaceGraph {
     std::vector<std::vector<unsigned>> refs;
     std::unordered_map<uint64_t,unsigned> index;
 };
-static uint64_t surface_point_key(uint64_t state,const float*p){
-    float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]};
-    return hash(state,xyw,sizeof(xyw));
-}
-static uint64_t surface_state_key(const Op&op){
-    uint64_t key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
-    key=hash(key,op.state.projection,sizeof(op.state.projection));
-    return hash(key,op.state.viewport,sizeof(op.state.viewport));
-}
+
 static bool surface_draw(const Op&op){
     return projected_geometry(op)&&(!op.state.blend||(op.state.src_rgb==GL_ONE&&op.state.dst_rgb==GL_ZERO));
 }

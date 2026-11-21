@@ -3,7 +3,7 @@
 **[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **La versión para Steam Deck es experimental y sigue en desarrollo. Por ahora solo funcionan correctamente los filtros gráficos.** En la prueba anterior, la pantalla ancha a cadencia original alcanzó entre 20 y 30 FPS en ciudades y mapamundi. En batalla se observaron los 15 FPS originales. La prioridad actual es mantener la velocidad del juego en pantalla ancha.
+> **Steam Deck sigue en pruebas.** En la versión 1.3.0 se observaron 60 FPS estables con la cámara aérea del mapamundi y durante el giro inicial de batalla. Persistían caídas en ciudades, con el horizonte visible y cuando aparecía el grupo. Los filtros funcionan en Deck.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -17,7 +17,7 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 ## Steam Deck (SteamOS, experimental)
 
-En una instalación nueva de Deck se selecciona **Original**. Los objetivos opcionales de 60 y 90 FPS son experimentales y se limitan a la frecuencia activa de la pantalla. La LCD integrada alcanza 60 Hz y la OLED, 90 Hz. Esta versión elimina cálculos por vértice durante la captura. Falta medir cuánto se gana en una Deck física.
+Tanto en LCD como en OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Si tenías guardado 90, se carga como 60. Esta actualización reduce el trabajo al dibujar los márgenes difuminados y al seguir la geometría en los bordes de la pantalla. Falta medir el efecto en una Deck física.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
 2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup).
@@ -57,7 +57,7 @@ En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor d
 
 | Opción del menú | Para qué sirve |
 | --- | --- |
-| Frame rate | Elige **Original**, **60** o **120** en Windows, y **Original**, **60** o **90** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
+| Frame rate | Elige **Original**, **60** o **120** en Windows, y **Original** o **60** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
 | Aspect ratio | **Widescreen** amplía la cámara de batallas y mapamundi. **Original (4:3)** recupera el encuadre original. |
 | Blurred sidebars | Disponible en todos los escenarios prerenderizados en pantalla ancha. Rellena los márgenes con colores de la escena, incluidos los personajes cerca de los bordes. Deling se muestra como ejemplo. |
 | Full-screen map | Alterna entre el mapa **Original** y el atlas ilustrado **Reborn**. El mapa completo queda centrado y conserva sus proporciones. |
@@ -65,7 +65,9 @@ En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor d
 
 ## Filtros gráficos
 
-Para combinar **PS1 Digital**, **HD Blend** o cualquier otro filtro con el fósforo de un televisor, selecciona **TV phosphors → Trinitron grille**. Con **Phosphor sharpness** ajustas el enfoque de las franjas desde suave (0 %) hasta nítido (100 %). **Phosphor strength** controla su intensidad. Ambos ajustes se conservan al cambiar de filtro. Elige **Use filter profile** para recuperar la pantalla propia de cada perfil.
+Para combinar **PS1 Digital**, **HD Blend** o cualquier otro filtro con el fósforo de un televisor, selecciona **TV phosphors → Trinitron grille**. Con **Phosphor sharpness** ajustas el enfoque de las franjas desde suave (0 %) hasta nítido (100 %). **Phosphor strength** controla su intensidad. Los tres controles están en **Screen filter**. Selecciona **Create a custom copy** para guardar la combinación, o **Save my changes** al editar tu perfil personalizado. Elige **Use filter profile** para recuperar la pantalla propia de cada perfil.
+
+**Vertical resolution** se ajusta de 20 en 20, entre 120 y 720 líneas. Los filtros generales parten de **320**. **PS1 Digital**, **PS1 · RGB Monitor**, **PS1 · CRT TV** y los tres perfiles de televisor parten de **240**. Los valores personalizados antiguos se cargan redondeados al múltiplo de 20 más próximo.
 
 Tres perfiles de televisor simulan cómo el haz ilumina los fósforos del tubo. **Sony Trinitron KV-27FS100** usa franjas RGB continuas, **RCA Precision In-Line** usa ranuras escalonadas y **RCA CT-100** usa puntos agrupados en triángulos. En el panel puedes graduar **RGB mask** para distinguir más o menos el fósforo y **Scanlines** para ajustar la separación visible entre líneas. [Comparar los tres a resolución completa](docs/GALERIA.md#televisores).
 

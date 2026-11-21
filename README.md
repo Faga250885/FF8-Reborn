@@ -3,7 +3,7 @@
 **[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **Steam Deck is experimental and still in development. Only the screen filters currently work as intended.** In the previous Deck preview, widescreen at the original rate reached 20–30 FPS in fields and on the world map. Battles ran at their native 15 FPS. Consistent game speed in widescreen is the current priority.
+> **Steam Deck is experimental.** Widescreen performance depends on the scene. Device feedback on v1.3.0 reported steady 60 FPS from an overhead world-map view and during the opening battle pan, with drops in cities, near the horizon and when the party enters view. The screen filters work on Deck.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -17,7 +17,7 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Steam Deck (SteamOS, experimental)
 
-Fresh Deck installs select **Original** frame rate. The optional 60 and 90 FPS targets are experimental and paced to the active display refresh rate. The built-in LCD reaches 60 Hz and the OLED reaches 90 Hz. This release removes unnecessary per-vertex calculations during capture. The resulting speedup has yet to be measured on a physical Deck.
+Deck offers **Original** (the default) and **60 FPS** on both LCD and OLED. A saved 90 FPS target loads as 60. This update reduces work when drawing blurred sidebars and tracking geometry at the screen edges. Its effect on frame times still needs a physical Deck measurement.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
 2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup).
@@ -57,7 +57,7 @@ On a fresh Windows install, the game targets **60 FPS** when its monitor runs at
 
 | Setting | What it does |
 | --- | --- |
-| Frame rate | **Original**, **60** or **120** on Windows, and **Original**, **60** or **90** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
+| Frame rate | **Original**, **60** or **120** on Windows, and **Original** or **60** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
 | Aspect ratio | **Widescreen** expands the camera in battle and on the world map. **Original (4:3)** restores the original framing. |
 | Blurred sidebars | Available across all prerendered fields in widescreen. Fills the side margins with diffuse colors from the current scene, including characters near the edges. Deling City is shown as an example. |
 | Full-screen map | Choose the **Original** map or the illustrated **Reborn** atlas. The full map is centered and keeps its proportions. |
@@ -65,7 +65,9 @@ On a fresh Windows install, the game targets **60 FPS** when its monitor runs at
 
 ## Screen filters
 
-To combine **PS1 Digital**, **HD Blend** or any other filter with a TV screen, select **TV phosphors → Trinitron grille** in the live menu. **Phosphor sharpness** sets the focus of the stripes from soft (0%) to crisp (100%). **Phosphor strength** sets their visibility. Both settings persist when switching filters. Select **Use filter profile** to return to each preset’s own screen.
+To combine **PS1 Digital**, **HD Blend** or any other filter with a TV screen, select **TV phosphors → Trinitron grille** in the live menu. **Phosphor sharpness** sets the focus of the stripes from soft (0%) to crisp (100%). **Phosphor strength** sets their visibility. Find all three controls under **Screen filter**. Choose **Create a custom copy** to save the combination, or **Save my changes** when editing your custom preset. Select **Use filter profile** to return to each preset’s own screen.
+
+**Vertical resolution** moves in steps of 20, from 120 to 720 lines. General filters start at **320**. **PS1 Digital**, **PS1 · RGB Monitor**, **PS1 · CRT TV** and the three television presets start at **240**. Older custom values load at the nearest multiple of 20.
 
 Three TV profiles model how an electron beam lights the tube. **Sony Trinitron KV-27FS100** uses continuous RGB stripes, **RCA Precision In-Line** uses staggered slots, and **RCA CT-100** uses triangular groups of phosphor dots. In the live panel, adjust **RGB mask** to change how visible the phosphors are and **Scanlines** to tune the space between illuminated lines. [Compare all three at full resolution](docs/GALLERY.md#televisions).
 

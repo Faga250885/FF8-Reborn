@@ -214,7 +214,7 @@ Imagen a baja resolución con contornos suavizados.
 
 [![PS1 Sharp](images/sharp.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg)
 
-360 líneas con suavizado moderado.
+Captura a 360 líneas. El perfil actual parte de 320.
 
 [← Anterior](#tv) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [Siguiente →](#hd-blend)
 
@@ -224,7 +224,7 @@ Imagen a baja resolución con contornos suavizados.
 
 [![HD Blend](images/hd-blend.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg)
 
-480 líneas y suavizado de los contornos de los personajes.
+Captura a 480 líneas. El perfil actual parte de 320.
 
 [← Anterior](#sharp) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [Siguiente →](#recommended)
 

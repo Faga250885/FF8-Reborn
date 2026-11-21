@@ -128,7 +128,7 @@ static void match_frames(int mode=-1){
     if(camera_motion.valid)for(auto&tri:cur){const auto&op=current.ops[tri.op];if(op.state.program&&zero_model(op.state))
         for(unsigned v=0;v<3;v++){float predicted[4];if(camera_predict(op.vertices[tri.start+v].p,predicted))for(int k=0;k<4;k++)tri.points[v][k]=predicted[k];}}
     for(auto&op:current.ops){op.match=-1;op.prior_positions.resize(op.vertices.size());op.motion_valid.assign(op.vertices.size(),0);
-        op.prior_colors.resize(op.vertices.size());op.color_valid.assign(op.vertices.size(),0);op.actor_mid.clear();op.front_face.clear();op.prior_depth_bias.clear();}
+        op.prior_colors.resize(op.vertices.size());op.color_valid.assign(op.vertices.size(),0);op.actor_mid.clear();op.front_face.clear();op.depth_bias.clear();}
     if(matching_checkpoint)matching_checkpoint();
 #ifdef GEO_PROFILE
     mark_stage("camera");
@@ -251,7 +251,7 @@ static void match_frames(int mode=-1){
         // Exact endpoints can use the recorded vertices for every phase.
         // Actor arcs, depth corrections and face visibility also vary with
         // phase even when the endpoint attributes themselves happen to match.
-        if(identical&&op.actor_mid.empty()&&op.prior_depth_bias.empty()&&op.front_face.empty())op.match=-1;
+        if(identical&&op.actor_mid.empty()&&op.depth_bias.empty()&&op.front_face.empty())op.match=-1;
         moving_draws+=moving;
     }
 }

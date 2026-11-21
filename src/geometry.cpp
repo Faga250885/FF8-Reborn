@@ -57,19 +57,15 @@ struct DisplaySettings {
     int fps=60;
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
-    int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70;
     RetroSettings retro;
     void load(const wchar_t* path){
         const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
         automatic_fps=value!=0&&value!=60&&value!=120;
         fps=value==0||value==120?value:60;
-        if(deck_renderer){fps=value==90||value==120?90:value==60?60:0;automatic_fps=false;}
+        if(deck_renderer){fps=value==60||value==90||value==120?60:0;automatic_fps=false;}
         wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
         atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
         field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
-        tv_screen=std::clamp(int(GetPrivateProfileIntW(L"Display",L"TVScreen",0,path)),0,3);
-        phosphor_strength=std::clamp(int(GetPrivateProfileIntW(L"Display",L"PhosphorStrength",100,path)),0,100);
-        phosphor_sharpness=std::clamp(int(GetPrivateProfileIntW(L"Display",L"PhosphorSharpness",70,path)),0,100);
         retro.load(path);
     }
 } static display_settings;
@@ -452,7 +448,8 @@ static void set_state(const State&s,const State* prior,bool restore_view) {
 }
 struct Vertex {float p[4],c[4],uv[4][4],n[3];};
 #include "stride_curve.h"
-struct Op {bool indexed_complete=false;GLbitfield clear=0;GLenum mode=0;GLuint target=0;State state;RasterExtra raster;std::vector<Vertex> vertices,card_before;std::vector<std::array<float,4>> prior_positions,prior_colors;std::vector<StrideKnot> actor_mid;std::vector<BYTE> motion_valid,color_valid,front_face;std::vector<float> prior_depth_bias;uint64_t key=0;int match=-1;};
+struct FaceDepthBias { float prior=NAN,current=NAN; };
+struct Op {bool indexed_complete=false;GLbitfield clear=0;GLenum mode=0;GLuint target=0;State state;RasterExtra raster;std::vector<Vertex> vertices,card_before;std::vector<std::array<float,4>> prior_positions,prior_colors;std::vector<StrideKnot> actor_mid;std::vector<BYTE> motion_valid,color_valid,front_face;std::vector<FaceDepthBias> depth_bias;uint64_t key=0;int match=-1;};
 struct Target {Surface seed;GLuint texture=0;int w=0,h=0;bool active=false,depth=false,stencil=false;GLenum format=GL_RGBA8;GLint min_filter=GL_LINEAR,mag_filter=GL_LINEAR,wrap_s=GL_CLAMP_TO_EDGE,wrap_t=GL_CLAMP_TO_EDGE;};
 #include "native_tracks.h"
 struct MatchInput;
@@ -1672,7 +1669,7 @@ static void forget_deleted_context(){
     building={};previous={};current={};texture_cache.clear();recognized.clear();spare_textures={};
     replay_targets.clear();replay_depth.clear();replay_textures.clear();outgoing_draws.clear();checkpoint_outgoing.clear();
     test_target={};backup={};reference_target={};sample_a={};sample_b={};encounter_native={};
-    for(auto&s:field_blur::levels)s={};for(auto&s:infirmary::sheets)s={};
+    for(auto&s:field_blur::levels)s={};field_blur::isolated_edge={};for(auto&s:infirmary::sheets)s={};
 #ifdef GEO_AUTOTEST
     test_older={};previous_reference={};
 #else
@@ -1744,6 +1741,7 @@ static DWORD WINAPI initialize(void*){
         retro_ini_path.resize(retro_ini_path.find_last_of(L"\\/")+1);
         retro_ini_path+=L"FF8-Horizonte.ini";
         display_settings.load(retro_ini_path.c_str());
+        retro_panel::update_factory_resolution(retro_ini_path.c_str(),display_settings.retro);
     }
     char config[160];snprintf(config,sizeof(config),"Horizonte: FPS=%d Wide=%d Atlas=%d FieldSides=%d\n",display_settings.fps,display_settings.wide,display_settings.atlas,display_settings.field_sides);log(config);
     if(display_settings.retro.active())log(display_settings.retro.mode==2?"Retro CRT filter enabled\n":"Retro pixel filter enabled\n");

@@ -4,7 +4,7 @@ struct FieldPrefixPlan {
     GLuint target=0;
     unsigned last=0,draws=0;
     static bool pose_invariant(const Op& op){
-        if(!op.card_before.empty()||!op.actor_mid.empty()||!op.prior_depth_bias.empty())return false;
+        if(!op.card_before.empty()||!op.actor_mid.empty()||!op.depth_bias.empty())return false;
         if(op.match<0)return true;
         for(size_t i=0;i<op.motion_valid.size();++i)if(op.motion_valid[i]&&
             memcmp(op.prior_positions[i].data(),op.vertices[i].p,sizeof(Vertex::p)))return false;

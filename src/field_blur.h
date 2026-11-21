@@ -3,6 +3,7 @@
 namespace field_blur {
 static bool preferred=true;
 static Surface levels[13];
+static Surface isolated_edge;
 static void prepare(Frame& frame){
     if(frame.layout()!=1||frame.vertex_count<144||frame.w<=0||frame.h<=0)return;
     WideView view(frame,true);
@@ -33,19 +34,31 @@ static void draw_margins(const Frame& frame,GLuint target,int content_width){
     // At most two colours across and six down each side. This deliberately
     // removes all recognizable faces, dialogue glyphs and clothing outlines.
     glDisable(GL_SCISSOR_TEST);
-    for(int side=0;side<2;side++){
-        int x=side?right-extent:left,w=extent,h=frame.h;
-        GLuint src=target;
-        for(auto& next:levels){
-            const int nw=std::max(1,(w+1)/2),nh=std::max(1,(h+1)/2);
-            resize(next,nw,nh,false);
-            pBindFramebuffer(GL_READ_FRAMEBUFFER,src);glReadBuffer(src?GL_COLOR_ATTACHMENT0:GL_BACK);
-            pBindFramebuffer(GL_DRAW_FRAMEBUFFER,next.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
-            pBlitFramebuffer(x,0,x+w,h,0,0,nw,nh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
-            src=next.fbo;x=0;w=nw;h=nh;
-            if(h<=6&&w<=2)break;
+    int w=extent,h=frame.h;
+    GLuint src=target;
+    for(auto& next:levels){
+        const int nw=(w+1)/2,nh=(h+1)/2;
+        resize(next,2*nw,nh,false);
+        pBindFramebuffer(GL_READ_FRAMEBUFFER,src);glReadBuffer(src?GL_COLOR_ATTACHMENT0:GL_BACK);
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,next.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        if(src==target){
+            pBlitFramebuffer(left,0,left+w,h,0,0,nw,nh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+            pBlitFramebuffer(right-w,0,right,h,nw,0,2*nw,nh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+        }else{
+            // Both equal-width strips reduce about their own pixel centres,
+            // so the shared seam lies exactly between two destination pixels.
+            pBlitFramebuffer(0,0,2*w,h,0,0,2*nw,nh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
         }
+        src=next.fbo;w=nw;h=nh;
+        if(h<=6&&w<=2)break;
+    }
+    resize(isolated_edge,w,h,false);
+    for(int side=0;side<2;side++){
         pBindFramebuffer(GL_READ_FRAMEBUFFER,src);glReadBuffer(GL_COLOR_ATTACHMENT0);
+        // Clamp interpolation at the edge of this strip during magnification.
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,isolated_edge.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        pBlitFramebuffer(side*w,0,(side+1)*w,h,0,0,w,h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+        pBindFramebuffer(GL_READ_FRAMEBUFFER,isolated_edge.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
         pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);glDrawBuffer(target?GL_COLOR_ATTACHMENT0:GL_BACK);
         const int begin=side?right:0,end=side?frame.w:left;
         pBlitFramebuffer(w,0,0,h,begin,0,end,frame.h,GL_COLOR_BUFFER_BIT,GL_LINEAR);

@@ -214,7 +214,7 @@ Low-resolution image with softened edges.
 
 [![PS1 Sharp](images/sharp.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg)
 
-360 lines and moderate edge smoothing.
+Shown at 360 lines. The current preset starts at 320.
 
 [← Previous](#tv) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [Next →](#hd-blend)
 
@@ -224,7 +224,7 @@ Low-resolution image with softened edges.
 
 [![HD Blend](images/hd-blend.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg)
 
-480 lines and softened edges around character models.
+Shown at 480 lines. The current preset starts at 320.
 
 [← Previous](#sharp) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [Next →](#recommended)
 

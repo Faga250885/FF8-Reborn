@@ -4,6 +4,7 @@ struct RetroSettings {
     bool ps1_raster=false, hd_blend=false;
     enum Tube { standard, aperture_grille, slot_mask, dot_triad };
     Tube phosphors=standard;
+    int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70;
     static constexpr int hd_profile=7;
     int visible_lines(int active_rows)const{
         return ps1_raster?(lines*active_rows+120)/240:lines;
@@ -28,7 +29,7 @@ struct RetroSettings {
         };
         mode=read(L"Mode",defaults.mode,INT_MIN,INT_MAX);
         if(mode!=1 && mode!=2)mode=0;
-        lines=read(L"Lines",defaults.lines,120,720);
+        lines=((read(L"Lines",defaults.lines,120,720)+10)/20)*20;
         pixelation=read(L"Pixelation",defaults.pixelation,0,100);
         scanlines=read(L"Scanlines",defaults.scanlines,0,100);
         mask=read(L"Mask",defaults.mask,0,100);
@@ -37,6 +38,11 @@ struct RetroSettings {
         edge_softness=read(L"EdgeSoftness",defaults.edge_softness,0,100);
         ps1_raster=read(L"PS1Raster",0,0,1)!=0;
         phosphors=Tube(read(L"Phosphors",standard,standard,dot_triad));
+        const bool legacy=!wcscmp(section,L"Retro") && !GetPrivateProfileStringW(section,L"TVScreen",L"",configured,32,path);
+        const wchar_t* screen_section=legacy?L"Display":section;
+        tv_screen=std::clamp(int(GetPrivateProfileIntW(screen_section,L"TVScreen",0,path)),0,3);
+        phosphor_strength=std::clamp(int(GetPrivateProfileIntW(screen_section,L"PhosphorStrength",100,path)),0,100);
+        phosphor_sharpness=std::clamp(int(GetPrivateProfileIntW(screen_section,L"PhosphorSharpness",70,path)),0,100);
         if(base_profile<0){
             base_profile=read(L"Selected",-1,-1,10);
             if(base_profile==9)base_profile=read(L"CustomBase",8,0,8);

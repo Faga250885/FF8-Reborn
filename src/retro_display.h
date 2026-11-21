@@ -10,7 +10,7 @@ struct Pipeline {
 static Pipeline pipeline,television_pipeline;
 #include "crt_phosphors.h"
 static bool television(const RetroSettings& s){return s.mode==2&&s.phosphors!=RetroSettings::standard;}
-static bool active(const RetroSettings& s){return s.active()||(enabled&&display_settings.tv_screen&&display_settings.phosphor_strength);}
+static bool active(const RetroSettings& s){return s.active()||(enabled&&s.tv_screen&&s.phosphor_strength);}
 static Surface source,previous_front;
 static bool valid_front=false,retiring_front=false;
 static HDC swap_dc=nullptr;
@@ -236,7 +236,7 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
                                crt?settings.scanlines*.01f:0.f,crt?settings.mask*.01f:0.f};
     const GLfloat phase=3.14159265f*rows/h,tube[]={crt?settings.glow*.01f:0.f,std::sin(phase)/phase,settings.mode?settings.edge_softness*.01f:0.f,
         television(settings)?GLfloat(settings.phosphors):settings.ps1_raster?1.f:settings.hd_blend?-1.f:0.f};
-    const GLfloat maskSettings[]={enabled?GLfloat(display_settings.tv_screen):0.f,display_settings.phosphor_strength*.01f,display_settings.phosphor_sharpness*.01f};
+    const GLfloat maskSettings[]={enabled?GLfloat(settings.tv_screen):0.f,settings.phosphor_strength*.01f,settings.phosphor_sharpness*.01f};
     pUniform3fv(effect.screen,1,maskSettings);
     pUniform2fv(effect.size,1,size);pUniform2fv(effect.grid,1,grid);
     pUniform4fv(effect.strengths,1,strengths);pUniform4fv(effect.tube,1,tube);

@@ -64,7 +64,7 @@ static void match_menu_frames(){
     }
     for(auto&op:current.ops){
         op.match=-1;op.motion_valid.assign(op.vertices.size(),0);op.color_valid.assign(op.vertices.size(),0);
-        op.prior_positions.resize(op.vertices.size());op.prior_colors.resize(op.vertices.size());op.prior_depth_bias.clear();op.front_face.clear();
+        op.prior_positions.resize(op.vertices.size());op.prior_colors.resize(op.vertices.size());op.depth_bias.clear();op.front_face.clear();
     }
     for(unsigned i=0;i<to.size();i++){
         const auto&choice=new_choice[i];if(choice.index<0||choice.best+1e-7>=choice.next*.8)continue;
