@@ -3,7 +3,7 @@
 **[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **La versión para Steam Deck es experimental y sigue en desarrollo. Por ahora solo funcionan correctamente los filtros gráficos.** Tanto la pantalla ancha como los modos de 60 y 120 FPS ralentizan el juego en Deck. Al activar ambos, la ralentización es mayor.
+> **La versión para Steam Deck es experimental y sigue en desarrollo. Por ahora solo funcionan correctamente los filtros gráficos.** En la prueba anterior, la pantalla ancha a cadencia original alcanzó entre 20 y 30 FPS en ciudades y mapamundi. En batalla se observaron los 15 FPS originales. La prioridad actual es mantener la velocidad del juego en pantalla ancha.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -17,7 +17,7 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 ## Steam Deck (SteamOS, experimental)
 
-Hay una [versión de prueba de rendimiento para Deck](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.2.2-deck.1) con un renderizador específico para la consola. Queda por comprobar en la propia Deck la velocidad del juego con pantalla ancha y con los FPS mejorados.
+En una instalación nueva de Deck se selecciona **Original**. Los objetivos opcionales de 60 y 90 FPS son experimentales y se limitan a la frecuencia activa de la pantalla. La LCD integrada alcanza 60 Hz y la OLED, 90 Hz. Esta versión elimina cálculos por vértice durante la captura. Falta medir cuánto se gana en una Deck física.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
 2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup).
@@ -51,13 +51,13 @@ FF8 Reborn aún no tiene una GPU mínima medida para 60 o 120 FPS. A 120 FPS, la
 
 ![Instalador de FF8 Reborn](docs/images/installer.png)
 
-Con una instalación nueva, el mod apunta a **60 FPS** si el monitor del juego está configurado a 60 Hz o menos, y a **120 FPS** si Windows informa más de 60 Hz. Si Windows no informa la frecuencia, usa 60 FPS. Puedes elegir otra cadencia en el menú.
+En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor del juego está configurado a 60 Hz o menos, y a **120 FPS** si Windows informa más de 60 Hz. Si Windows no informa la frecuencia, usa 60 FPS. Puedes elegir otra cadencia en el menú.
 
 ## Opciones
 
 | Opción del menú | Para qué sirve |
 | --- | --- |
-| Frame rate | Elige **Original**, **60** o **120**. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
+| Frame rate | Elige **Original**, **60** o **120** en Windows, y **Original**, **60** o **90** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
 | Aspect ratio | **Widescreen** amplía la cámara de batallas y mapamundi. **Original (4:3)** recupera el encuadre original. |
 | Blurred sidebars | Disponible en todos los escenarios prerenderizados en pantalla ancha. Rellena los márgenes con colores de la escena, incluidos los personajes cerca de los bordes. Deling se muestra como ejemplo. |
 | Full-screen map | Alterna entre el mapa **Original** y el atlas ilustrado **Reborn**. El mapa completo queda centrado y conserva sus proporciones. |
@@ -65,7 +65,11 @@ Con una instalación nueva, el mod apunta a **60 FPS** si el monitor del juego e
 
 ## Filtros gráficos
 
-[![Los ocho filtros de fábrica y la vista sin filtro frente al Hotel Galbadia](docs/images/filters.gif)](docs/GALERIA.md#filters)
+Para combinar **PS1 Digital**, **HD Blend** o cualquier otro filtro con el fósforo de un televisor, selecciona **TV phosphors → Trinitron grille**. Con **Phosphor sharpness** ajustas el enfoque de las franjas desde suave (0 %) hasta nítido (100 %). **Phosphor strength** controla su intensidad. Ambos ajustes se conservan al cambiar de filtro. Elige **Use filter profile** para recuperar la pantalla propia de cada perfil.
+
+Tres perfiles de televisor simulan cómo el haz ilumina los fósforos del tubo. **Sony Trinitron KV-27FS100** usa franjas RGB continuas, **RCA Precision In-Line** usa ranuras escalonadas y **RCA CT-100** usa puntos agrupados en triángulos. En el panel puedes graduar **RGB mask** para distinguir más o menos el fósforo y **Scanlines** para ajustar la separación visible entre líneas. [Comparar los tres a resolución completa](docs/GALERIA.md#televisores).
+
+[![Los ocho filtros anteriores y la vista sin filtro frente al Hotel Galbadia](docs/images/filters.gif)](docs/GALERIA.md#filters)
 
 [Abrir las capturas originales de todos los filtros a 2560 × 1440](docs/GALERIA.md#filters).
 

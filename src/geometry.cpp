@@ -57,14 +57,19 @@ struct DisplaySettings {
     int fps=60;
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
+    int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70;
     RetroSettings retro;
     void load(const wchar_t* path){
         const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
         automatic_fps=value!=0&&value!=60&&value!=120;
         fps=value==0||value==120?value:60;
+        if(deck_renderer){fps=value==90||value==120?90:value==60?60:0;automatic_fps=false;}
         wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
         atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
         field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
+        tv_screen=std::clamp(int(GetPrivateProfileIntW(L"Display",L"TVScreen",0,path)),0,3);
+        phosphor_strength=std::clamp(int(GetPrivateProfileIntW(L"Display",L"PhosphorStrength",100,path)),0,100);
+        phosphor_sharpness=std::clamp(int(GetPrivateProfileIntW(L"Display",L"PhosphorSharpness",70,path)),0,100);
         retro.load(path);
     }
 } static display_settings;
@@ -669,7 +674,6 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
         glGetFloatv(GL_CURRENT_TEXTURE_COORDS,constant_uv[j]);
     }
     if(active>=0)pActiveTexture(active);
-    uint64_t key=hash(1469598103934665603ULL,&mode,sizeof(mode));key=hash(key,&count,sizeof(count));key=hash(key,&op.target,sizeof(op.target));key=hash(key,&op.state.program,sizeof(GLint));
     bool used_texture[4]={};
     for(int j=0;j<4;j++)used_texture[j]=!op.state.program&&op.state.texture[j].enabled;
     for(auto&u:op.state.uniforms)if(u.type==GL_SAMPLER_2D)used_texture[u.i[0]]=true;
@@ -679,13 +683,20 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
         for(const auto&entry:building.depth_texture_for_target)render_target|=entry.second==(GLuint)t.id;
         if(!render_target)t.copy=freeze_texture(t.id);
     }
-    for(int j=0;j<4;j++)if(used_texture[j])key=hash(key,&op.state.texture[j].id,sizeof(GLint));
     for(int i=0;i<count;i++){auto&v=op.vertices[i];v.p[3]=1;read_array(pos,ids[i],v.p,false);
         memcpy(v.c,constant_color,sizeof(v.c));if(color.enabled){v.c[3]=1;read_array(color,ids[i],v.c,true);}
         memcpy(v.n,constant_normal,sizeof(v.n));if(normal.enabled)read_array(normal,ids[i],v.n,false);
         for(int j=0;j<4;j++){memcpy(v.uv[j],constant_uv[j],sizeof(v.uv[j]));if(uv[j].enabled){v.uv[j][0]=v.uv[j][1]=v.uv[j][2]=0;v.uv[j][3]=1;read_array(uv[j],ids[i],v.uv[j],false);}}
-        for(int j=0;j<4;j++)if(used_texture[j])key=hash(key,v.uv[j],sizeof(v.uv[j]));}
-    op.key=key;building.vertex_count+=count;building.ops.push_back(std::move(op));
+    }
+#ifdef GEO_AUTOTEST
+    // Full draw signatures are only consumed by diagnostic frame dumps.
+    uint64_t key=hash(1469598103934665603ULL,&mode,sizeof(mode));
+    key=hash(key,&count,sizeof(count));key=hash(key,&op.target,sizeof(op.target));key=hash(key,&op.state.program,sizeof(GLint));
+    for(int j=0;j<4;j++)if(used_texture[j])key=hash(key,&op.state.texture[j].id,sizeof(GLint));
+    for(const auto& v:op.vertices)for(int j=0;j<4;j++)if(used_texture[j])key=hash(key,v.uv[j],sizeof(v.uv[j]));
+    op.key=key;
+#endif
+    building.vertex_count+=count;building.ops.push_back(std::move(op));
 }
 static int present_reason=0,previous_stage=0,gap_from=0,gap_to=0;
 static double last_stage_time=0,maximum_gap=0;
@@ -1065,7 +1076,7 @@ static void track_display_refresh(HDC handle,double time){
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
-    if(!panel&&(!enabled||!display_settings.retro.active())&&!retro_display::valid_front)return false;
+    if(!panel&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
     RECT rect{};
     if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;return false;}
     w=rect.right;h=rect.bottom;

@@ -124,6 +124,22 @@ The menu uses the native game timing for presentation.
 
 ## Screen filters
 
+<a name="televisions"></a>
+
+### Television phosphors
+
+The three PNGs below were rendered by the mod's OpenGL shader from the same unfiltered hotel capture. Open them at 100% to see the phosphor pattern. The beam widens in bright areas. At lower display resolutions, fine mask detail fades to reduce moiré. These are visual approximations of tube designs. Individual sets vary in focus, brightness and condition.
+
+![Hotel detail at original scale, left to right: Trinitron grille, RCA slots and RCA dots](images/tube-comparison.png)
+
+| Television | Phosphor structure | 2560 × 1440 preview |
+| --- | --- | --- |
+| Sony Trinitron KV-27FS100 | Continuous vertical RGB stripes | [Open PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/trinitron.png) |
+| RCA Precision In-Line | Interrupted, staggered vertical slots | [Open PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/rca-inline.png) |
+| RCA CT-100 | Rounded RGB dots arranged in triangular groups | [Open PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/rca-dot.png) |
+
+Tube references include the [Sony model documentation](https://www.sony.com/electronics/support/product/KV-27FS100/manuals), [RCA Engineering](https://www.worldradiohistory.com/ARCHIVE-RCA/RCA-Engineer/1974-06-07.pdf) and the [RCA CT-100 service manual](https://www.earlytelevision.org/pdf/rca_ctc2_service_data.pdf).
+
 ![Screen filters](images/filters.gif)
 
 Same camera position outside the Galbadia Hotel in Deling City, with the settings panel closed. Custom stores each player’s own settings.

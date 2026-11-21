@@ -2,6 +2,8 @@
 struct RetroSettings {
     int mode=0, lines=240, pixelation=85, scanlines=35, mask=20, glow=10, dither=20, edge_softness=0;
     bool ps1_raster=false, hd_blend=false;
+    enum Tube { standard, aperture_grille, slot_mask, dot_triad };
+    Tube phosphors=standard;
     static constexpr int hd_profile=7;
     int visible_lines(int active_rows)const{
         return ps1_raster?(lines*active_rows+120)/240:lines;
@@ -34,6 +36,7 @@ struct RetroSettings {
         dither=read(L"Dither",defaults.dither,0,100);
         edge_softness=read(L"EdgeSoftness",defaults.edge_softness,0,100);
         ps1_raster=read(L"PS1Raster",0,0,1)!=0;
+        phosphors=Tube(read(L"Phosphors",standard,standard,dot_triad));
         if(base_profile<0){
             base_profile=read(L"Selected",-1,-1,10);
             if(base_profile==9)base_profile=read(L"CustomBase",8,0,8);

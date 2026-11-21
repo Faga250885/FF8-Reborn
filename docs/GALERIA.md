@@ -124,6 +124,22 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 ## Filtros gráficos
 
+<a name="televisores"></a>
+
+### Fósforos de televisor
+
+Los tres PNG se renderizaron con el sombreador OpenGL del mod a partir de la misma captura del hotel sin filtrar. Ábrelos al 100 % para apreciar el patrón del fósforo. El haz se ensancha en las zonas luminosas. En pantallas de menor resolución se atenúa el detalle más fino para evitar franjas falsas. Son aproximaciones visuales de estos tubos. El enfoque, el brillo y el desgaste variaban entre televisores.
+
+![Detalle del hotel a escala original, de izquierda a derecha: franjas Trinitron, ranuras RCA y puntos RCA](images/tube-comparison.png)
+
+| Televisor | Estructura del fósforo | Muestra a 2560 × 1440 |
+| --- | --- | --- |
+| Sony Trinitron KV-27FS100 | Franjas RGB verticales continuas | [Abrir PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/trinitron.png) |
+| RCA Precision In-Line | Ranuras verticales interrumpidas y escalonadas | [Abrir PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/rca-inline.png) |
+| RCA CT-100 | Puntos RGB redondeados en grupos triangulares | [Abrir PNG](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.3.0/docs/images/rca-dot.png) |
+
+Referencias de los tubos: [documentación del Sony](https://www.sony.com/electronics/support/product/KV-27FS100/manuals), [revista técnica de RCA](https://www.worldradiohistory.com/ARCHIVE-RCA/RCA-Engineer/1974-06-07.pdf) y [manual de servicio del RCA CT-100](https://www.earlytelevision.org/pdf/rca_ctc2_service_data.pdf).
+
 ![Filtros gráficos](images/filters.gif)
 
 Un mismo encuadre frente al Hotel Galbadia, en Deling, con el panel cerrado. Personalizado guarda los ajustes de cada jugador.

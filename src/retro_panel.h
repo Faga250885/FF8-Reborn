@@ -22,7 +22,10 @@ static constexpr RetroSettings profiles[]={
     {},{1,240,100,0,0,0,100,0,true},{2,240,85,35,20,10,20,0},
     {2,240,100,52,24,4,100,8,true},{1,240,100,0,0,0,20,65},
     {2,240,100,23,14,8,100,42,true},{1,360,80,0,0,0,30,32},{1,480,32,0,0,0,6,70,false,true},
-    RetroSettings::recommended()
+    RetroSettings::recommended(),
+    {2,240,90,68,65,18,12,26,true,false,RetroSettings::aperture_grille},
+    {2,240,85,54,62,25,8,46,true,false,RetroSettings::slot_mask},
+    {2,240,80,44,70,32,6,60,true,false,RetroSettings::dot_triad}
 };
 static constexpr int profile_count=sizeof(profiles)/sizeof(profiles[0]);
 static bool editable(int mode,int index) {
@@ -32,7 +35,7 @@ static int preset(const RetroSettings& s) {
     if(s.mode!=1 && s.mode!=2)return 0;
     for(int p=1;p<profile_count;p++){
         const auto& ref=profiles[p];
-        if(s.mode!=ref.mode||s.ps1_raster!=ref.ps1_raster)continue;
+        if(s.mode!=ref.mode||s.ps1_raster!=ref.ps1_raster||s.phosphors!=ref.phosphors)continue;
         bool same=true;
         for(int i=0;i<7;i++){
             if(editable(s.mode,i+1) && s.*fields[i]!=ref.*fields[i]){same=false;break;}
@@ -41,26 +44,31 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, SaveCustom, Restore, RowCount };
-static constexpr Row visual_order[]={Map,Aspect,FPS,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,Restore,SaveCustom};
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, RowCount };
+static constexpr Row visual_order[]={Map,Aspect,FPS,Sides,TVScreen,PhosphorStrength,PhosphorSharpness,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,Restore,SaveCustom};
 static_assert(sizeof(visual_order)/sizeof(visual_order[0])==RowCount,"every setting must be reachable");
 static int visual_index(int id){return int(std::find(visual_order,visual_order+RowCount,id)-visual_order);}
 static constexpr int custom=profile_count;
 static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · RGB Monitor",L"PS1 Backgrounds",
-    L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Custom"};
+    L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Sony Trinitron KV-27FS100",
+    L"RCA Precision In-Line",L"RCA CT-100",L"Custom"};
 static int active_profile=8,custom_base=8;
 static bool custom_exists=false,migrate_custom=false,needs_choice=false;
 static RetroSettings slots[custom+1];
 static int base_profile(){return active_profile==custom?custom_base:active_profile;}
 static bool can_restore(const RetroSettings& s){
     const auto& original=profiles[base_profile()];
-    if(s.mode!=original.mode||s.ps1_raster!=original.ps1_raster)return true;
+    if(s.mode!=original.mode||s.ps1_raster!=original.ps1_raster||s.phosphors!=original.phosphors)return true;
     for(auto field:fields)if(s.*field!=original.*field)return true;
     return false;
 }
-static std::wstring section(int id){return L"RetroPerfil"+std::to_wstring(id);}
+// Custom has always been stored in slot 9. New factory profiles follow it on disk.
+static int disk_id(int id){return id==custom?9:id>=9?id+1:id;}
+static int menu_id(int id){return id==9?custom:id>9?id-1:id;}
+static std::wstring section(int id){return L"RetroPerfil"+std::to_wstring(disk_id(id));}
 static void load_slots(const wchar_t* path,const RetroSettings& live){
-    custom_base=std::clamp(int(GetPrivateProfileIntW(L"Retro",L"CustomBase",8,path)),0,custom-1);
+    custom_base=menu_id(int(GetPrivateProfileIntW(L"Retro",L"CustomBase",8,path)));
+    if(custom_base<0||custom_base>=custom)custom_base=8;
     for(int i=0;i<=custom;i++){
         slots[i]=profiles[i==custom?custom_base:i];
         const auto key=section(i);
@@ -68,7 +76,7 @@ static void load_slots(const wchar_t* path,const RetroSettings& live){
         if(exists)slots[i].load(path,key.c_str(),i==custom?custom_base:i);
         if(i==custom)custom_exists=exists;
     }
-    active_profile=int(GetPrivateProfileIntW(L"Retro",L"Selected",UINT_MAX,path));
+    active_profile=menu_id(int(GetPrivateProfileIntW(L"Retro",L"Selected",UINT_MAX,path)));
     if(active_profile<0||active_profile>custom)active_profile=std::min(custom,preset(live));
     migrate_custom=active_profile==custom&&!custom_exists;
     if(migrate_custom){slots[custom]=live;custom_exists=true;}
@@ -80,6 +88,7 @@ static bool number(const wchar_t* file,const wchar_t* group,const wchar_t* key,i
 static bool write_filter(const wchar_t* file,const wchar_t* group,const RetroSettings& s){
     static const wchar_t* keys[]={L"Lines",L"Pixelation",L"Scanlines",L"Mask",L"Glow",L"Dither",L"EdgeSoftness"};
     if(!number(file,group,L"Mode",s.mode)||!number(file,group,L"PS1Raster",s.ps1_raster))return false;
+    if(!number(file,group,L"Phosphors",s.phosphors))return false;
     for(int i=0;i<7;i++)if(!number(file,group,keys[i],s.*fields[i]))return false;
     return true;
 }
@@ -93,7 +102,8 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
     bool ok=exists?!(attr&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_READONLY)):GetLastError()==ERROR_FILE_NOT_FOUND;
     if(ok&&exists)ok=CopyFileW(path,temp,FALSE)!=FALSE;
     if(display_row>=0){
-        if(ok)ok=number(temp,L"Display",display_row==Map?L"Atlas":display_row==Aspect?L"Wide":display_row==FPS?L"FPS":L"FieldSides",display_value);
+        static const wchar_t* const keys[]={L"Atlas",L"Wide",L"FPS",L"FieldSides",L"TVScreen",L"PhosphorStrength",L"PhosphorSharpness"};
+        if(ok)ok=number(temp,L"Display",keys[display_row-Map],display_value);
     }else{
         if(ok&&migrate_custom)ok=write_filter(temp,section(custom).c_str(),slots[custom]);
         if(ok&&write_slot>=0){
@@ -101,8 +111,8 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
             ok=reset&&write_slot!=custom?WritePrivateProfileStringW(key.c_str(),nullptr,nullptr,temp)!=FALSE:
                                           write_filter(temp,key.c_str(),value);
         }
-        if(ok&&write_slot==custom)ok=number(temp,L"Retro",L"CustomBase",active_profile==custom?custom_base:active_profile);
-        if(ok)ok=write_filter(temp,L"Retro",value)&&number(temp,L"Retro",L"Selected",selected);
+        if(ok&&write_slot==custom)ok=number(temp,L"Retro",L"CustomBase",disk_id(active_profile==custom?custom_base:active_profile));
+        if(ok)ok=write_filter(temp,L"Retro",value)&&number(temp,L"Retro",L"Selected",disk_id(selected));
     }
     if(ok)ok=exists?ReplaceFileW(path,temp,nullptr,0,nullptr,nullptr)!=FALSE:MoveFileExW(temp,path,MOVEFILE_WRITE_THROUGH)!=FALSE;
     if(!ok)DeleteFileW(temp);return ok;
@@ -147,14 +157,21 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         return;
     }
     if(row>=Map){
+        const int top=deck_renderer?90:120;
         int value=row==Map?!display_settings.atlas:row==Aspect?!display_settings.wide:row==Sides?!display_settings.field_sides:
-            (display_settings.fps==0?(step>0?60:120):display_settings.fps==60?(step>0?120:0):(step>0?0:60));
+            row==TVScreen?(display_settings.tv_screen+step+4)%4:
+            row==PhosphorStrength||row==PhosphorSharpness?
+                std::clamp((row==PhosphorStrength?display_settings.phosphor_strength:display_settings.phosphor_sharpness)+step*(coarse?10:1),0,100):
+            (display_settings.fps==0?(step>0?60:top):display_settings.fps==60?(step>0?top:0):(step>0?0:60));
         if(!persist(path,s,active_profile,-1,false,row,value))return;
         if(row==Map)display_settings.atlas=value!=0;
         if(row==Aspect)display_settings.wide=value!=0;
         if(row==FPS){display_settings.fps=value;display_settings.automatic_fps=false;}
         if(row==Sides)display_settings.field_sides=value!=0;
-        can_present=false;
+        if(row==TVScreen)display_settings.tv_screen=value;
+        if(row==PhosphorStrength)display_settings.phosphor_strength=value;
+        if(row==PhosphorSharpness)display_settings.phosphor_sharpness=value;
+        if(row<=Sides)can_present=false;
         return;
     }
     if(row==Profile){
