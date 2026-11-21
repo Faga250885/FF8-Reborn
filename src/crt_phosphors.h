@@ -33,6 +33,9 @@ vec3 phosphor(vec2 frag,float height,float model){
 )GLSL";
 static constexpr const char* television_fragment=R"GLSL(
 uniform sampler2D sourceImage;
+#ifdef TV_SCREEN
+uniform sampler2D rowImage;
+#endif
 uniform vec2 size,grid;
 uniform vec4 strengths; // raster sampling, dither, beam contrast, mask
 uniform vec4 tube;      // glow, reserved, horizontal softness, tube model
@@ -61,12 +64,19 @@ vec3 scan(vec2 pos,float row){
 
 void main(){
     vec2 uv=gl_FragCoord.xy/size,pos=uv*grid-0.5;
+#ifdef TV_ROWS
+    gl_FragColor=vec4(scan(pos,floor(gl_FragCoord.y)-1.0),1.0);
+#else
     float base=floor(pos.y+0.5);
     vec3 emitted=vec3(0.0);
     float total=0.0;
     for(int i=-1;i<=1;i++){
         float row=base+float(i),dy=pos.y-row;
+#ifdef TV_SCREEN
+        vec3 signal=texture2D(rowImage,vec2(uv.x,(row+1.5)/(grid.y+2.0))).rgb;
+#else
         vec3 signal=scan(pos,row);
+#endif
         float luma=dot(signal,vec3(0.2126,0.7152,0.0722));
         float sigma=0.28+0.13*sqrt(luma)+tube.x*0.09;
         float variance=sigma*sigma+grid.y*grid.y/(12.0*size.y*size.y);
@@ -81,5 +91,6 @@ void main(){
     float amount=tvSettings.x>0.0?0.65:strengths.w;
     light*=1.0+0.70*amount*tvSettings.y*phosphor(gl_FragCoord.xy,size.y,model);
     gl_FragColor=vec4(sqrt(clamp(light,0.0,1.0)),1.0);
+#endif
 }
 )GLSL";

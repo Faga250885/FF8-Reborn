@@ -1169,10 +1169,12 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
 }
-static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false){double began=now();
+static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,double* filter_seconds=nullptr){double began=now();
     if(stride_trace::enabled&&game_mode()==2)stride_trace::present(began,alpha<0?sources:displayed_source,alpha);
     int retro_w=0,retro_h=0;
+    const double filter_start=filter_seconds?now():0;
     const bool filtered=begin_retro_frame(handle,retro_w,retro_h);
+    if(filtered&&filter_seconds)*filter_seconds=now()-filter_start;
 #ifndef GEO_AUTOTEST
     if(accessibility_test&&test_capture_requested)qa_native_image(width,height);
 #endif
@@ -1186,7 +1188,11 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false){doub
         presentation_clock.submitted(now());
     }
     BOOL result=real_swap(handle);
-    if(filtered)retro_display::end_window(result!=FALSE,outer_restores,retro_w,retro_h);
+    if(filtered){
+        const double restore_start=filter_seconds?now():0;
+        retro_display::end_window(result!=FALSE,outer_restores,retro_w,retro_h);
+        if(filter_seconds)*filter_seconds+=now()-restore_start;
+    }
     presentation_seconds+=now()-began;presentation_count++;
 #ifdef GEO_AUTOTEST
     test_cadence(now(),alpha);
@@ -1339,7 +1345,7 @@ static unsigned frame_waits=0;
 static double requested_wait=0,reclaimed_wait=0;
 struct WorldFrameStats {
     unsigned frames=0,draws=0;
-    double intervals=0,capture=0,layout=0,swap=0;
+    double intervals=0,capture=0,layout=0,filter=0,swap=0;
 };
 static WorldFrameStats world_frame_stats;
 static void stats(){static double last=0;static unsigned ps=0,po=0;
@@ -1349,8 +1355,8 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
     log(line);ps=sources;po=outputs;last=t;
     if(world_frame_stats.frames){
         const auto& w=world_frame_stats;
-        snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | indexed capture %.2f ms | validation and layout %.2f ms | filter and swap %.2f ms\n",
-            w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.swap/w.frames);
+        snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | indexed capture %.2f ms | validation and layout %.2f ms | filter CPU %.2f ms | swap and other %.2f ms | drawable %dx%d\n",
+            w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.filter/w.frames,1000*w.swap/w.frames,width,height);
         log(line);world_frame_stats={};
     }
     if(frame_waits){
@@ -1590,21 +1596,25 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(!can_present&&interval_changed){set_interval(saved_interval);interval_changed=false;}}
     present_reason=7;qa_stage(11);BOOL result=TRUE;
     const double layout_seconds=deck_renderer?now()-t:0;
+    double filter_seconds=0;
+    const bool time_filter=deck_renderer&&!display_settings.fps&&display_settings.wide;
     if(!can_present||output_due){
-        result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled);
+        result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr);
         if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
         if(can_present){outputs++;advance_output();}
     }
     deck_native_layout_wait=deck_renderer&&!can_present&&!display_settings.fps&&
         display_settings.wide&&(native_endpoint||native_scaled)&&(current.mode>=1&&current.mode<=3||current.mode==6);
     if(deck_native_layout_wait)
-        native_frame_wait.start(current.mode,t,dt,layout_seconds,true);
+        // Only measured compositor work earns credit against an overdue native
+        // delay. Waiting for vertical sync inside SwapBuffers earns none.
+        native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds,true);
     else
         native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
     if(measure_world){
         auto& w=world_frame_stats;
         ++w.frames;w.draws+=unsigned(current.ops.size());w.intervals+=dt;
-        w.capture+=world_capture_time;w.layout+=layout_seconds;w.swap+=now()-t-layout_seconds;
+        w.capture+=world_capture_time;w.layout+=layout_seconds;w.filter+=filter_seconds;w.swap+=now()-t-layout_seconds-filter_seconds;
     }
     world_capture_time=0;
     stats();return result;
