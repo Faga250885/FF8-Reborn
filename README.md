@@ -2,6 +2,9 @@
 
 **[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
+> [!WARNING]
+> **Steam Deck is experimental and still in development. Only the screen filters currently work as intended.** Widescreen and the 60/120 FPS modes each slow down gameplay on Deck. Enabling both makes the slowdown worse.
+
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
 **In active development.** If you find a bug, [report it on GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) or add a comment to an existing issue. Reports in English or Spanish are welcome.
@@ -21,7 +24,7 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck.pyz) is also available.
 
-Installation and restoration were tested on Linux with original Steam game files. Gameplay under Proton on physical Deck hardware, including controls and frame pacing, still needs testing.
+To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
 ## GOG for Windows
 

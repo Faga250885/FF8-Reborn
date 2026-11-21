@@ -2,6 +2,9 @@
 
 **[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
+> [!WARNING]
+> **La versión para Steam Deck es experimental y sigue en desarrollo. Por ahora solo funcionan correctamente los filtros gráficos.** Tanto la pantalla ancha como los modos de 60 y 120 FPS ralentizan el juego en Deck. Al activar ambos, la ralentización es mayor.
+
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
 **En desarrollo.** Si encuentras un fallo, [abre un reporte en GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) o añade tus observaciones a una incidencia existente. Puedes escribir en español.
@@ -21,7 +24,7 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Deck.pyz).
 
-Se probó la instalación y la restauración en Linux con archivos originales de Steam. Queda pendiente comprobar el juego bajo Proton en una Steam Deck física, incluidos los controles y la cadencia.
+Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
 ## GOG para Windows
 
