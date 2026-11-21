@@ -88,6 +88,7 @@ static void (APIENTRY *real_tex_subimage)(GLenum,GLint,GLint,GLint,GLsizei,GLsiz
 static void (APIENTRY *real_copy_tex)(GLenum,GLint,GLenum,GLint,GLint,GLsizei,GLsizei,GLint)=glCopyTexImage2D;
 static void (APIENTRY *real_delete_textures)(GLsizei,const GLuint*)=glDeleteTextures;
 static PFNGLCOPYIMAGESUBDATAPROC copy_image;
+static PFNGLGETPROGRAMRESOURCEIVPROC terrain_resource;
 static LARGE_INTEGER frequency;
 static double origin=0,period=1./30.,next_output=0,last_swap=0;
 static unsigned sources=0,outputs=0,parity_ok=0,parity_fail=0,moving_draws=0;
@@ -118,6 +119,15 @@ static bool initialize_gl() {
 #undef LOAD
     QueryPerformanceFrequency(&frequency);context=wglGetCurrentContext();dc=wglGetCurrentDC();thread=GetCurrentThreadId();
     glGetIntegerv(GL_STENCIL_BITS,&stencil_bits);loaded=true;
+    terrain_resource=nullptr;
+    if(deck_renderer){
+        int major=0,minor=0;
+        const char* version=(const char*)glGetString(GL_VERSION);
+        if(version&&sscanf(version,"%d.%d",&major,&minor)==2&&(major>4||(major==4&&minor>=3))){
+            auto proc=wglGetProcAddress("glGetProgramResourceiv");
+            if((uintptr_t)proc>3&&(uintptr_t)proc!=UINTPTR_MAX)terrain_resource=(PFNGLGETPROGRAMRESOURCEIVPROC)proc;
+        }
+    }
     if(diagnostic_trace){auto callback=(PFNGLDEBUGMESSAGECALLBACKPROC)wglGetProcAddress("glDebugMessageCallback");
         if((uintptr_t)callback>3&&(uintptr_t)callback!=UINTPTR_MAX){glEnable(GL_DEBUG_OUTPUT);glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);callback(qa_gl_message,nullptr);}}
     if(!output_timer)output_timer=CreateWaitableTimerExW(nullptr,nullptr,0x00000002,TIMER_MODIFY_STATE|SYNCHRONIZE);
@@ -131,7 +141,23 @@ static bool initialize_gl() {
 struct Uniform {
     GLint location;GLenum type;std::vector<float> f;std::vector<GLint> i;
 };
-static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr) {
+static void read_uniform(GLuint program,GLint location,GLenum type,std::vector<Uniform>& out){
+    Uniform u{};u.location=location;u.type=type;
+    int n=0;bool integer=false;
+    switch(type) {
+    case GL_FLOAT:n=1;break;case GL_FLOAT_VEC2:n=2;break;case GL_FLOAT_VEC3:n=3;break;case GL_FLOAT_VEC4:n=4;break;
+    case GL_FLOAT_MAT2:n=4;break;case GL_FLOAT_MAT3:n=9;break;case GL_FLOAT_MAT4:n=16;break;
+    case GL_INT:case GL_BOOL:case GL_SAMPLER_2D:n=1;integer=true;break;
+    case GL_INT_VEC2:case GL_BOOL_VEC2:n=2;integer=true;break;
+    case GL_INT_VEC3:case GL_BOOL_VEC3:n=3;integer=true;break;
+    case GL_INT_VEC4:case GL_BOOL_VEC4:n=4;integer=true;break;
+    default:demand(false,"unsupported shader uniform type");}
+    if(integer){u.i.resize(n);pGetUniformiv(program,u.location,u.i.data());
+        if(type==GL_SAMPLER_2D)demand(u.i[0]>=0&&u.i[0]<4,"sampler outside captured units");}
+    else {u.f.resize(n);pGetUniformfv(program,u.location,u.f.data());}
+    out.push_back(std::move(u));
+}
+static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,bool terrain=false) {
     if(inputs)*inputs=program?1u:127u;
     std::vector<Uniform> out;if(!program)return out;
     GLint count=0,attrs=0;pGetProgramiv(program,GL_ACTIVE_UNIFORMS,&count);pGetProgramiv(program,GL_ACTIVE_ATTRIBUTES,&attrs);
@@ -142,7 +168,18 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr) {
         static const char* const coordinates[]={"gl_MultiTexCoord0","gl_MultiTexCoord1","gl_MultiTexCoord2","gl_MultiTexCoord3"};
         if(!bit)for(int unit=0;unit<4;unit++)if(!strcmp(name,coordinates[unit])){bit=8u<<unit;break;}
         demand(bit!=0,"shader uses unsupported generic attributes");if(inputs)*inputs|=bit;}
+    out.reserve(count);
     for(GLint j=0;j<count;j++) {
+        // Query the linked interface on this draw so relinks and reused program
+        // names are safe. Arrays retain the name-based per-element lookup.
+        if(terrain&&terrain_resource){
+            constexpr GLenum properties[]={GL_TYPE,GL_ARRAY_SIZE,GL_LOCATION};
+            GLint values[3]={};GLsizei returned=0;
+            terrain_resource(program,GL_UNIFORM,j,3,properties,3,&returned,values);
+            demand(returned==3,"terrain uniform reflection failed");
+            if(values[2]<0)continue;
+            if(values[1]==1){read_uniform(program,values[2],values[0],out);continue;}
+        }
         char name[256];GLsizei len=0;GLint size=0;GLenum type=0;
         pGetActiveUniform(program,j,sizeof(name),&len,&size,&type,name);
         demand(len>0 && len<255 && size>0 && size<=128,"uniform shape unsupported");
@@ -150,20 +187,8 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr) {
             char indexed[300];const char *key=name;
             if(size>1) {char *bracket=strstr(name,"[0]");demand(bracket,"uniform array name unsupported");
                 snprintf(indexed,sizeof(indexed),"%.*s[%d]%s",int(bracket-name),name,element,bracket+3);key=indexed;}
-            Uniform u{};u.location=pGetUniformLocation(program,key);u.type=type;if(u.location<0)continue;
-            int n=0;bool integer=false;
-            switch(type) {
-            case GL_FLOAT:n=1;break;case GL_FLOAT_VEC2:n=2;break;case GL_FLOAT_VEC3:n=3;break;case GL_FLOAT_VEC4:n=4;break;
-            case GL_FLOAT_MAT2:n=4;break;case GL_FLOAT_MAT3:n=9;break;case GL_FLOAT_MAT4:n=16;break;
-            case GL_INT:case GL_BOOL:case GL_SAMPLER_2D:n=1;integer=true;break;
-            case GL_INT_VEC2:case GL_BOOL_VEC2:n=2;integer=true;break;
-            case GL_INT_VEC3:case GL_BOOL_VEC3:n=3;integer=true;break;
-            case GL_INT_VEC4:case GL_BOOL_VEC4:n=4;integer=true;break;
-            default:demand(false,"unsupported shader uniform type");}
-            if(integer){u.i.resize(n);pGetUniformiv(program,u.location,u.i.data());
-                if(type==GL_SAMPLER_2D)demand(u.i[0]>=0&&u.i[0]<4,"sampler outside captured units");}
-            else {u.f.resize(n);pGetUniformfv(program,u.location,u.f.data());}
-            out.push_back(std::move(u));
+            const GLint location=pGetUniformLocation(program,key);
+            if(location>=0)read_uniform(program,location,type,out);
         }
     }return out;
 }
@@ -356,12 +381,16 @@ struct State {
     GLfloat blend_color[4],clear_color[4],alpha_ref,offset_factor,offset_units,line_width,point_size;
     GLint clear_stencil;float model[16],projection[16];TextureState texture[4];std::vector<Uniform> uniforms;
 };
+static bool uses_blend_constant(GLint factor){
+    return factor==GL_CONSTANT_COLOR||factor==GL_ONE_MINUS_CONSTANT_COLOR||
+           factor==GL_CONSTANT_ALPHA||factor==GL_ONE_MINUS_CONSTANT_ALPHA;
+}
 static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsigned* inputs=nullptr,bool terrain_draw=false) {
     State s{};GLint active;glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
     if(extra)read_extra(*extra,stencil_clear);
     for(int j=0;j<6;j++)demand(!glIsEnabled(GL_CLIP_PLANE0+j),"clip planes unsupported");
     glGetIntegerv(GL_VIEWPORT,s.viewport);glGetIntegerv(GL_SCISSOR_BOX,s.scissor);
-    glGetIntegerv(GL_CURRENT_PROGRAM,&s.program);s.uniforms=uniforms(s.program,inputs);
+    glGetIntegerv(GL_CURRENT_PROGRAM,&s.program);s.uniforms=uniforms(s.program,inputs,terrain_draw);
     if(extra){demand(!extra->lighting||s.program||stencil_clear,"fixed-function light parameters not captured");
         demand(!extra->fog||s.program||extra->fog_source==GL_FRAGMENT_DEPTH,"fixed-function fog coordinate array unsupported");}
     glGetFloatv(GL_MODELVIEW_MATRIX,s.model);glGetFloatv(GL_PROJECTION_MATRIX,s.projection);
@@ -378,7 +407,9 @@ static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsig
     if(!terrain_draw||s.blend){
         GI(GL_BLEND_SRC_RGB,src_rgb);GI(GL_BLEND_DST_RGB,dst_rgb);
         GI(GL_BLEND_SRC_ALPHA,src_alpha);GI(GL_BLEND_DST_ALPHA,dst_alpha);GI(GL_BLEND_EQUATION_RGB,eq_rgb);GI(GL_BLEND_EQUATION_ALPHA,eq_alpha);
-        glGetFloatv(GL_BLEND_COLOR,s.blend_color);
+        if(!terrain_draw||uses_blend_constant(s.src_rgb)||uses_blend_constant(s.dst_rgb)||
+           uses_blend_constant(s.src_alpha)||uses_blend_constant(s.dst_alpha))
+            glGetFloatv(GL_BLEND_COLOR,s.blend_color);
     }else{s.src_rgb=s.src_alpha=GL_ONE;s.dst_rgb=s.dst_alpha=GL_ZERO;s.eq_rgb=s.eq_alpha=GL_FUNC_ADD;}
     // A clear is recorded separately with its actual masks and clear values.
     if(!terrain_draw){
@@ -391,7 +422,9 @@ static State get_state(RasterExtra* extra=nullptr,bool stencil_clear=false,unsig
     if(!terrain_draw||s.offset_fill){
         glGetFloatv(GL_POLYGON_OFFSET_FACTOR,&s.offset_factor);glGetFloatv(GL_POLYGON_OFFSET_UNITS,&s.offset_units);
     }
-    glGetFloatv(GL_LINE_WIDTH,&s.line_width);glGetFloatv(GL_POINT_SIZE,&s.point_size);
+    s.line_width=s.point_size=1;
+    if(!terrain_draw||s.polygon[0]==GL_LINE||s.polygon[1]==GL_LINE)glGetFloatv(GL_LINE_WIDTH,&s.line_width);
+    if(!terrain_draw||s.polygon[0]==GL_POINT||s.polygon[1]==GL_POINT)glGetFloatv(GL_POINT_SIZE,&s.point_size);
     // Query only units restored below; reject combining until implemented.
     unsigned sampled=0;
     for(const auto& u:s.uniforms)if(u.type==GL_SAMPLER_2D)sampled|=1u<<u.i[0];
