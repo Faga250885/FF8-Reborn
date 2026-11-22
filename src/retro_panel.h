@@ -243,7 +243,8 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         const auto field=row==PhosphorStrength?&RetroSettings::phosphor_strength:
                          row==PhosphorSharpness?&RetroSettings::phosphor_sharpness:fields[row-Lines];
         int& value=s.*field;
-        const int next=row==Lines?std::clamp(value+step*20,120,720):next_percent(value,step);
+        const int next=row==Lines?std::clamp(value+step*RetroSettings::line_step,
+            RetroSettings::min_lines,RetroSettings::max_lines):next_percent(value,step);
         if(next==value)return;
         value=next;
     }

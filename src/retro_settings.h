@@ -6,6 +6,7 @@ struct RetroSettings {
     Tube phosphors=standard;
     int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70,motion_blur=0;
     static constexpr int hd_profile=7;
+    static constexpr int min_lines=120,max_lines=720,line_step=5;
     int visible_lines(int active_rows)const{
         return ps1_raster?(lines*active_rows+120)/240:lines;
     }
@@ -33,7 +34,8 @@ struct RetroSettings {
         };
         mode=read(L"Mode",defaults.mode,INT_MIN,INT_MAX);
         if(mode!=1 && mode!=2)mode=0;
-        lines=((read(L"Lines",defaults.lines,120,720)+10)/20)*20;
+        const int saved_lines=read(L"Lines",defaults.lines,min_lines,max_lines);
+        lines=((saved_lines+line_step/2)/line_step)*line_step;
         pixelation=read(L"Pixelation",defaults.pixelation,0,100);
         scanlines=read(L"Scanlines",defaults.scanlines,0,100);
         mask=read(L"Mask",defaults.mask,0,100);

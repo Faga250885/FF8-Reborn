@@ -57,6 +57,26 @@ int main(){
         if(h==2160)assert(stripe[4]>lo&&stripe[4]<hi); // A physical pixel spans two virtual phosphors.
         rd::restore(out.fbo,w,h);assert(read_strip(out)==unfiltered);
 
+        if(h==800||h==1440){
+            auto crt=rgb;crt.mask=0;crt.scanlines=100;
+            for(int rows:{315,320,325}){
+                crt.lines=rows;
+                assert(rd::apply(crt,out.fbo,w,h));
+                std::vector<BYTE> column(size_t(h)*4);
+                pBindFramebuffer(GL_READ_FRAMEBUFFER,out.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
+                glReadPixels(w/2,0,1,h,GL_RGBA,GL_UNSIGNED_BYTE,column.data());
+                int darkest=255,lightest=0;
+                for(int y=0;y<h;y++){
+                    darkest=std::min(darkest,int(column[4*y]));lightest=std::max(lightest,int(column[4*y]));
+                }
+                const int middle=(darkest+lightest)/2;
+                int scanlines=0;
+                for(int y=0;y<h;y++)
+                    if(column[4*y]<middle&&column[4*((y+1)%h)]>=middle)++scanlines;
+                assert(scanlines==rows);
+                rd::restore(out.fbo,w,h);
+            }
+        }
         RetroSettings tv=rgb;tv.mode=0;tv.tv_screen=RetroSettings::aperture_grille;
         assert(rd::apply(tv,out.fbo,w,h));
         const auto grille=read_strip(out);

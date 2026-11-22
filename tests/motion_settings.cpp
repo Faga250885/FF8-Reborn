@@ -57,7 +57,7 @@ int main(){
         tap(XINPUT_GAMEPAD_DPAD_RIGHT|XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(s.*field==50);
         s.*field=98;key(VK_RIGHT);key(VK_RIGHT);assert(s.*field==100);
     }
-    go(Lines);key(VK_RIGHT);assert(s.lines==340);
+    go(Lines);key(VK_RIGHT);assert(s.lines==325);
     tap(XINPUT_GAMEPAD_DPAD_LEFT);assert(s.lines==320);
     key(VK_F8);
     assert(same_filter(s,profiles[8]));
@@ -154,6 +154,20 @@ int main(){
     assert(number(path,L"Retro",L"MotionBlur",0));
     read();
     assert(s.motion_blur==0);
+    for(int target:{315,325}){
+        key(VK_F8);go(Lines);
+        if(target==315)tap(XINPUT_GAMEPAD_DPAD_LEFT);
+        else{key(VK_RIGHT);tap(XINPUT_GAMEPAD_DPAD_RIGHT);}
+        assert(s.lines==target);
+        go(SaveCustom);tap(XINPUT_GAMEPAD_A);key(VK_F8);read();
+        assert(s.lines==target&&read_int(section(custom).c_str(),L"Lines")==target);
+    }
+    // Older manually edited files may contain numbers between slider stops.
+    for(auto [saved,expected]:{std::pair{118,120},{317,315},{318,320},{360,360},{724,720}}){
+        assert(number(path,L"OldLines",L"Lines",saved));
+        RetroSettings old;old.load(path,L"OldLines");
+        assert(old.lines==expected);
+    }
     assert(DeleteFileW(path));
     puts("Factory motion blur values, upgrade, preview navigation, manual save, discard, restore and restart OK");
 }
