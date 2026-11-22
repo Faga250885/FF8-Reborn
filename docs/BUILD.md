@@ -21,6 +21,21 @@ The renderer and filter are in `src/`. The setup window and installation checks 
 
 The menu contacts this repository on demand. After the user chooses to download, the mod verifies the SHA-256 digest, platform and build, writes the renderer alongside the installed base, then atomically selects it for the next launch. The installed base verifies the selection again before loading it. An installer is still required for releases that change the bootstrap format.
 
+## Troubleshooting a Steam Deck black flash
+
+For a pre-display trace, close FFVIII and create an empty file named `FF8_geometry_output_probe.enabled` next to `FFVIII.exe`. In the 60 FPS mode, the renderer samples small regions of the completed backbuffer before presentation. Reproduce the flash, close FFVIII and look for `Deck dark output` in `FF8_geometry.log`. Each entry identifies the scene, tick and drawing pass. Gamescope and the physical display process the image after this point. Remove the marker after testing to disable sampling.
+
+## Steam Deck regression tests
+
+Run these from the repository root in PowerShell. Set `$GlewInclude` to the GLEW include directory used for the renderer build.
+
+```powershell
+zig c++ -target x86-windows-gnu -std=c++17 -O2 tests/deck_wait_recovery.cpp -o dist/deck-wait-test.exe
+./dist/deck-wait-test.exe
+zig c++ -target x86-windows-gnu -std=c++17 -O2 -DGEO_STEAM_DECK "-I$GlewInclude" tests/deck_replay_seed.cpp -o dist/deck-seed-test.exe -lopengl32 -lgdi32 -luser32 -lcomctl32
+./dist/deck-seed-test.exe
+```
+
 ## Verify the downloaded installer
 
 Download the installer and the accompanying SHA256SUMS.txt from the same release. In PowerShell, run the following in the download folder and compare the resulting hash with the entry for FF8-Reborn-Setup.exe.

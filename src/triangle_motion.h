@@ -15,10 +15,10 @@ static void matching_position(const State&s,const float*p,double*out){
     if(s.program&&zero_model(s)){for(int k=0;k<4;k++)out[k]=p[k];}
     else transform(s.model,p,out);
 }
-static std::vector<Primitive> primitives(const Frame&frame){
+static std::vector<Primitive> primitives(const Frame&frame,void (*checkpoint)()=matching_checkpoint){
     std::vector<Primitive> out;size_t count=0;for(const auto&op:frame.ops)count+=op.vertices.size()/3;out.reserve(count);
     for(unsigned i=0;i<frame.ops.size();i++){const auto&op=frame.ops[i];if(op.clear||op.mode!=GL_TRIANGLES||op.vertices.size()%3)continue;
-        if((i&7)==0&&matching_checkpoint)matching_checkpoint();
+        if((i&7)==0&&checkpoint)checkpoint();
         bool used[4]={};for(int j=0;j<4;j++)used[j]=!op.state.program&&op.state.texture[j].enabled;
         for(const auto&u:op.state.uniforms)if(u.type==GL_SAMPLER_2D)used[u.i[0]]=true;
         uint64_t base=hash(1469598103934665603ULL,&op.target,sizeof(op.target));base=hash(base,&op.state.program,sizeof(op.state.program));
@@ -55,12 +55,12 @@ struct MatchInput {
     std::shared_ptr<SurfaceGraph> battle_surface;
     std::shared_ptr<field_scroll::TileIndex> field_tiles;
 
-    explicit MatchInput(const Frame& frame):triangles(primitives(frame)) {}
-    void index_materials(){
+    explicit MatchInput(const Frame& frame,void (*checkpoint)()=matching_checkpoint):triangles(primitives(frame,checkpoint)) {}
+    void index_materials(void (*checkpoint)()=matching_checkpoint){
         groups.reserve(triangles.size());
         for(unsigned i=0;i<triangles.size();i++){
             groups[triangles[i].key].push_back(i);
-            if((i&255)==0&&matching_checkpoint)matching_checkpoint();
+            if((i&255)==0&&checkpoint)checkpoint();
         }
     }
 };
@@ -74,6 +74,7 @@ struct MatchInput {
 #include "world_actor.h"
 #include "world_visible_actor.h"
 #include "field_scroll.h"
+#include "field_match_preparation.h"
 // Preserve the fluent baseline cost for battle. Only world mode may compensate
 // global camera movement before comparing candidate triangle positions.
 static double primitive_cost(const Primitive&a,const Primitive&b){
@@ -140,7 +141,7 @@ static void match_dense_world_group(const std::vector<Primitive>&old,std::vector
         if(forward[i].clear()&&forward[i].index==int(j))cur[b[j]].prior=a[i];
     }
 }
-static void match_frames(int mode=-1){
+static void match_frames(int mode=-1,FieldMatchPreparation* early=nullptr){
     current.camera_cut=mode==3&&battle_shot_changed(previous.bones,current.bones);
 #ifdef GEO_PROFILE
     double mark=now();auto mark_stage=[&](const char*name){double t=now();printf("%s %.3f ms\n",name,(t-mark)*1000);mark=t;};
@@ -152,11 +153,14 @@ static void match_frames(int mode=-1){
         auto input=std::make_shared<MatchInput>(previous);
         input->index_materials();previous.match_input=std::move(input);
     }
-    auto input=std::make_shared<MatchInput>(current);
+    auto input=early?early->take():nullptr;
+    auto* early_topology=input?early->points():nullptr;
+    if(!input)input=std::make_shared<MatchInput>(current);
     const auto& old=previous.match_input->triangles;
-    FieldTopologyJob field_job(current,input->triangles,deck_renderer&&mode==1&&reusable,
+    FieldTopologyJob field_job(current,input->triangles,!early_topology&&deck_renderer&&mode==1&&reusable,
                                previous.match_input->field_topology.get());
-    input->index_materials();current.match_input=std::move(input);
+    if(!early_topology)input->index_materials();
+    current.match_input=std::move(input);
     // Field matching only annotates each triangle with its prior index.
     // The topology worker reads the vertex range and material key. World
     // matching also transforms positions, so it still needs a working copy.
@@ -230,7 +234,7 @@ static void match_frames(int mode=-1){
 #endif
     if(matching_checkpoint)matching_checkpoint();
     classify_native_draws(mode);
-    if(mode!=2)anchor_vertex_topology(old,cur,mode==1&&previous.started,&field_job);else topology_anchors=topology_corrected=topology_partial=0;
+    if(mode!=2)anchor_vertex_topology(old,cur,mode==1&&previous.started,early_topology?early_topology:&field_job);else topology_anchors=topology_corrected=topology_partial=0;
     if(matching_checkpoint)matching_checkpoint();
 #ifdef GEO_PROFILE
     mark_stage("vertex topology");

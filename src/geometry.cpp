@@ -113,9 +113,8 @@ static HANDLE output_timer=nullptr;
 static int width=0,height=0,stencil_bits=0;
 static int saved_interval=1;static bool interval_changed=false;
 static BOOL (WINAPI *set_interval)(int);
-// An invalid pose should select a native image, not switch the driver's
-// presentation mode twice. Allow up to two invalid ticks and their first
-// unpaired successor to pass in the last validated 3D scene.
+// Keep the last verified wide layout briefly. The swap interval belongs to
+// the display mode and can remain stable even after that layout expires.
 struct DeckSwapInterval {
     int mode=0, w=0, h=0;
     unsigned grace=0, held=0, changes=0, failures=0;
@@ -126,8 +125,9 @@ struct DeckSwapInterval {
     bool keep(int scene,int width,int height,bool valid,double time){
         if(valid&&scene){
             mode=scene;w=width;h=height;grace=3;until=time+.3;
-        }else if(within(scene,width,height,time)){
-            --grace;++held;return true;
+        }else if(scene&&mode==scene&&w==width&&h==height){
+            if(grace)--grace;
+            ++held;return true;
         }else{
             mode=0;grace=0;
         }
@@ -311,13 +311,13 @@ static void resize(Surface&s,int w,int h,bool depth=true,bool texture=false,GLen
     pBindFramebuffer(GL_READ_FRAMEBUFFER,r);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,d);pBindRenderbuffer(GL_RENDERBUFFER,b);glBindTexture(GL_TEXTURE_2D,tex);
     demand(complete,"framebuffer creation failed");s.w=w;s.h=h;s.has_depth=depth;s.has_stencil=packed;s.format=format;
 }
-static void blit(GLuint from,GLuint to,int w,int h,int tw,int th,GLbitfield bits,int inset_x=0,int inset_y=0,int dest_y=0) {
+static void blit(GLuint from,GLuint to,int w,int h,int tw,int th,GLbitfield bits,int inset_x=0,int inset_y=0,int dest_y=0,int dest_x=0) {
     GLint r,d,rb,db;glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&r);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&d);
     glGetIntegerv(GL_READ_BUFFER,&rb);glGetIntegerv(GL_DRAW_BUFFER,&db);
     glPushAttrib(GL_SCISSOR_BIT);glDisable(GL_SCISSOR_TEST);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,from);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,to);
     glReadBuffer(from?GL_COLOR_ATTACHMENT0:GL_BACK);glDrawBuffer(to?GL_COLOR_ATTACHMENT0:GL_BACK);
-    pBlitFramebuffer(inset_x,inset_y,w-inset_x,h-inset_y,0,dest_y,tw,dest_y+th,bits,
+    pBlitFramebuffer(inset_x,inset_y,w-inset_x,h-inset_y,dest_x,dest_y,dest_x+tw,dest_y+th,bits,
                      (inset_x||inset_y)?GL_LINEAR:GL_NEAREST);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,r);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,d);
     glReadBuffer(rb);glDrawBuffer(db);glPopAttrib();
@@ -619,6 +619,7 @@ struct Target {Surface seed;GLuint texture=0;int w=0,h=0;bool active=false,depth
 struct MatchInput;
 struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::array<float,2>> stride_velocity;std::vector<Op> ops;std::unordered_map<GLuint,Target> targets;std::unordered_map<GLuint,GLuint> framebuffer_for_target;bool valid=true,started=false;unsigned vertex_count=0;int w=0,h=0,mode=-1,infirmary_room=-1,infirmary_top=-1;
     std::unordered_map<GLuint,GLuint> depth_texture_for_target;
+    mutable std::unordered_map<GLuint,std::array<unsigned,3>> seed_clears;
     std::shared_ptr<MatchInput> match_input;
     int layout_override=-1,menu_edge=0;
     int raster_rows=240;
@@ -893,9 +894,9 @@ static void qa_stage(int reason){
     if(last_stage_time&&gap>maximum_gap){maximum_gap=gap;gap_from=previous_stage;gap_to=reason;}
     previous_stage=reason;last_stage_time=t;
 }
-static void service_at(int);
+static void service_at(int,double earliest=next_output);
 static void present_during_wait(bool force_previous=false);
-static void pump_due();
+static void pump_due(double earliest=next_output);
 static double world_capture_time=0;
 static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
 static bool direct_world_frame();
@@ -1323,6 +1324,7 @@ static void test_cadence(double time,float alpha){
 static void qa_native_image(int,int);
 #endif
 #include "deck_cadence.h"
+#include "deck_output_audit.h"
 static void track_display_refresh(HDC handle,double time){
     static double next_check=0;
     if(time<next_check)return;
@@ -1363,7 +1365,7 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
 }
-static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,double* filter_seconds=nullptr){double began=now();
+static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,double* filter_seconds=nullptr,bool native_replayed=false){double began=now();
     if(stride_trace::enabled&&game_mode()==2)stride_trace::present(began,alpha<0?sources:displayed_source,alpha);
     int retro_w=0,retro_h=0;
     const double filter_start=filter_seconds?now():0;
@@ -1381,8 +1383,10 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
     if(alpha>=0){
         presentation_clock.submitted(now());
     }
+    const bool probed=deck_renderer&&deck_output_diagnostics&&display_settings.fps==60&&deck_output.before_swap(alpha,began,outer_restores,native_replayed);
     const double swap_start=deck_renderer&&display_settings.fps==60?now():0;
     BOOL result=real_swap(handle);
+    if(probed&&!result)--deck_output.count;
     if(deck_renderer){
         if(result&&swap_start){
             const double finished=now();
@@ -1484,7 +1488,7 @@ static void capture_native_reference(GLuint source){
 static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times=nullptr,bool native_captured=false){
     const double begin=times?now():0;
     resize(test_target,width,height);
-    resize(sample_a,160,deck_renderer?180:90,false);
+    resize(sample_a,160,deck_renderer?(deck_output_diagnostics?180+DeckOutputAudit::rows:180):90,false);
     if(!deck_renderer)resize(sample_b,160,90,false);
     replay(test_target.fbo,1);
     const double drawn=times?now():0;
@@ -1495,6 +1499,7 @@ static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times
     const double copied=times?now():0;
     blit(reference_target.fbo,sample_a.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
     blit(test_target.fbo,deck_renderer?sample_a.fbo:sample_b.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT,0,0,deck_renderer?90:0);
+    if(deck_renderer)deck_output.submit(sample_a.fbo);
     if(times){
         times->replay+=drawn-begin;times->copy+=copied-drawn;times->samples+=now()-copied;
     }
@@ -1531,31 +1536,41 @@ struct DeckBlackEndpoint {
         unsigned delta=0;
         for(const auto& block:changes)for(int component:block)delta+=std::abs(component);
         if(previous_lit<32||current_lit<32||delta>sizeof(thumbnail)*12)return;
-        for(size_t i=0;i<parity_plane_bytes;i+=4)
-            if(std::max({native[i],native[i+1],native[i+2]})>8)return;
+        // Dark clear colors can sit above digital black. Require a dim
+        // whole frame and a low mean; even a single lit patch disqualifies it.
+        unsigned brightness=0;
+        for(size_t i=0;i<parity_plane_bytes;i+=4){
+            BYTE peak=std::max({native[i],native[i+1],native[i+2]});
+            if(peak>16)return;
+            brightness+=native[i]+native[i+1]+native[i+2];
+        }
+        if(brightness>size_t(parity_plane_bytes/4)*3*8)return;
         suspect=true;
     }
 };
 static DeckBlackEndpoint deck_black;
 static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false){
-    static std::vector<BYTE> samples(2*parity_plane_bytes);
+    static std::vector<BYTE> samples(parity_storage_bytes);
     BYTE* a=samples.data();
     BYTE* b=a+parity_plane_bytes;
     bool copied=false;
     if(queued){
         const GLenum checkpoint_error=glGetError();
         if(!submission_error)submission_error=checkpoint_error;
-        copied=world_readback.copy(a,b);
+        copied=world_readback.copy(a);
     }
     if(!copied){
         ParityReadState guard;
         pBindBuffer(GL_PIXEL_PACK_BUFFER,0);
-        ParityReadState::read(sample_a.fbo,a,deck_renderer?180:90);
+        ParityReadState::read(sample_a.fbo,a,parity_read_rows());
         if(!deck_renderer)ParityReadState::read(sample_b.fbo,b);
     }
     double error=0;unsigned bad=0;for(size_t i=0;i<parity_plane_bytes;i++)if(i%4!=3){int d=abs(int(a[i])-int(b[i]));error+=d;bad+=d>8;}
     error/=160*90*3;GLenum error_code=glGetError();if(submission_error)error_code=submission_error;bool ok=!error_code&&error<0.75&&bad<160*90*3/100;
-    if(deck_renderer)deck_black.sample(ok,error_code,a,b);
+    if(deck_renderer){
+        if(!error_code)deck_output.collect(b+parity_plane_bytes);
+        deck_black.sample(ok,error_code,a,b);
+    }
     current.infirmary_room=current.mode==1?infirmary::room_id():-1;
     current.infirmary_top=current.infirmary_room>=0?infirmary::camera_top(current.infirmary_room,samples):-1;
     field_blur::prepare(current);
@@ -1563,13 +1578,15 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
         if(parity_fail%30==0||(deck_renderer&&parity_fail<8)){
             log(line);
             if(deck_renderer){
-                unsigned native_lit=0,replay_lit=0;
+                unsigned native_lit=0,replay_lit=0,native_peak=0,native_sum=0;
                 for(size_t i=0;i<parity_plane_bytes;i+=4){
-                    native_lit+=std::max({a[i],a[i+1],a[i+2]})>16;
+                    const unsigned peak=std::max({a[i],a[i+1],a[i+2]});
+                    native_peak=std::max(native_peak,peak);native_sum+=a[i]+a[i+1]+a[i+2];
+                    native_lit+=peak>16;
                     replay_lit+=std::max({b[i],b[i+1],b[i+2]})>16;
                 }
-                snprintf(line,sizeof(line),"Deck rejected endpoint | mode %d | game tick %u | lit pixels native %u replay %u of %zu\n",
-                         current.mode,sources,native_lit,replay_lit,size_t(parity_plane_bytes/4));
+                snprintf(line,sizeof(line),"Deck rejected endpoint | mode %d | game tick %u | lit pixels native %u replay %u of %zu | native peak %u mean %.2f\n",
+                         current.mode,sources,native_lit,replay_lit,size_t(parity_plane_bytes/4),native_peak,native_sum/(160.*90*3));
                 log(line);
             }
         }
@@ -1608,6 +1625,7 @@ static bool present_native_world(GLuint native=0,GLuint output=0){
 }
 static void reset_building(){
     building.match_input.reset();
+    building.seed_clears.clear();
     building.depth_texture_for_target.clear();
     building.bones.clear();building.stride_velocity.clear();building.stride_follow={};building.ops.clear();building.framebuffer_for_target.clear();building.valid=true;building.started=false;building.vertex_count=0;building.camera_cut=false;
     for(auto it=building.targets.begin();it!=building.targets.end();){
@@ -1642,6 +1660,13 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
     write_stats(line);ps=sources;po=outputs;last=t;
     if(deck_renderer){
         deck_cadence.report(write_stats);
+        auto& budget=deck_wait_recovery;
+        if(budget.missed_windows||budget.probes||budget.failed_probes){
+            snprintf(line,sizeof(line),"Deck idle windows | %u blocked by estimated draw cost | %u lower estimates tested | %u exceeded\n",
+                     budget.missed_windows,budget.probes,budget.failed_probes);
+            write_stats(line);budget.missed_windows=budget.probes=budget.failed_probes=0;
+        }
+        deck_output.report(write_stats);
         if(deck_black.held){
             snprintf(line,sizeof(line),"Deck black endpoint | %u single presentations held after native/replay mismatch\n",deck_black.held);
             write_stats(line);deck_black.held=0;
@@ -1873,6 +1898,8 @@ static BOOL WINAPI swap_hook(HDC handle){
             // poses. Queue validation of this endpoint before CPU matching.
             const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&(mode==1||mode==3)))&&
                 world_readback.available();
+            FieldMatchPreparation field_work(current,early_samples&&mode==1,
+                previous.match_input?previous.match_input->field_topology.get():nullptr);
             bool queued_world=false;
             GLenum submit_error=GL_NO_ERROR;
             if(early_samples){
@@ -1890,7 +1917,7 @@ static BOOL WINAPI swap_hook(HDC handle){
                 parity_seconds+=now()-began;
             }
             matching_checkpoint=was_presenting&&pair&&presentation_mode==mode?matching_pump:nullptr;
-            double phase=now();if(mode==6)match_menu_frames();else match_frames(mode);matching_seconds+=now()-phase;matching_count++;
+            double phase=now();if(mode==6)match_menu_frames();else match_frames(mode,&field_work);matching_seconds+=now()-phase;matching_count++;
             if(matching_checkpoint)matching_checkpoint();matching_checkpoint=nullptr;
             #ifdef GEO_AUTOTEST
             static unsigned battle_audit=0;if(mode==3&&current.vertex_count>10000&&++battle_audit==30)correspondence_audit();
@@ -1951,7 +1978,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         can_present=false;char line[220];snprintf(line,sizeof(line),"replay fallback: %s\n",e.what());log(line);
     }
     matching_checkpoint=nullptr;if(!can_present){prepared_previous=false;checkpoint_outgoing.clear();}
-    if(deck_renderer&&!can_present)deck_wait_recovery.clear_samples();
+    if(deck_renderer&&!can_present){deck_wait_recovery.clear_samples();deck_wait_recovery.missed_window=0;}
     const bool transient_3d=deck_scene>=2&&deck_interval.within(deck_scene,current.w,current.h,t);
     if(published&&enabled&&display_settings.wide&&!native_endpoint&&!can_present&&!hold_display&&
        (current.layout()==6||current.menu_edge||current.layout()==1||current.travel!=Frame::Travel::none||transient_3d)){
@@ -1988,7 +2015,7 @@ static BOOL WINAPI swap_hook(HDC handle){
     double filter_seconds=0;
     const bool time_filter=deck_renderer&&!display_settings.fps&&display_settings.wide;
     if(!hold_display&&(!can_present||output_due)){
-        result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr);
+        result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr,native_endpoint);
         if(source_replay_start&&can_present&&result){
             const double finished=now();
             deck_wait_recovery.source(presentation_clock,finished,finished-source_replay_start,source_backup_time);
@@ -2072,18 +2099,18 @@ static void present_during_wait(bool force_previous){
     presentation_clock.measured_replay(elapsed);
     if(deck_renderer&&display_settings.fps==60&&swapped)deck_wait_recovery.extra(finished,elapsed);
 }
-static void pump_due(){
+static void pump_due(double earliest){
     if(inside||!enabled||!loaded||!can_present||GetCurrentThreadId()!=thread)return;
-    double t=now();if(t<next_output||t-origin>period*1.5)return;
+    double t=now();if(t<earliest||t-origin>period*1.5)return;
     if(wglGetCurrentContext()!=context)return;
     if(engine&&game_mode()!=presentation_mode){can_present=false;return;}
     try{present_during_wait();advance_output();}
     catch(const std::exception&e){can_present=false;log("mid-frame presentation fallback: ");log(e.what());log("\n");}
 }
-static void service_at(int reason){
+static void service_at(int reason,double earliest){
     if(deck_source_budget.busy&&reason!=4)return;
     if(GetCurrentThreadId()!=thread||!loaded||inside)return;
-    present_reason=reason;qa_stage(reason);pump_due();
+    present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
 static bool pacing_callback=false;
 static BOOL WINAPI counter_hook(LARGE_INTEGER*value){
@@ -2111,13 +2138,20 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
     pacing_callback=true;
     while(can_present){
         double time=now();if(time>=end)break;
-        const bool can_draw=presentation_clock.fits_wait(std::max(time,next_output),end);
-        double wake=can_draw?next_output:end;
+        // Towns and world travel have short waits within a 30 Hz native
+        // tick. Battles already schedule several outputs in a 15 Hz tick.
+        const bool short_scene_wait=deck_renderer&&display_settings.fps==60&&deck_source_budget.busy&&
+            (presentation_mode==1||presentation_mode==2);
+        const double slot=short_scene_wait?presentation_clock.wait_slot(next_output,time,end,output_period()):next_output;
+        const bool can_draw=presentation_clock.fits_wait(std::max(time,slot),end);
+        if(!can_draw&&short_scene_wait)
+            deck_wait_recovery.missed(next_output,time,end);
+        double wake=can_draw?slot:end;
         if(wake>time){LARGE_INTEGER due;due.QuadPart=-(LONGLONG)std::max(1.,std::ceil((wake-time)*1e7));
             if(!SetWaitableTimer(output_timer,&due,0,nullptr,nullptr,FALSE))break;
             if(real_wait(output_timer,INFINITE)!=WAIT_OBJECT_0)break;}
         if(!can_draw||!presentation_clock.fits_wait(now(),end))break;
-        unsigned prior=outputs;service_at(4);sleep_presents+=outputs-prior;
+        unsigned prior=outputs;service_at(4,slot);sleep_presents+=outputs-prior;
         if(prior==outputs)break;
     }
     // An early or late timer wake can leave less than one Windows Sleep tick.
@@ -2220,7 +2254,7 @@ static void forget_deleted_context(){
     deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
-    deck_cadence={};deck_black={};
+    deck_cadence={};deck_black={};deck_output={};
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;
@@ -2315,6 +2349,8 @@ static DWORD WINAPI initialize(void* module){
     if(display_settings.retro.active())log(display_settings.retro.mode==2?"Retro CRT filter enabled\n":"Retro pixel filter enabled\n");
 
     diagnostic_trace=GetFileAttributesA("FF8_geometry_trace.enabled")!=INVALID_FILE_ATTRIBUTES;
+    if(deck_renderer)
+        deck_output_diagnostics=GetFileAttributesA("FF8_geometry_output_probe.enabled")!=INVALID_FILE_ATTRIBUTES;
     accessibility_test=GetFileAttributesA("FF8_geometry_test_input.enabled")!=INVALID_FILE_ATTRIBUTES;
     // An explicitly armed capture runs for this launch only.
     stride_trace::enabled=DeleteFileA("FF8_geometry_stride_test.enabled")!=FALSE;

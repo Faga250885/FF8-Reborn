@@ -27,10 +27,49 @@ struct ReplaySeedPlan {
            (GLuint(op.raster.face[1][6])&stencil_mask)!=stencil_mask)planes&=~GL_STENCIL_BUFFER_BIT;
         return planes;
     }
+    static bool accesses_attachment(const Op& op,GLuint key,GLuint color,GLuint depth){
+        if(op.target==key)return true;
+        if(op.clear)return false;
+        for(const auto& unit:op.state.texture){
+            if(!unit.id||unit.copy)continue;
+            if(GLuint(unit.id)==color||GLuint(unit.id)==depth)return true;
+        }
+        return false;
+    }
     GLbitfield required(const Frame& frame,GLuint key,const Target& target)const{
         GLbitfield planes=GL_COLOR_BUFFER_BIT|(target.depth?GL_DEPTH_BUFFER_BIT:0)|
                           (target.stencil?GL_STENCIL_BUFFER_BIT:0);
-        const unsigned last_safe=key?first_outgoing:first_default_outgoing;
+        unsigned last_safe=key?first_outgoing:first_default_outgoing;
+        // Deck postprocessing often clears several large scratch textures in
+        // turn. Only a draw into this attachment or a sampler of its live
+        // contents can observe its seed before that clear. Outgoing faces
+        // execute *after* their anchor, so a clear at the anchor is safe.
+        if(deck_renderer&&key&&display_settings.fps==60){
+            constexpr GLbitfield bits[]={GL_COLOR_BUFFER_BIT,GL_DEPTH_BUFFER_BIT,GL_STENCIL_BUFFER_BIT};
+            const auto it=frame.depth_texture_for_target.find(key);
+            const GLuint depth=it==frame.depth_texture_for_target.end()?0:it->second;
+            auto cached=frame.seed_clears.try_emplace(key,std::array<unsigned,3>{UINT_MAX,UINT_MAX,UINT_MAX});
+            auto& clear=cached.first->second;
+            if(cached.second){
+                GLbitfield remaining=planes;
+                for(unsigned i=0;i<frame.ops.size()&&remaining;++i){
+                    const auto& op=frame.ops[i];
+                    if(!op.clear&&accesses_attachment(op,key,target.texture,depth))break;
+                    if(!op.clear||op.target!=key)continue;
+                    const auto lost=remaining&overwritten(op,target);
+                    for(unsigned k=0;k<3;++k)if(lost&bits[k])clear[k]=i;
+                    remaining&=~lost;
+                }
+            }
+            if(first_outgoing!=UINT_MAX){
+                last_safe=UINT_MAX;
+                for(const auto& draw:outgoing_draws)
+                    if(accesses_attachment(draw.op,key,target.texture,depth))
+                        last_safe=std::min(last_safe,draw.after);
+            }
+            for(unsigned k=0;k<3;++k)if(clear[k]!=UINT_MAX&&clear[k]<=last_safe)planes&=~bits[k];
+            return planes;
+        }
         for(unsigned i=0;i<frame.ops.size()&&planes&&i<=last_safe;++i){
             const auto& op=frame.ops[i];
             if(!op.clear&&(key||op.target==key))break;

@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.2/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **The Steam Deck build is experimental.** On preview 11, a player reported black flashes about every 20 seconds and sudden drops from 60 to around 40 FPS in towns, on the world map and in battle. Version **1.4.0-deck.1** addresses isolated black frames and reduces the CPU time spent matching people in crowded fields. The fixes have been tested with recorded scenes on Windows. Sustained 60 FPS on Deck still needs hardware verification. **Original** is the default frame rate on LCD and OLED.
+> **Steam Deck support is experimental.** Players have reported black flashes and abrupt drops from 60 to around 40 FPS in towns, on the world map and in battle, including after updating to 1.4.0-deck.1. Build **1.4.0-deck.2** addresses a frame pacing stall reproduced under load. Sustained 60 FPS and the effect on black flashes still need testing on a physical Deck. **Original** is the default on LCD and OLED.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -25,6 +25,10 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 **60 FPS** draws intermediate positions between original game updates. In a 15 FPS battle this allows up to three extra images per update, while the game keeps its combat timing. Scene cuts and unsupported poses can hold at the native frame. The game-folder log records successful swaps per second and gaps over 25 ms separately for fields, battles and the world map.
 
+**Changes in 1.4.0-deck.2.** In towns and on the world map, a single slow frame could leave the mod skipping intermediate frames for the rest of a busy scene. It now measures available time again when the game has usable idle time. The mod also keeps the same presentation mode during temporary gaps in valid geometry within a scene. In a test with six characters, preparing and validating a field frame took 6.69 ms versus 8.38 ms on the same Windows PC. In recorded world-map and battle scenes, the renderer skipped four full-size image copies per replay by checking when those images are first used. The game keeps its original animation and battle timing.
+
+If you already have **1.4.0-deck.1**, press **View + Menu → Check for updates → Download update**, then restart FFVIII after **Update ready**.
+
 **Changes in 1.4.0-deck.1.** When the game supplies a single black frame in the middle of a verified, still-lit scene, the renderer can keep the last visible frame on screen. A second black frame passes through. In replay tests at Deling City, on the world map and in battle, the new build suppressed all eight injected flashes and preserved the tested fades. The presentation timing also stays steady through brief gaps in city animation data.
 
 In recorded city scenes, matching characters’ movements took 5.39 ms per update instead of 6.28 ms with six characters, and 2.99 ms instead of 3.22 ms in Deling City. All 45 tested intermediate images across nine recordings matched the previous output pixel for pixel. These are Windows measurements of one rendering step. In-game frame rates on Deck depend on the rest of the frame as well.
@@ -36,11 +40,11 @@ A bench test introduced a 111 ms stall. Preview 10 still withheld intermediate f
 The LCD and OLED editions offer **Original** (the default) and **60 FPS**. With **Original + Widescreen**, the mod checks the world-map layout when you enter it or the view changes. During ordinary travel the game then draws the wider view in a single pass. The game-folder file `FF8_geometry.log` records frame rate and rendering times. In 60 FPS mode, look for `Deck gap` entries for pauses of at least 80 ms within the same scene. If you see a flash or slowdown, attach the log and describe what was happening. [Report a Steam Deck issue](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml).
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.2/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.2/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 

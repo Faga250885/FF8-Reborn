@@ -54,6 +54,16 @@ struct PresentationClock {
         return end-start>=replay_cost+.00025;
     }
 
+    double wait_slot(double due,double time,double end,double tick) const {
+        if(!last_submission||fits_wait(std::max(time,due),end))return due;
+        // A real idle window can start just before the target slot and end
+        // too soon for a draw started exactly on it. Protect both the game's
+        // wake deadline and the distance from the preceding displayed frame.
+        const double latest=end-replay_cost-.00075;
+        const double first=std::max({time,due-std::min(replay_cost,.004),last_submission+tick*.85});
+        return latest>=first?std::min(latest,due):due;
+    }
+
     void update(double arrival,double interval,bool continuous){
         if(!continuous){
             nominal=period=interval;origin=arrival+std::min(interval*.5,.025);return;
@@ -73,12 +83,23 @@ static PresentationClock presentation_clock;
 // case the wait gate cannot get a fresh measurement from another extra swap.
 struct DeckWaitRecovery {
     int cheap_sources=0;
-    double worst_source=0, probe_budget=0, retry_at=0, retry_delay=.5;
+    double worst_source=0, missed_window=0, probe_budget=0, retry_at=0, retry_delay=.5;
+    unsigned missed_windows=0,probes=0,failed_probes=0;
 
     void clear_samples(){cheap_sources=0;worst_source=0;}
 
+    void missed(double due,double now,double end){
+        // The scheduler could have submitted an already due frame during
+        // this real idle window if the last slow swap had cost less.
+        const double available=end-std::max(due,now)-.00025;
+        if(available>=.001){
+            ++missed_windows;
+            missed_window=std::max(missed_window,available);
+        }
+    }
+
     bool needs_sample(const PresentationClock& clock,double time) const {
-        return clock.replay_cost>=1./60.&&!probe_budget&&time>=retry_at;
+        return (missed_window>0||(!probe_budget&&clock.replay_cost>=1./60.))&&time>=retry_at;
     }
 
     void source(PresentationClock& clock,double time,double elapsed,double backup){
@@ -86,18 +107,21 @@ struct DeckWaitRecovery {
         // The validated source replay includes backup, draw and swap. Allow
         // another measured transfer for the restore and a 25% safety margin.
         const double budget=1.25*(elapsed+backup);
-        if(!(elapsed>0&&backup>=0&&budget<clock.replay_cost*.5)){clear_samples();return;}
+        const bool cheaper=missed_window>0 ? budget<=missed_window&&budget<clock.replay_cost*.8 :
+            budget<clock.replay_cost*.5;
+        if(!(elapsed>0&&backup>=0&&cheaper)){clear_samples();return;}
         worst_source=std::max(worst_source,budget);
         if(++cheap_sources==3){
             clock.replay_cost=probe_budget=std::max(.0001,worst_source);
-            clear_samples();
+            ++probes;missed_window=0;clear_samples();
         }
     }
 
     void extra(double time,double elapsed){
-        clear_samples();
+        clear_samples();missed_window=0;
         if(!probe_budget)return;
         if(elapsed>std::max(2*probe_budget,probe_budget+.002)){
+            ++failed_probes;
             retry_at=time+retry_delay;
             retry_delay=std::min(8.,2*retry_delay);
         }else{retry_at=0;retry_delay=.5;}

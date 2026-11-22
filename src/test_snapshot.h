@@ -114,7 +114,7 @@ static void pair(const char*path,bool reading){
     else for(auto entry:textures){GLuint id=entry.first;file.item(id);texture(file,id);}
     std::unordered_map<GLuint,std::shared_ptr<TextureCopy>> copies;
     for(Frame*f:{&previous,&current}){
-        if(reading)f->match_input.reset();
+        if(reading){f->match_input.reset();f->seed_clears.clear();}
         if(header[1]>=2)file.list(f->bones,64000);else if(reading)f->bones.clear();
         file.item(f->valid);file.item(f->started);file.item(f->vertex_count);file.item(f->w);file.item(f->h);file.item(f->mode);
         n=(unsigned)f->targets.size();file.item(n);demand(n<=32,"snapshot target limit");

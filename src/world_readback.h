@@ -1,6 +1,11 @@
 // The buffers contain only one pair of samples. No result from an earlier
 // native tick may grant permission to present the current pair.
 static constexpr GLsizeiptr parity_plane_bytes=160*90*4;
+static constexpr GLsizeiptr parity_storage_bytes=2*parity_plane_bytes+
+    (deck_renderer?160*DeckOutputAudit::rows*4:0);
+static int parity_read_rows(){
+    return deck_renderer?(deck_output.submitted_count?180+DeckOutputAudit::rows:180):90;
+}
 struct ParityReadState {
     GLint fbo,buffer,pack;
     ParityReadState(){
@@ -51,12 +56,12 @@ struct WorldReadback {
             if(buffer){
                 pBindBuffer(GL_PIXEL_PACK_BUFFER,buffer);
                 if(!allocated){
-                    pBufferData(GL_PIXEL_PACK_BUFFER,2*parity_plane_bytes,nullptr,GL_STREAM_READ);
+                    pBufferData(GL_PIXEL_PACK_BUFFER,parity_storage_bytes,nullptr,GL_STREAM_READ);
                     GLint size=0;pGetBufferParameteriv(GL_PIXEL_PACK_BUFFER,GL_BUFFER_SIZE,&size);
-                    allocated=size==2*parity_plane_bytes;
+                    allocated=size==parity_storage_bytes;
                 }
                 if(allocated){
-                    ParityReadState::read(sample_a.fbo,nullptr,deck_renderer?180:90);
+                    ParityReadState::read(sample_a.fbo,nullptr,parity_read_rows());
                     if(!deck_renderer)ParityReadState::read(sample_b.fbo,reinterpret_cast<void*>(parity_plane_bytes));
                 }
             }
@@ -74,13 +79,14 @@ struct WorldReadback {
         }
         return true;
     }
-    bool copy(BYTE* a,BYTE* b){
+    bool copy(BYTE* target){
         const double begin=now();
         GLint old;glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,&old);pBindBuffer(GL_PIXEL_PACK_BUFFER,buffer);
-        const BYTE* ptr=static_cast<const BYTE*>(map(GL_PIXEL_PACK_BUFFER,0,2*parity_plane_bytes,GL_MAP_READ_BIT));
+        const size_t bytes=deck_renderer?size_t(160*4*parity_read_rows()):2*parity_plane_bytes;
+        const BYTE* ptr=static_cast<const BYTE*>(map(GL_PIXEL_PACK_BUFFER,0,bytes,GL_MAP_READ_BIT));
         bool okay=false;
         if(ptr){
-            memcpy(a,ptr,parity_plane_bytes);memcpy(b,ptr+parity_plane_bytes,parity_plane_bytes);
+            memcpy(target,ptr,bytes);
             okay=unmap(GL_PIXEL_PACK_BUFFER)==GL_TRUE;
         }
         const GLenum error=glGetError();
