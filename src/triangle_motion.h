@@ -34,7 +34,11 @@ struct Topology;
 namespace field_scroll {struct TileIndex;}
 struct MatchInput {
     std::vector<Primitive> triangles;
-    std::unordered_map<uint64_t,std::vector<unsigned>> groups;
+    // The group table and all its index lists have exactly one frame lifetime.
+    // Release their storage together instead of returning thousands of small
+    // blocks to the process heap during a swap.
+    std::pmr::monotonic_buffer_resource group_storage;
+    std::pmr::unordered_map<uint64_t,std::pmr::vector<unsigned>> groups{&group_storage};
     std::shared_ptr<Topology> field_topology;
     std::shared_ptr<field_scroll::TileIndex> field_tiles;
 
@@ -64,12 +68,28 @@ static double primitive_cost(const Primitive&a,const Primitive&b){
         for(int k=0;k<3;k++){double d=q[k]-p[k];cost+=d*d;delta=std::max(delta,fabs(d));radius=std::max(radius,std::max(fabs(p[k]),fabs(q[k])));}}
     if(delta>std::max(.25,radius*.35))return 1e100;return cost;
 }
+// Repeated materials compare each triangle with many candidates. Its size
+// bound depends only on its own three corners and can be reused for each pair.
+static double primitive_radius(const Primitive& t){
+    double radius=0;
+    for(const auto& p:t.points)for(int k=0;k<3;k++)radius=std::max(radius,fabs(p[k]));
+    return radius;
+}
+static double bounded_primitive_cost(const Primitive& a,const Primitive& b,double limit){
+    double cost=0;
+    for(int v=0;v<3;v++)for(int k=0;k<3;k++){
+        double d=b.points[v][k]-a.points[v][k];
+        if(fabs(d)>limit)return 1e100;
+        cost+=d*d;
+    }
+    return cost;
+}
 #include "billboard_motion.h"
 // The sea and its translucent shading contain hundreds of triangles with
 // identical material keys. Search only near the camera-predicted first corner,
 // then require all three corners (including depth) to agree in both directions.
 static void match_dense_world_group(const std::vector<Primitive>&old,std::vector<Primitive>&cur,
-                                    const std::vector<unsigned>& a,const std::vector<unsigned>& b){
+                                    const std::pmr::vector<unsigned>& a,const std::pmr::vector<unsigned>& b){
     struct Choice {
         int index=-1;double best=1e20,second=1e20;
         void offer(int i,double cost){if(cost<best){second=best;best=cost;index=i;}else second=std::min(second,cost);}
@@ -136,7 +156,7 @@ static void match_frames(int mode=-1){
     // Mutual nearest matches with an ambiguity margin; never rely on draw-call
     // ordering, since FFVIII changes batch boundaries while sorting polygons.
     std::vector<int> best_a,best_b;
-    std::vector<double> ca,cb,sa,sb;
+    std::vector<double> ca,cb,sa,sb,radius_a,radius_b;
     for(const auto&group:new_groups){auto found=old_groups.find(group.first);if(found==old_groups.end())continue;
         const auto&a=found->second;const auto&b=group.second;
         if(uint64_t(a.size())*b.size()>65536){
@@ -147,7 +167,14 @@ static void match_frames(int mode=-1){
         best_a.assign(a.size(),-1);best_b.assign(b.size(),-1);
         ca.assign(a.size(),1e100);cb.assign(b.size(),1e100);
         sa.assign(a.size(),1e100);sb.assign(b.size(),1e100);
-        for(unsigned i=0;i<a.size();i++)for(unsigned j=0;j<b.size();j++){double cost=primitive_cost(old[a[i]],cur[b[j]]);
+        const bool reuse_bounds=a.size()*b.size()>=64;
+        if(reuse_bounds){
+            radius_a.resize(a.size());radius_b.resize(b.size());
+            for(unsigned i=0;i<a.size();i++)radius_a[i]=primitive_radius(old[a[i]]);
+            for(unsigned j=0;j<b.size();j++)radius_b[j]=primitive_radius(cur[b[j]]);
+        }
+        for(unsigned i=0;i<a.size();i++)for(unsigned j=0;j<b.size();j++){
+            const double cost=reuse_bounds?bounded_primitive_cost(old[a[i]],cur[b[j]],std::max(.25,std::max(radius_a[i],radius_b[j])*.35)):primitive_cost(old[a[i]],cur[b[j]]);
             if(cost<ca[i]){sa[i]=ca[i];ca[i]=cost;best_a[i]=j;}else sa[i]=std::min(sa[i],cost);
             if(cost<cb[j]){sb[j]=cb[j];cb[j]=cost;best_b[j]=i;}else sb[j]=std::min(sb[j],cost);}
         for(unsigned j=0;j<b.size();j++){int i=best_b[j];if(i<0||best_a[i]!=(int)j)continue;
@@ -194,13 +221,20 @@ static void match_frames(int mode=-1){
     std::vector<unsigned> parent(cur.size());std::vector<bool> invalid(cur.size());
     for(unsigned i=0;i<cur.size();i++){parent[i]=i;invalid[i]=cur[i].prior<0;}
     auto root=[&](unsigned i){while(parent[i]!=i){parent[i]=parent[parent[i]];i=parent[i];}return i;};
-    struct Shared {unsigned tri;std::array<double,4> prior;bool valid;};std::unordered_map<uint64_t,Shared> points;
+    struct Shared {unsigned tri;std::array<double,4> prior;bool valid;};
+    std::pmr::monotonic_buffer_resource point_storage;
+    std::pmr::unordered_map<uint64_t,Shared> points{&point_storage};
+    unsigned last_op=UINT_MAX;uint64_t state_key=0;
     for(unsigned i=0;i<cur.size();i++){const auto&tri=cur[i];const auto&op=current.ops[tri.op];
         if(projected_geometry(op))continue;
+        if(last_op!=tri.op){
+            state_key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
+            state_key=hash(state_key,&op.state.program,sizeof(op.state.program));
+            state_key=hash(state_key,op.state.projection,sizeof(op.state.projection));last_op=tri.op;
+        }
         for(unsigned v=0;v<3;v++){unsigned index=tri.start+v;double p[4];matching_position(op.state,op.vertices[index].p,p);
             float canonical[4];for(int k=0;k<4;k++)canonical[k]=p[k]==0?0:(float)p[k];
-            uint64_t key=hash(1469598103934665603ULL,canonical,sizeof(canonical));key=hash(key,&op.target,sizeof(op.target));
-            key=hash(key,&op.state.program,sizeof(op.state.program));key=hash(key,op.state.projection,sizeof(op.state.projection));
+            uint64_t key=hash(state_key,canonical,sizeof(canonical));
             Shared point{i,{},op.motion_valid[index]!=0};if(point.valid)matching_position(op.state,op.prior_positions[index].data(),point.prior.data());
             auto found=points.find(key);if(found==points.end())points.emplace(key,point);
             else{unsigned a=root(i),b=root(found->second.tri);if(a!=b){parent[b]=a;invalid[a]=invalid[a]||invalid[b];}

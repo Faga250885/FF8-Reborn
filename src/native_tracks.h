@@ -36,26 +36,57 @@ static bool battle_shot_changed(const std::vector<BoneSample>& before,const std:
     }
     return visible>=8 && displaced*3>=visible*2;
 }
-using BoneLinks=std::unordered_map<uint64_t,BonePoint>;
+// Each input sample contributes at most one key. The four temporary bone
+// indices can therefore use bounded, contiguous storage with no node allocation.
+class BoneLinks {
+    struct Entry {uint64_t key=0; BonePoint point{}; bool used=false;};
+    std::vector<Entry> slots;
+    size_t mask=0,occupied=0;
+    size_t locate(uint64_t key) const {
+        uint32_t mixed=uint32_t(key)^uint32_t(key>>32)*0x9e3779b9u;
+        mixed^=mixed>>16;mixed*=0x85ebca6bu;mixed^=mixed>>13;
+        size_t i=mixed&mask;
+        while(slots[i].used && slots[i].key!=key)i=(i+1)&mask;
+        return i;
+    }
+public:
+    bool empty() const{return occupied==0;}
+    size_t size() const{return occupied;}
+    void reserve(size_t upper){
+        size_t capacity=2;while(capacity<upper+upper/2+1)capacity*=2;
+        slots.resize(capacity);mask=capacity-1;
+    }
+    void vote(uint64_t key,BonePoint point){
+        auto& slot=slots[locate(key)];
+        if(!slot.used){slot={key,point,true};++occupied;}
+        else if(!(slot.point==point))slot.point.z=0;
+    }
+    const BonePoint* find(uint64_t key)const{
+        if(empty())return nullptr;
+        const auto& slot=slots[locate(key)];
+        return slot.used?&slot.point:nullptr;
+    }
+    template<class F> void each(F visit)const{
+        for(const auto& e:slots)if(e.used)visit(e.key,e.point);
+    }
+};
 struct BoneTracks{BoneLinks backward,forward;};
-static void vote_bone(BoneLinks&links,uint64_t key,BonePoint p){
-    auto r=links.emplace(key,p);if(!r.second&&!(r.first->second==p))r.first->second.z=0;
-}
 static BoneTracks link_bones(const std::vector<BoneSample>&a,const std::vector<BoneSample>&b){
     BoneTracks tracks;if(a.empty()||b.empty())return tracks;
     auto index=[](const auto&samples){BoneLinks out;out.reserve(samples.size());
         for(const auto&p:samples){uint64_t id=(uint64_t(p.group)<<32)|p.address;
-            vote_bone(out,id,{p.x,p.y,(uint16_t)((p.flags&2)?0:p.z)});}
+            out.vote(id,{p.x,p.y,(uint16_t)((p.flags&2)?0:p.z)});}
         return out;};
     auto old=index(a),cur=index(b);
-    for(const auto&entry:cur){auto f=old.find(entry.first);if(f==old.end())continue;
-        const auto&p=f->second;const auto&q=entry.second;if(!p.z||!q.z)continue;
-        if(std::abs(int(p.x)-q.x)>880||std::abs(int(p.y)-q.y)>880||p.z*2.5<q.z||q.z*2.5<p.z)continue;
-        vote_bone(tracks.backward,q.key(),p);vote_bone(tracks.forward,p.key(),q);}
+    tracks.backward.reserve(cur.size());tracks.forward.reserve(cur.size());
+    cur.each([&](uint64_t key,const BonePoint& q){auto f=old.find(key);if(!f)return;
+        const auto&p=*f;if(!p.z||!q.z)return;
+        if(std::abs(int(p.x)-q.x)>880||std::abs(int(p.y)-q.y)>880||p.z*2.5<q.z||q.z*2.5<p.z)return;
+        tracks.backward.vote(q.key(),p);tracks.forward.vote(p.key(),q);});
     return tracks;
 }
 
 static const BonePoint*lookup_bone(const BoneLinks&links,const float*p){
     BonePoint here;if(!from_gl(p,here))return nullptr;
-    auto f=links.find(here.key());return f!=links.end()&&f->second.z?&f->second:nullptr;
+    const auto* f=links.find(here.key());return f&&f->z?f:nullptr;
 }

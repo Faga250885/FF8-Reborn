@@ -39,12 +39,9 @@ static void retain_outgoing(const std::vector<Primitive>&old,const std::vector<P
     outgoing_draws.clear();outgoing_triangles=0;float forward[16];if(!camera_forward_matrix(forward))return;
     const WideView view(current,display_settings.wide);
     std::vector<bool> matched(old.size());for(const auto&t:cur)if(t.prior>=0)matched[t.prior]=true;
-    std::unordered_map<uint64_t,std::array<float,4>> shared;
-    for(const auto&op:current.ops)if(projected_geometry(op)){
-        const auto state=surface_state_key(op);
-        for(unsigned v=0;v<op.vertices.size();v++)if(op.motion_valid[v]){
-        std::array<float,4> point;memcpy(point.data(),op.vertices[v].p,sizeof(point));shared.emplace(surface_point_key(state,op.prior_positions[v].data()),point);}
-    }
+    std::pmr::monotonic_buffer_resource shared_storage;
+    std::pmr::unordered_map<uint64_t,const Vertex*> shared{&shared_storage};
+    bool shared_ready=false;
     std::unordered_map<GLuint,unsigned> last;
     for(unsigned i=0;i<current.ops.size();i++)if(!current.ops[i].clear)last[current.ops[i].target]=i;
     unsigned last_source=UINT_MAX;uint64_t before_state=0;
@@ -54,6 +51,15 @@ static void retain_outgoing(const std::vector<Primitive>&old,const std::vector<P
         auto tail=last.find(before.target);if(tail==last.end())continue;
         // The known projected shaders use an orthographic screen transform.
         const auto&m=before.state.projection;if(m[0]==0||m[5]==0||m[3]!=0||m[7]!=0||m[15]!=1)continue;
+        // Only departing faces need to weld back onto the visible surface.
+        if(!shared_ready){
+            for(const auto&op:current.ops)if(projected_geometry(op)){
+                const auto state=surface_state_key(op);
+                for(unsigned v=0;v<op.vertices.size();v++)if(op.motion_valid[v])
+                    shared.emplace(surface_point_key(state,op.prior_positions[v].data()),&op.vertices[v]);
+            }
+            shared_ready=true;
+        }
         const bool wide_target=view.outer_width&&before.target&&before.state.viewport[2]==view.inner_width&&
             before.state.viewport[3]==view.drawable_height&&std::abs(m[0]-2.f/640)<.00001f;
         const float edge=wide_target?1.f/view.horizontal:1.f;
@@ -74,7 +80,7 @@ static void retain_outgoing(const std::vector<Primitive>&old,const std::vector<P
             was_top&=p[1]<ymin+1;was_bottom&=p[1]>ymax-1;
             predicted[v]=before.vertices[tri.start+v];valid&=camera_forward(forward,predicted[v].p,predicted[v].p);
             auto welded=shared.find(surface_point_key(before_state,before.vertices[tri.start+v].p));if(welded!=shared.end()){
-                predicted[v].p[0]=welded->second[0];predicted[v].p[1]=welded->second[1];predicted[v].p[3]=welded->second[3];}
+                predicted[v].p[0]=welded->second->p[0];predicted[v].p[1]=welded->second->p[1];predicted[v].p[3]=welded->second->p[3];}
             left&=predicted[v].p[0]<xmin+1;right&=predicted[v].p[0]>xmax-1;
             top&=predicted[v].p[1]<ymin+1;bottom&=predicted[v].p[1]>ymax-1;
         }

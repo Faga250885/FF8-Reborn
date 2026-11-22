@@ -1,4 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
+#include <memory_resource>
 #include <windows.h>
 #include <commctrl.h>
 #include <xinput.h>

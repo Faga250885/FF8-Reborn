@@ -67,7 +67,8 @@ static void anchor_vertex_topology(const std::vector<Primitive>&old,const std::v
     // cannot claim the same old vertex and pull two distinct points together.
     std::vector<bool> claimed(before.size());
     for(const auto&point:after)if(point.prior>=0)claimed[point.prior]=true;
-    std::unordered_map<uint64_t,std::vector<unsigned>> face_nodes;face_nodes.reserve(before_topology.faces.size());
+    std::pmr::monotonic_buffer_resource face_storage;
+    std::pmr::unordered_map<uint64_t,std::pmr::vector<unsigned>> face_nodes{&face_storage};face_nodes.reserve(before_topology.faces.size());
     for(const auto&face:before_topology.faces)if(!claimed[face.first])face_nodes[face.second].push_back(face.first);
     struct Best{int node=-1;unsigned score=0,second=0;};std::vector<Best> best_old(before.size()),best_new(after.size());
     auto vote=[](Best&best,unsigned node,unsigned score){if(score>best.score){best.second=best.score;best.score=score;best.node=(int)node;}else best.second=std::max(best.second,score);};
