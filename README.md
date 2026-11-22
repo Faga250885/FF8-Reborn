@@ -9,6 +9,12 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 **In active development.** If you find a bug, [report it on GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) or add a comment to an existing issue. Reports in English or Spanish are welcome.
 
+## Gameplay video
+
+[![Watch Faga12 play FF8 Reborn on YouTube](https://i.ytimg.com/vi/dBUX5gA7oKM/hqdefault.jpg)](https://www.youtube.com/watch?v=dBUX5gA7oKM)
+
+[Watch the FF8 Reborn demo on YouTube](https://www.youtube.com/watch?v=dBUX5gA7oKM).
+
 ## Gameplay features
 
 [![Widescreen, the 120 FPS target, the world map and blurred sidebars](docs/images/features.gif)](docs/GALLERY.md#features)
@@ -17,7 +23,7 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Steam Deck (SteamOS, experimental)
 
-The LCD and OLED editions offer **Original** (the default) and **60 FPS**. In **Original + Widescreen**, the renderer reuses texture, camera and shader settings across terrain draws when they match. It still validates the native image on every world-map frame before presenting the expanded view. The game-folder file `FF8_geometry.log` records frame rate and the time spent capturing, validating, drawing and presenting the world map.
+The LCD and OLED editions offer **Original** (the default) and **60 FPS**. With **Original + Widescreen**, the mod checks the world-map layout when you enter it or the view changes. During ordinary travel the game then draws the wider view in a single pass. The game-folder file `FF8_geometry.log` records frame rate and rendering times.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
 2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.6/FF8-Reborn-Deck-Setup).

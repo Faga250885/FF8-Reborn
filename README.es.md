@@ -9,6 +9,12 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 **En desarrollo.** Si encuentras un fallo, [abre un reporte en GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) o añade tus observaciones a una incidencia existente. Puedes escribir en español.
 
+## Video del mod en acción
+
+[![Ver FF8 Reborn en el canal de Faga12 en YouTube](https://i.ytimg.com/vi/dBUX5gA7oKM/hqdefault.jpg)](https://www.youtube.com/watch?v=dBUX5gA7oKM)
+
+[Ver la demostración de FF8 Reborn en YouTube](https://www.youtube.com/watch?v=dBUX5gA7oKM).
+
 ## Funciones generales
 
 [![Pantalla ancha, objetivo de 120 FPS, mapa y laterales difuminados](docs/images/features.gif)](docs/GALERIA.md#features)
@@ -17,7 +23,7 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 ## Steam Deck (SteamOS, experimental)
 
-En LCD y OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Con **Original + Widescreen**, el mod reutiliza los ajustes de textura, cámara y sombreador que coinciden entre los envíos de terreno. Sigue comprobando la imagen original en cada cuadro del mapamundi antes de presentar la vista panorámica. El archivo `FF8_geometry.log` de la carpeta del juego registra los FPS y el tiempo dedicado a capturar, comprobar, dibujar y presentar el mapamundi.
+En LCD y OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Con **Original + Widescreen**, el mod comprueba el encuadre al entrar al mapamundi o cuando cambia la vista. Durante el recorrido normal, el juego dibuja la vista panorámica en una sola pasada. El archivo `FF8_geometry.log` de la carpeta del juego registra los FPS y los tiempos de renderizado.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
 2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.6/FF8-Reborn-Deck-Setup).
