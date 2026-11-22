@@ -1,25 +1,27 @@
 // Final display pass, in the game's compatibility context. Scene replays,
 // validation and next-frame inputs always use the original colour surface.
+#include "filter_resolution.h"
 namespace retro_display {
 struct FilterUniforms{
-    GLfloat size[2],grid[2],strengths[4],tube[4],mask[3];
+    GLfloat size[2],grid[2],strengths[4],tube[4],mask[3],output[3],sampling[2];
 };
 struct Pipeline {
     GLuint program=0;
-    GLint size=-1, grid=-1, strengths=-1, tube=-1, screen=-1, response=-1;
+    GLint size=-1, grid=-1, strengths=-1, tube=-1, screen=-1, response=-1,output=-1,sampling=-1;
     bool inspected=false,attempted=false, modern=false, srgb=false;
     PFNGLBINDSAMPLERPROC bind_sampler=nullptr;
     FilterUniforms last{};
     bool configured=false;
 };
-enum class Stage { full, cells, screen, tv_rows, tv_screen, motion };
+enum class Stage { full, cells, screen, tv_rows, tv_screen, motion, notice };
 static Pipeline pipeline,television_pipeline,cell_pipeline,screen_pipeline,tv_rows_pipeline,tv_screen_pipeline;
-static Pipeline motion_pipeline;
+static Pipeline motion_pipeline,notice_pipeline;
 #include "motion_blur.h"
 static Surface signal_surface;
 static int failed_signal_w=0,failed_signal_h=0;
 static Pipeline& select_pipeline(bool tv,Stage stage){
     switch(stage){
+        case Stage::notice:return notice_pipeline;
         case Stage::motion:return motion_pipeline;
         case Stage::cells:return cell_pipeline;
         case Stage::screen:return screen_pipeline;
@@ -80,7 +82,9 @@ static bool prepare(bool tv=false,Stage stage=Stage::full){
     }
     inspect_context();
     const char* vertex="#version 120\nvoid main(){gl_Position=gl_Vertex;}\n";
-    const char* fragment=stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
+    const char* notice_fragment="uniform vec2 size,origin;uniform sampler2D sourceImage;"
+        "void main(){gl_FragColor=texture2D(sourceImage,(gl_FragCoord.xy-origin)/size);}";
+    const char* fragment=stage==Stage::notice?notice_fragment:stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
 uniform sampler2D sourceImage;
 uniform vec2 size;
 uniform vec2 grid;
@@ -104,13 +108,23 @@ void main(){
     vec2 sampleUV=mix(uv,center,strengths.x);
 #endif
 #ifndef SCREEN_PASS
-    // A compact box in each virtual pixel retains thin original details.
-    vec2 extent=0.23*strengths.x*max(1.0/grid-1.0/size,vec2(0.0));
-    vec3 c=texture2D(sourceImage,sampleUV+extent).rgb;
-    c+=texture2D(sourceImage,sampleUV-extent).rgb;
-    c+=texture2D(sourceImage,sampleUV+vec2(extent.x,-extent.y)).rgb;
-    c+=texture2D(sourceImage,sampleUV+vec2(-extent.x,extent.y)).rgb;
-    c*=0.25;
+    vec2 footprint=strengths.x*max(1.0/grid-1.0/size,vec2(0.0));
+    vec3 c;
+    if(sourceSampling.y>0.5 && strengths.x==1.0){
+        // A 4K signal cell covers many source pixels. Integrate nine
+        // locations once per cell to catch thin highlights and dark edges.
+        c=vec3(0.0);
+        for(int y=-1;y<=1;++y)for(int x=-1;x<=1;++x)
+            c+=texture2D(sourceImage,sampleUV+vec2(float(x),float(y))*footprint/3.0).rgb;
+        c/=9.0;
+    }else{
+        vec2 extent=sourceSampling.x*footprint;
+        c=texture2D(sourceImage,sampleUV+extent).rgb;
+        c+=texture2D(sourceImage,sampleUV-extent).rgb;
+        c+=texture2D(sourceImage,sampleUV+vec2(extent.x,-extent.y)).rgb;
+        c+=texture2D(sourceImage,sampleUV+vec2(-extent.x,extent.y)).rgb;
+        c*=0.25;
+    }
     vec3 neighborhood=c;
     if(tube.x>0.0 || tube.z>0.0){
         vec2 spread=(tube.w<0.0?2.1:1.25)/grid;
@@ -162,10 +176,8 @@ void main(){
 #else
     float wave=0.5+0.5*tube.y*cos(6.2831853*fract(cell.y));
     c*=1.0-0.65*strengths.z*wave;
-    float column=mod(floor(gl_FragCoord.x),3.0);
-    vec3 legacyMask=vec3(column==0.0,column==1.0,column==2.0);
-    if(tvSettings.x>0.0)c*=sqrt(max(vec3(0.0),1.0+0.455*tvSettings.y*phosphor(gl_FragCoord.xy,size.y,tvSettings.x)));
-    else c*=1.0-0.35*strengths.w*(1.0-legacyMask);
+    if(tvSettings.x>0.0)c*=sqrt(max(vec3(0.0),1.0+0.455*tvSettings.y*phosphor(gl_FragCoord.xy,tvSettings.x)));
+    else if(strengths.w>0.0)c*=1.0-0.35*strengths.w*(1.0-rgbMask(gl_FragCoord.x));
     gl_FragColor=vec4(c,1.0);
 #endif
 }
@@ -192,7 +204,9 @@ void main(){
     effect.size=pGetUniformLocation(program,"size");effect.grid=pGetUniformLocation(program,"grid");
     effect.strengths=pGetUniformLocation(program,"strengths");effect.tube=pGetUniformLocation(program,"tube");
     effect.screen=pGetUniformLocation(program,"tvSettings");effect.program=program;
+    effect.output=pGetUniformLocation(program,"outputGeometry");effect.sampling=pGetUniformLocation(program,"sourceSampling");
     if(stage==Stage::motion)effect.response=pGetUniformLocation(program,"response");
+    if(stage==Stage::notice)effect.response=pGetUniformLocation(program,"origin");
     if(stage==Stage::tv_screen||stage==Stage::motion){
         GLint previous;glGetIntegerv(GL_CURRENT_PROGRAM,&previous);
         const GLint unit=1;
@@ -253,24 +267,31 @@ static void fullscreen_triangle(){
 static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h){
     const GLfloat rows=GLfloat(std::min(h,settings.lines));
     const bool crt=settings.mode==2,tv=television(settings);
-    const GLfloat phase=3.14159265f*rows/h;
+    const auto calibration=filter_resolution::calibrate(w,h);
+    const GLfloat frequency=rows/h,phase=3.14159265f*frequency;
+    // Fade unresolved scanlines before they can alias into wide moving bands.
+    const GLfloat alias=std::clamp((frequency-.34f)/(.5f-.34f),0.f,1.f);
+    const GLfloat beam=std::sin(phase)/phase*(1.f-alias*alias*(3.f-2.f*alias));
     const FilterUniforms params={
         {GLfloat(w),GLfloat(h)}, {std::max(1.f,std::round(rows*w/h)),rows},
         {settings.mode?settings.pixelation*.01f:0.f,settings.mode?settings.dither*.01f:0.f,
          crt?settings.scanlines*.01f:0.f,crt?settings.mask*.01f:0.f},
-        {crt?settings.glow*.01f:0.f,std::sin(phase)/phase,settings.mode?settings.edge_softness*.01f:0.f,
+        {crt?settings.glow*.01f:0.f,beam,settings.mode?settings.edge_softness*.01f:0.f,
          tv?GLfloat(settings.phosphors):settings.ps1_raster?1.f:settings.hd_blend?-1.f:0.f},
-        {enabled?GLfloat(settings.tv_screen):0.f,settings.phosphor_strength*.01f,settings.phosphor_sharpness*.01f}
+        {enabled?GLfloat(settings.tv_screen):0.f,settings.phosphor_strength*.01f,settings.phosphor_sharpness*.01f},
+        {calibration.rgb_pitch,calibration.rgb_contrast,calibration.tv_height},
+        {calibration.sample_spread,calibration.dense_signal?1.f:0.f}
     };
     auto draw=[&](Stage stage){
         Pipeline& effect=select_pipeline(tv,stage);
         pUseProgram(effect.program);
         // The mod owns these programs. A resize or live edit changes the key.
-        if(!deck_renderer||!effect.configured||memcmp(&effect.last,&params,sizeof(params))){
+        if(!effect.configured||memcmp(&effect.last,&params,sizeof(params))){
             pUniform3fv(effect.screen,1,params.mask);
             pUniform2fv(effect.size,1,params.size);pUniform2fv(effect.grid,1,params.grid);
             pUniform4fv(effect.strengths,1,params.strengths);pUniform4fv(effect.tube,1,params.tube);
-            if(deck_renderer){effect.last=params;effect.configured=true;}
+            pUniform3fv(effect.output,1,params.output);pUniform2fv(effect.sampling,1,params.sampling);
+            effect.last=params;effect.configured=true;
         }
         fullscreen_triangle();
     };
@@ -279,7 +300,7 @@ static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h)
     // virtual scanline. Keep the mask and beam phase at the drawable size.
     const bool cells=settings.mode&&settings.pixelation==100&&!tv;
     const int signal_w=tv?w:int(params.grid[0]),signal_h=tv?int(rows)+2:int(rows);
-    bool split=deck_renderer&&(tv||cells)&&signal_h*2<=h&&
+    bool split=(tv||cells)&&signal_h*2<=h&&
                (failed_signal_w!=signal_w||failed_signal_h!=signal_h)&&
                prepare(tv,tv?Stage::tv_rows:Stage::cells)&&prepare(tv,tv?Stage::tv_screen:Stage::screen);
     if(split){
@@ -305,6 +326,16 @@ static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h)
             pActiveTexture(GL_TEXTURE0);
         }
     }else draw(Stage::full);
+}
+static void fullscreen_draw_state(int x,int y,int w,int h){
+    for(GLenum flag:{GL_BLEND,GL_COLOR_LOGIC_OP,GL_ALPHA_TEST,GL_DEPTH_TEST,GL_STENCIL_TEST,
+        GL_CULL_FACE,GL_POLYGON_STIPPLE,GL_POLYGON_SMOOTH,GL_DITHER,
+        GL_SAMPLE_ALPHA_TO_COVERAGE,GL_SAMPLE_ALPHA_TO_ONE,GL_SAMPLE_COVERAGE})
+        glDisable(flag);
+    for(int i=0;i<6;i++)glDisable(GL_CLIP_PLANE0+i);
+    if(pipeline.modern)glDisable(GL_RASTERIZER_DISCARD);
+    glViewport(x,y,w,h);glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_FALSE);
 }
 static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
     const bool filter=active(settings)&&prepare(television(settings));
@@ -337,14 +368,7 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
     if(pipeline.bind_sampler){
         glGetIntegerv(GL_SAMPLER_BINDING,&sampler);pipeline.bind_sampler(0,0);
     }
-    for(GLenum flag:{GL_BLEND,GL_COLOR_LOGIC_OP,GL_ALPHA_TEST,GL_DEPTH_TEST,GL_STENCIL_TEST,
-        GL_CULL_FACE,GL_POLYGON_STIPPLE,GL_POLYGON_SMOOTH,GL_DITHER,
-        GL_SAMPLE_ALPHA_TO_COVERAGE,GL_SAMPLE_ALPHA_TO_ONE,GL_SAMPLE_COVERAGE})
-        glDisable(flag);
-    for(int i=0;i<6;i++)glDisable(GL_CLIP_PLANE0+i);
-    if(pipeline.modern)glDisable(GL_RASTERIZER_DISCARD);
-    glViewport(0,0,w,h);glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_FALSE);
+    fullscreen_draw_state(0,0,w,h);
     glBindTexture(GL_TEXTURE_2D,source.color);
     if(blend){
         pBindFramebuffer(GL_DRAW_FRAMEBUFFER,filter?history.signal.fbo:target);
@@ -452,7 +476,7 @@ static void end_window(bool swapped,bool outer_restores,int w,int h){
     motion_history.commit(swapped);
 }
 static void forget(){
-    motion_pipeline={};motion_history={};
+    motion_pipeline={};notice_pipeline={};motion_history={};
     pipeline={};television_pipeline={};cell_pipeline={};screen_pipeline={};tv_rows_pipeline={};tv_screen_pipeline={};signal_surface={};source={};previous_front={};failed_width=failed_height=0;
     failed_signal_w=failed_signal_h=0;valid_front=retiring_front=false;swap_dc=nullptr;exchanges_front=false;
 }

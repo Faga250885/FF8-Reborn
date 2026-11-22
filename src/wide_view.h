@@ -8,6 +8,7 @@ static float turn_guard(int width,int height,int active_lines){
     return std::min(160.f,active_lines*.125f*width/height);
 }
 static bool gameplay_layout(int mode){return mode>=1&&mode<=3;}
+static constexpr int after_battle_mode=4; // FFVIII's EXP, items and AP pages
 static bool scenery_draw(const Op& op){
     if(op.clear||!op.target||op.mode!=GL_TRIANGLES||op.vertices.empty()||
        std::abs(op.state.projection[0]-2.f/640)>.00001f)return false;
@@ -17,13 +18,14 @@ static bool scenery_draw(const Op& op){
 static void resolve_menu_layout(Frame& f,const Frame& prior){
     f.layout_override=-1;f.menu_edge=0;
     f.menu_top=28;f.menu_bottom=448;f.menu_half_width=282;
-    if(f.mode==6||prior.mode==6)f.menu_edge=5;
+    if(prior.mode==after_battle_mode&&f.mode!=after_battle_mode&&f.mode!=6)return;
+    if(f.mode==after_battle_mode||f.mode==6||prior.mode==6)f.menu_edge=5;
     else if(prior.menu_edge>0)f.menu_edge=prior.menu_edge-1;
     else if(f.mode==0&&gameplay_layout(prior.mode))f.menu_edge=5;
     else if(gameplay_layout(f.mode)&&f.mode==prior.mode&&
             std::none_of(f.ops.begin(),f.ops.end(),scenery_draw)&&
             (prior.layout()==6||std::any_of(prior.ops.begin(),prior.ops.end(),scenery_draw)))f.menu_edge=5;
-    if(!f.menu_edge||(!gameplay_layout(f.mode)&&f.mode!=0&&f.mode!=6))return;
+    if(!f.menu_edge||(!gameplay_layout(f.mode)&&f.mode!=0&&f.mode!=after_battle_mode&&f.mode!=6))return;
     bool scenery=false,ui=false;
     for(const auto& op:f.ops){
         if(op.clear||!op.target||op.mode!=GL_TRIANGLES||op.vertices.empty()||
@@ -56,10 +58,12 @@ static void resolve_menu_layout(Frame& f,const Frame& prior){
     // The mode word can switch before the last field fade or the first
     // actual menu draw. Pure composite frames inherit the preceding layout.
     if(scenery&&gameplay_layout(f.mode))return;
-    if(scenery&&gameplay_layout(prior.layout()))f.layout_override=prior.layout();
+    if(f.mode==after_battle_mode)f.layout_override=6;
+    else if(scenery&&gameplay_layout(prior.layout()))f.layout_override=prior.layout();
     else if(ui&&!scenery)f.layout_override=6;
     else if(!scenery&&(gameplay_layout(prior.layout())||prior.layout()==6))f.layout_override=prior.layout();
-    if(f.layout()==6&&prior.layout()==6){
+    if(f.layout()==6&&prior.layout()==6&&
+       (f.mode==after_battle_mode)==(prior.mode==after_battle_mode)){
         f.menu_top=std::min(f.menu_top,prior.menu_top);
         f.menu_bottom=std::max(f.menu_bottom,prior.menu_bottom);
         f.menu_half_width=std::max(f.menu_half_width,prior.menu_half_width);
@@ -70,6 +74,7 @@ struct WideView {
     int scene_width=0,scene_height=0;
     int menu_y=0;
     bool menu=false;
+    std::array<int,4> result_viewport{};
     bool menu_composite(const Op& op)const{
         const int* vp=op.state.viewport;
         return !op.clear&&!op.target&&op.vertices.size()==6&&vp[2]>0&&vp[3]>0&&
@@ -88,6 +93,16 @@ struct WideView {
         const int mode=frame.layout();
         if(!requested||(!gameplay_layout(mode)&&mode!=6)||frame.w<1||frame.h<1)return;
         if(mode==6){
+            if(frame.mode==after_battle_mode){
+                // Results are composed natively even at 60/120 FPS. Only
+                // fit the centered 4:3 image submitted on this actual swap.
+                auto last=std::find_if(frame.ops.rbegin(),frame.ops.rend(),
+                    [](const Op& op){return !op.target;});
+                if(last==frame.ops.rend()||!frame.valid||!menu_composite(*last))return;
+                const auto* vp=last->state.viewport;
+                if(vp[0]<0||vp[1]<0||vp[0]+vp[2]>frame.w||vp[1]+vp[3]>frame.h)return;
+                std::copy_n(vp,4,result_viewport.begin());
+            }
             // Native menu panels span y=28..448 and x=40..602. Fit that
             // rectangle once, independent of cursor motion and open panels.
             const double scale=std::min(double(frame.h)/(frame.menu_bottom-frame.menu_top),
@@ -231,15 +246,15 @@ struct WideView {
         return vertices;
     }
     struct Bounds { float l,r,t,b; };
-    static bool flat_rect(const Vertex* q,Bounds& box){
+    static bool flat_rect(const Vertex* q,Bounds& box,int n=6){
         box={q[0].p[0],q[0].p[0],q[0].p[1],q[0].p[1]};
-        for(int i=1;i<6;i++){
+        for(int i=1;i<n;i++){
             if(q[i].p[2]!=q[0].p[2]||q[i].p[3]!=q[0].p[3])return false;
             box.l=std::min(box.l,q[i].p[0]);box.r=std::max(box.r,q[i].p[0]);
             box.t=std::min(box.t,q[i].p[1]);box.b=std::max(box.b,q[i].p[1]);
         }
         unsigned corners=0;
-        for(int i=0;i<6;i++){
+        for(int i=0;i<n;i++){
             if((q[i].p[0]!=box.l&&q[i].p[0]!=box.r)||(q[i].p[1]!=box.t&&q[i].p[1]!=box.b))return false;
             corners|=1u<<((q[i].p[0]==box.r?1:0)+(q[i].p[1]==box.b?2:0));
         }
@@ -264,12 +279,82 @@ struct WideView {
         }else for(const auto& t:s.texture)if(t.enabled)return true;
         return false;
     }
+    // The native battle canvas is 640 x 480, with rows 24..456 visible.
+    // Flashes may be opaque, additive or textured. Use the screen footprint
+    // and constant 2D depth so a projected spell or a local HUD sprite keeps
+    // its size even when it shares a draw with a flash.
+    const Vertex* battle_layers(const Op& op,const Vertex* vertices,std::vector<Vertex>& result,int count) const {
+        int step=0;
+        if(op.mode==GL_TRIANGLES&&count%6==0)step=6;
+        else if(op.mode==GL_QUADS&&count%4==0)step=4;
+        else if((op.mode==GL_TRIANGLE_STRIP||op.mode==GL_TRIANGLE_FAN)&&count==4)step=4;
+        if(!step)return vertices;
+        auto bounds=[&](int i,Bounds& b){
+            const auto* q=op.vertices.data()+i;
+            if(std::abs(q[0].p[3]-1.f)>.002f||!flat_rect(q,b,step)||
+               b.l< -4||b.r>644||b.t< -4||b.b>484||b.r<=b.l||b.b<=b.t)return false;
+            auto corner=[&](int j){return (q[j].p[0]==b.r?1:0)+(q[j].p[1]==b.b?2:0);};
+            // Two adjoining triangles must share a diagonal. Four corners
+            // alone also match overlapping triangles that leave a hole.
+            if(step==6){
+                unsigned a=0,c=0;
+                for(int j=0;j<3;j++){a|=1u<<corner(j);c|=1u<<corner(j+3);}
+                return (a&c)==6||(a&c)==9;
+            }
+            return (corner(op.mode==GL_TRIANGLE_STRIP?1:0)^corner(2))==3;
+        };
+        auto full=[](const Bounds& b){return b.l<=2&&b.r>=638&&b.t<=26&&b.b>=454;};
+        bool edited=false;
+        for(int i=0;i<count;i+=step){
+            const auto* p=op.vertices[i].p;
+            if(p[0]>2&&p[0]<638&&p[1]>26&&p[1]<454)continue;
+            Bounds b;
+            if(!bounds(i,b))continue;
+            int end=i+step;
+            bool cinema_bar=b.l<=2&&b.r>=638&&(b.t<=26||b.b>=454)&&b.b-b.t<=128&&
+                            op.state.blend&&!uses_texture(op.state);
+            if(cinema_bar)for(int j=i;j<end;j++){const auto* c=op.vertices[j].c;
+                if(c[0]!=0||c[1]!=0||c[2]!=0){cinema_bar=false;break;}}
+            if(!full(b)&&!cinema_bar){
+                // Some packets tile the flash across the two halves, or
+                // split it into strips. Only accept an uninterrupted band
+                // of adjacent flat rectangles spanning the active picture.
+                const bool across=b.t<=26&&b.b>=454&&(b.l<=2||b.r>=638);
+                const bool down=b.l<=2&&b.r>=638&&(b.t<=26||b.b>=454);
+                if(!across&&!down)continue;
+                while(end<count&&!full(b)){
+                    Bounds next;
+                    if(!bounds(end,next)||op.vertices[i].p[2]!=op.vertices[end].p[2])break;
+                    if(across&&next.t==b.t&&next.b==b.b&&(b.l==next.r||b.r==next.l)){
+                        b.l=std::min(b.l,next.l);b.r=std::max(b.r,next.r);
+                    }else if(down&&next.l==b.l&&next.r==b.r&&(b.t==next.b||b.b==next.t)){
+                        b.t=std::min(b.t,next.t);b.b=std::max(b.b,next.b);
+                    }else break;
+                    end+=step;
+                }
+                if(!full(b))continue;
+            }
+            if(!edited){result.assign(vertices,vertices+count);edited=true;}
+            for(int j=i;j<end;j++){
+                float x=vertices[j].p[0];
+                // A 0..639 inclusive packet must reach the last pixel just
+                // like its 0..640 counterpart after fractional scaling.
+                if(op.vertices[j].p[0]==b.l)x=std::min(0.f,x);
+                if(op.vertices[j].p[0]==b.r)x=std::max(640.f,x);
+                result[j].p[0]=320+(x-320)/horizontal;
+            }
+            i=end-step;
+        }
+        return edited?result.data():vertices;
+    }
     // Quarter-pixel world packet 555070 submits contiguous 512 x 128 cloud
     // tiles with a fixed atlas window and z=4095. Repeat only a missing neighbour.
     const Vertex* screen_layers(const Op& op,const Vertex* vertices,std::vector<Vertex>& result,GLsizei& count) const {
-        if(horizontal>=1||!op.target||op.mode!=GL_TRIANGLES||count<6||count%6||
+        if(horizontal>=1||!op.target||count<4||
            op.state.viewport[2]!=scene_width||std::abs(op.state.projection[0]-2.f/640)>.00001f)return vertices;
-        const bool cloud_layer=!battle&&std::abs(op.vertices[0].p[3]-1.f/4095)<1e-7f;
+        if(battle)return battle_layers(op,vertices,result,count);
+        if(op.mode!=GL_TRIANGLES||count<6||count%6)return vertices;
+        const bool cloud_layer=std::abs(op.vertices[0].p[3]-1.f/4095)<1e-7f;
         const bool overlay=op.state.blend&&!uses_texture(op.state);
         if(!overlay&&!cloud_layer)return vertices;
         const float margin=320*(1/horizontal-1);
@@ -350,6 +435,11 @@ struct WideView {
 
         glMatrixMode(GL_PROJECTION);glLoadMatrixf(projection);
         if(s.scissor_on&&(s.scissor[0]!=0||s.scissor[2]!=scene_width)){
+            // Some native clips use an inclusive last pixel. Compressing a
+            // nearly full-width clip would cut every wide flash back to 4:3.
+            if(battle&&std::abs(s.scissor[0])<=1&&std::abs(s.scissor[0]+s.scissor[2]-scene_width)<=2){
+                glScissor(0,s.scissor[1],scene_width,s.scissor[3]);return;
+            }
             const float center=scene_width*.5f;
             float native_left=float(s.scissor[0]);
             if(battle&&shift>0&&std::lround(640.*(s.scissor[0]+s.scissor[2])/scene_width)==436){

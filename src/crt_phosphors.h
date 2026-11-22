@@ -2,15 +2,34 @@
 // The phosphor mask stays in screen coordinates as the game camera moves.
 static constexpr const char* mask_fragment=R"GLSL(
 uniform vec3 tvSettings;
+uniform vec3 outputGeometry; // RGB pitch in output pixels, RGB contrast, television reference height
+uniform vec2 sourceSampling; // base signal footprint, dense 4K cell sampling
 const float tau=6.2831853;
+vec3 stripeIntegral(vec3 x){
+    return floor(x)/3.0+clamp(fract(x),0.0,1.0/3.0);
+}
+vec3 rgbMask(float x){
+    float pitch=outputGeometry.x;
+    vec3 coverage;
+    if(pitch==3.0){
+        float column=mod(floor(x),3.0);
+        coverage=vec3(column==0.0,column==1.0,column==2.0);
+    }else{
+        // Integrate the illuminated part of each stripe over the display
+        // pixel. A fractional pitch (e.g. 4.5 at UHD) stays color balanced.
+        vec3 phase=fract(x/pitch)-vec3(0.0,1.0/3.0,2.0/3.0);
+        coverage=clamp((stripeIntegral(phase+0.5/pitch)-stripeIntegral(phase-0.5/pitch))*pitch,0.0,1.0);
+    }
+    return mix(vec3(1.0/3.0),coverage,outputGeometry.y);
+}
 // Approximate spatial integration over one output pixel. Suppress structure
 // above the display's Nyquist limit rather than aliasing it into false stripes.
 float visible(float cycles){
     float a=3.14159265*cycles;
     return sin(a)/max(a,0.0001)*(1.0-smoothstep(0.32,0.50,cycles));
 }
-vec3 phosphor(vec2 frag,float height,float model){
-    float freq=(model<1.5?375.0:model<2.5?320.0:305.0)/height;
+vec3 phosphor(vec2 frag,float model){
+    float freq=(model<1.5?375.0:model<2.5?320.0:305.0)/outputGeometry.z;
     vec2 p=frag*freq;
     vec3 phase=tau*(p.x-vec3(0.0,1.0/3.0,2.0/3.0));
     // Gaussian blur affects the mask alone, with greater attenuation at higher harmonics.
@@ -89,7 +108,7 @@ void main(){
     light*=mix(1.0,total,strengths.z*visible(grid.y/size.y));
     float model=tvSettings.x>0.0?tvSettings.x:tube.w;
     float amount=tvSettings.x>0.0?0.65:strengths.w;
-    light*=1.0+0.70*amount*tvSettings.y*phosphor(gl_FragCoord.xy,size.y,model);
+    light*=1.0+0.70*amount*tvSettings.y*phosphor(gl_FragCoord.xy,model);
     gl_FragColor=vec4(sqrt(clamp(light,0.0,1.0)),1.0);
 #endif
 }

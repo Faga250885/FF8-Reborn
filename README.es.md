@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.8/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
 > **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. **El próximo objetivo son los 60 FPS.** El desarrollo continuará a medida que haya tiempo disponible. Todavía no hay fecha para ese modo.
@@ -8,6 +8,13 @@
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 60 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
 **En desarrollo.** Si encuentras un fallo, [abre un reporte en GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) o añade tus observaciones a una incidencia existente. Puedes escribir en español.
+
+## Novedades
+
+- **Actualizaciones desde Windows y Steam Deck.** Al iniciar el juego, FF8 Reborn consulta una vez el canal de su plataforma. Si hay una versión nueva, aparece un aviso arriba a la izquierda durante diez segundos y se desvanece en dos. Abre el menú con **F8** o **View + Menu** para ver la versión instalada y la disponible. Elige **Download update** cuando quieras instalarla.
+- **Filtros adaptados a tu resolución.** El mismo perfil ajusta el muestreo y la rejilla CRT para Steam Deck a 720p/800p, Full HD a 1080p, QHD a 1440p y 4K a 2160p. **Screen filter → Auto tuning** muestra la resolución activa. Cada perfil tiene su propia intensidad de **Motion blur**, ajustable del 0 % al 100 % en pasos de 10.
+- **Rendimiento en Steam Deck.** El modo de 30 FPS usa los cuadros nativos en ciudades y mapamundi e interpola las batallas. Las pruebas de juego en una Deck física confirmaron 30 FPS estables en esas escenas. La versión de Deck sigue siendo experimental y el objetivo de desarrollo es llegar a 60 FPS. Windows también incorpora parte de las optimizaciones de renderizado.
+- **Batallas y transiciones en pantalla ancha.** Esta versión amplía la cobertura de los destellos de pantalla completa, ajusta los resultados de experiencia al alto disponible y corrige cuadros que aparecen encogidos durante la carga de Triple Triad. La interpolación de batalla ahora comprueba si se forman triángulos que unen combatientes distintos al mover la cámara.
 
 ## Video del mod en acción
 
@@ -37,11 +44,11 @@ En una batalla grabada de 42 segundos a 1280 × 800 en Windows, la versión 1.4.
 Si tienes la versión **1.4.0-deck.1** o posterior, pulsa **View + Menu → Check for updates → Download update**. Cuando aparezca **Update ready**, cierra FFVIII y su lanzador y vuelve a abrir el juego. Si ya tenías seleccionado **Original**, se conserva. Para instalar por primera vez, sigue estos pasos.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.8/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.8/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
@@ -84,6 +91,26 @@ Windows 1.4.1 aprovecha una mejora de Steam Deck que evita repetir ajustes de Op
 | Screen filter | Permite elegir un perfil y ajustar resolución, pixelado, líneas de barrido, máscara RGB, resplandor, tramado PS1, suavizado de bordes y desenfoque de movimiento. Los controles disponibles dependen del tipo de filtro. |
 
 ## Filtros gráficos
+
+Abre el menú con **F8** o **View + Menu** y mira **Screen filter → Auto tuning**. FF8 Reborn lee las dimensiones en píxeles de la ventana del juego y adapta el filtro elegido mientras juegas. Al redimensionar la ventana o conectar la Steam Deck a un monitor, el ajuste se actualiza si cambia la resolución de salida del juego. Tu perfil y los valores guardados en Custom se conservan al cambiar de pantalla.
+
+| Ejemplo de resolución del juego | Auto tuning |
+| --- | --- |
+| 1280 × 720 o 1280 × 800 (Steam Deck) | 720p / 800p |
+| 1920 × 1080 (Full HD) | 1080p |
+| 2560 × 1440 (QHD) | 1440p (2K) |
+| 3840 × 2160 (4K UHD) | 2160p (4K) |
+
+<details>
+<summary>Ver Auto tuning en el panel a 1280 × 800</summary>
+
+![Screen filter muestra el ajuste 720p / 800p a 1280 × 800 sobre el perfil FF8 Reborn seleccionado](docs/images/auto-tuning.png)
+
+</details>
+
+La línea muestra tanto el ajuste activo como el tamaño real de la ventana. El juego elige según la altura, también en pantallas ultrapanorámicas. Pasa al siguiente nivel a partir de 940, 1260 y 1800 píxeles de alto. Por ejemplo, una ventana de 1920 × 1080 sobre un monitor 4K usa el ajuste de 1080p. **Vertical resolution** controla las líneas de la señal simulada y sigue siendo ajustable en cada nivel.
+
+En 720p, 800p y 1080p, el filtro CRT estándar reduce el contraste de la máscara RGB y los filtros de televisor mantienen los fósforos lo bastante anchos como para distinguirlos. En 1440p se conserva el aspecto de referencia. En 4K, el patrón RGB crece con la imagen y el filtro toma muestras de una zona más amplia de cada píxel simulado.
 
 Para combinar **PS1 Digital**, **HD Blend** o cualquier otro filtro con el fósforo de un televisor, selecciona **TV phosphors → Trinitron grille**. Con **Phosphor sharpness** ajustas el enfoque de las franjas desde suave (0 %) hasta nítido (100 %). **Phosphor strength** controla su intensidad. Los tres controles están en **Screen filter**. Selecciona **Create a custom copy** para guardar la combinación, o **Save my changes** al editar tu perfil personalizado. Elige **Use filter profile** para recuperar la pantalla propia de cada perfil.
 
@@ -130,7 +157,7 @@ Para conservar los cambios, elige **Create a custom copy**, **Save to my custom 
 
 ## Actualizar, desinstalar y resolver problemas
 
-- **Actualizar desde el juego.** Abre el panel con **F8** o **View + Menu**. Elige **Check for updates** y después **Download update**. La barra muestra el porcentaje recibido cuando GitHub comunica el tamaño. En caso contrario, muestra actividad y la cantidad descargada. A continuación, el panel indica que está verificando y guardando la actualización. Cuando aparezca **Update ready**, cierra el juego y el lanzador y vuelve a abrir FFVIII. La barra estará disponible en las siguientes descargas una vez instalado Windows 1.4.1 o Deck 1.4.0-deck.7.
+- **Actualizar desde el juego.** Desde Windows 1.4.2 y Deck 1.4.0-deck.8, la consulta al iniciar prepara el botón **Download update** cuando hay una versión disponible. También puedes elegir **Check for updates** manualmente. La barra muestra la descarga y las etapas de verificación y guardado. Cuando aparezca **Update ready**, cierra el juego y el lanzador y vuelve a abrir FFVIII para usar la versión nueva.
 - **Primera actualización desde una versión anterior.** Instala una vez la versión 1.4.0 de Windows o la 1.4.0-deck.1 de Steam Deck (o posterior) para añadir la opción al menú. Las siguientes actualizaciones usan automáticamente el canal estable de Windows o el experimental de Steam Deck. En Deck funciona desde el modo Juego. La consulta necesita internet y la descarga necesita permiso de escritura en la carpeta del juego. El instalador también sirve para reparaciones.
 - **Desinstalar.** Cierra FFVIII y el lanzador, selecciona la carpeta del juego en el instalador y pulsa **Uninstall**. Se verifica y restaura la DLL original. La instalación no modifica las partidas.
 - **F8 no responde.** Dale el foco a la ventana del juego y ábrelo desde la cuenta de Steam propietaria. En el mando pulsa ambos botones a la vez. Si tu mando no ofrece XInput, usa una distribución de mando en Steam Input.

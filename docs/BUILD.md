@@ -19,7 +19,7 @@ The renderer and filter are in `src/`. The setup window and installation checks 
 3. Upload the installer and the matching `FF8-Reborn-windows.dll` or `FF8-Reborn-deck.dll` to the release for that exact tag. Keep published assets immutable. Verify their SHA-256 digests against the build.
 4. After the assets are downloadable, copy the matching `windows.txt` or `deck.txt` from `dist/updates/` into `updates/` and publish it on `main`. This advertises the update to existing installations on that channel.
 
-The menu contacts this repository on demand. After the user chooses to download, the mod verifies the SHA-256 digest, platform and build, writes the renderer alongside the installed base, then atomically selects it for the next launch. The installed base verifies the selection again before loading it. An installer is still required for releases that change the bootstrap format.
+Starting with Windows 1.4.2 and Steam Deck 1.4.0-deck.8, the renderer reads the platform's release feed once at startup. The menu also supports a manual check. Choosing **Download update** starts the renderer download. The mod verifies the SHA-256 digest, platform and build, writes the renderer alongside the installed base, then atomically selects it for the next launch. The installed base verifies the selection again before loading it. An installer is still required for releases that change the bootstrap format.
 
 ## Troubleshooting a Steam Deck black flash
 

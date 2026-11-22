@@ -42,6 +42,7 @@ class BoneLinks {
     struct Entry {uint64_t key=0; BonePoint point{}; bool used=false;};
     std::vector<Entry> slots;
     size_t mask=0,occupied=0;
+    bool collisions=false;
     size_t locate(uint64_t key) const {
         uint32_t mixed=uint32_t(key)^uint32_t(key>>32)*0x9e3779b9u;
         mixed^=mixed>>16;mixed*=0x85ebca6bu;mixed^=mixed>>13;
@@ -59,7 +60,7 @@ public:
     void vote(uint64_t key,BonePoint point){
         auto& slot=slots[locate(key)];
         if(!slot.used){slot={key,point,true};++occupied;}
-        else if(!(slot.point==point))slot.point.z=0;
+        else if(!(slot.point==point)){slot.point.z=0;collisions=true;}
     }
     const BonePoint* find(uint64_t key)const{
         if(empty())return nullptr;
@@ -68,6 +69,13 @@ public:
     }
     template<class F> void each(F visit)const{
         for(const auto& e:slots)if(e.used)visit(e.key,e.point);
+    }
+    void discard_ambiguous_inverse(const BoneLinks& inverse){
+        if(!inverse.collisions)return;
+        for(auto& e:slots)if(e.used&&e.point.z){
+            const auto* back=inverse.find(e.point.key());
+            if(!back||!back->z||back->key()!=e.key)e.point.z=0;
+        }
     }
 };
 struct BoneTracks{BoneLinks backward,forward;};
@@ -86,6 +94,10 @@ static BoneTracks link_bones(const BoneLinks& old,const BoneLinks& cur){
         const auto&p=*f;if(!p.z||!q.z)return;
         if(std::abs(int(p.x)-q.x)>880||std::abs(int(p.y)-q.y)>880||p.z*2.5<q.z||q.z*2.5<p.z)return;
         tracks.backward.vote(q.key(),p);tracks.forward.vote(p.key(),q);});
+    // Two actors can project to exactly the same quarter pixel and depth
+    // while crossing. A vertex is an anchor only in a one-to-one trajectory.
+    tracks.backward.discard_ambiguous_inverse(tracks.forward);
+    tracks.forward.discard_ambiguous_inverse(tracks.backward);
     return tracks;
 }
 static BoneTracks link_bones(const std::vector<BoneSample>&a,const std::vector<BoneSample>&b){

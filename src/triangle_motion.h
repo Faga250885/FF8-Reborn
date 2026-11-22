@@ -264,7 +264,10 @@ static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
         field_topology?&field_topology->refs:nullptr,field_topology?field_topology->points.size():0);
     if(matching_checkpoint)matching_checkpoint();
     retain_outgoing(old,cur);
-    if(mode==3&&battle_visibility_enabled){mark_battle_front_faces();retain_battle_outgoing(old,cur,forward_surface);}
+    if(mode==3){
+        const auto held=protect_battle_edges(old,cur);
+        if(battle_visibility_enabled){mark_battle_front_faces();retain_battle_outgoing(old,cur,forward_surface,held);}
+    }
     if(mode==3&&battle_depth_enabled)prepare_triangle_depth(old,cur);
 #ifdef GEO_PROFILE
     mark_stage("coherence");

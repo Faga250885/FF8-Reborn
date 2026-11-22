@@ -1,5 +1,5 @@
-// Included inside geo after the live panel. Only an explicit menu action
-// starts a network request. The render thread reads a status and a short label.
+// The first game presentation starts a background feed check. Downloading
+// and staging an offered build require an explicit action in the panel.
 namespace mod_update {
 using State=retro_panel::UpdateState;
 static std::atomic<State> state{retro_panel::update_idle};
@@ -8,6 +8,8 @@ static wchar_t message[128]{};
 static std::atomic<unsigned> received_bytes{0},total_bytes{0};
 static HMODULE renderer=nullptr;
 static update_feed::Release offered;
+static bool startup_checked=false;
+static wchar_t available_tag[33]{};
 
 static void say(State value,const std::wstring& text){
     AcquireSRWLockExclusive(&detail_lock);
@@ -27,6 +29,15 @@ static void detail(wchar_t* out,size_t capacity){
     ReleaseSRWLockShared(&detail_lock);
 }
 static std::wstring wide(const std::string& ascii){return {ascii.begin(),ascii.end()};}
+static std::wstring versions(){
+    wchar_t tag[33]{};
+    AcquireSRWLockShared(&detail_lock);
+    lstrcpynW(tag,available_tag,33);
+    ReleaseSRWLockShared(&detail_lock);
+    auto line=L"Installed "+wide(update_version::tag);
+    if(tag[0])line+=std::wstring(L"   ·   Available ")+tag;
+    return line;
+}
 
 struct HttpHandle {
     HINTERNET h;
@@ -91,6 +102,10 @@ static DWORD WINAPI work(void*){
                 say(retro_panel::update_current,L"Installed: "+wide(update_version::tag));return 0;
             }
             offered=std::move(latest);
+            const auto tag=wide(offered.tag);
+            AcquireSRWLockExclusive(&detail_lock);
+            lstrcpynW(available_tag,tag.c_str(),33);
+            ReleaseSRWLockExclusive(&detail_lock);
             say(retro_panel::update_available,wide(update_version::tag)+L"  →  "+wide(offered.tag));
         }else{
             const std::wstring path=L"/Faga250885/FF8-Reborn/releases/download/"+wide(offered.tag)+
@@ -116,12 +131,21 @@ static void action(){
         total_bytes.store(0,std::memory_order_relaxed);
         say(retro_panel::update_downloading,L"Downloading "+wide(offered.tag)+L"…");
     }
-    else if(before==retro_panel::update_idle||before==retro_panel::update_current||before==retro_panel::update_error)
+    else if(before==retro_panel::update_idle||before==retro_panel::update_current||before==retro_panel::update_error){
+        AcquireSRWLockExclusive(&detail_lock);
+        available_tag[0]=0;
+        ReleaseSRWLockExclusive(&detail_lock);
         say(retro_panel::update_checking,L"Checking GitHub for updates…");
+    }
     else return;
     HANDLE worker=CreateThread(nullptr,0,work,nullptr,0,nullptr);
     if(worker)CloseHandle(worker);
     else say(retro_panel::update_error,L"Could not start the update check.");
+}
+static void on_first_present(){
+    if(startup_checked||!renderer)return;
+    startup_checked=true;
+    if(status()==retro_panel::update_idle)action();
 }
 static void setup(HMODULE self){
     renderer=self;

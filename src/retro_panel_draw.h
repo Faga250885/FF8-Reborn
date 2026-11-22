@@ -2,17 +2,17 @@
 // A normal presentation of the open panel is one GPU-to-GPU rectangle blit.
 namespace retro_panel_draw {
 static Surface panel;
-static std::array<int,29> last_state{};
+static std::array<int,31> last_state{};
 static bool painted=false;
-constexpr int update_space=42;
-constexpr int row_height=29,section_gap=32;
-constexpr int design_w=404,design_h=746+update_space+row_height;
+constexpr int update_space=60;
+constexpr int row_height=29,tuning_height=22,filter_header_height=32+tuning_height;
+constexpr int design_w=404,design_h=746+update_space+row_height+tuning_height;
 static int row_top(int id,bool restore_visible){
     if(id==retro_panel::ModUpdate)return 54;
     int index=retro_panel::visual_index(id);
     if(!restore_visible&&index>retro_panel::visual_index(retro_panel::Restore))--index;
     return 78+update_space+(index-1)*row_height+
-           (index>=retro_panel::visual_index(retro_panel::Profile)?section_gap:0);
+           (index>=retro_panel::visual_index(retro_panel::Profile)?filter_header_height:0);
 }
 
 struct Canvas {
@@ -94,7 +94,7 @@ static UpdateMeter update_meter(retro_panel::UpdateState update,ULONGLONG tick){
     return meter;
 }
 static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed,
-                   retro_panel::UpdateState update=retro_panel::update_idle,UpdateMeter meter={}){
+                   retro_panel::UpdateState update,UpdateMeter meter,int output_w,int output_h){
     const COLORREF body=RGB(23,31,35),border=RGB(96,119,120),accent=RGB(125,226,200);
     const COLORREF text=RGB(238,243,243),secondary=RGB(181,201,199),muted=RGB(130,146,148);
     c.box(0,0,design_w,design_h,border);c.box(1,1,design_w-1,design_h-1,body);
@@ -127,9 +127,15 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         else swprintf(transfer_label,32,L"%.1f MiB",meter.transferred_kib/1024.);
     }
     c.label(transfer_label[0]?transfer_label:message.status,249,update_top,385,update_top+28,0,update==update_error?RGB(255,185,134):accent,true);
+#ifdef GEO_NATIVE_CAPTURE
+    c.label(mod_update::versions().c_str(),18,update_top+27,386,update_top+45,0,secondary);
+#else
+    const std::wstring installed=L"Installed "+std::wstring(update_version::tag,update_version::tag+sizeof(update_version::tag)-1);
+    c.label(installed.c_str(),18,update_top+27,386,update_top+45,0,secondary);
+#endif
     if(update==update_downloading||update==update_verifying||update==update_saving||update==update_ready){
         constexpr int left=18,right=386,span=right-left;
-        const int top=update_top+29;
+        const int top=update_top+46;
         c.box(left,top,right,top+5,RGB(56,73,76));
         if(meter.percent>=0){
             if(meter.percent)c.box(left,top,left+span*meter.percent/100,top+5,accent);
@@ -140,7 +146,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     }
     c.label(L"Display settings",17,52+update_space,260,76+update_space,0,accent);
     c.label(L"Auto-save",246,52+update_space,387,76+update_space,0,secondary,true);
-    const int filter_top=row_top(Profile,true)-section_gap;
+    const int filter_top=row_top(Profile,true)-filter_header_height;
     c.box(16,filter_top+1,388,filter_top+2,RGB(61,77,80));
     c.label(L"Screen filter",17,filter_top+3,388,filter_top+29,0,accent);
     const bool restore_visible=can_restore(s);
@@ -148,6 +154,11 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         std::wstring base=std::wstring(L"Based on ")+(base_profile()==8?L"FF8 Reborn":names[base_profile()]);
         c.label(base.c_str(),122,filter_top+3,387,filter_top+29,0,secondary,true);
     }
+    wchar_t output[64];
+    swprintf(output,std::size(output),L"%ls · %d×%d",
+             filter_resolution::label(filter_resolution::detect(output_w,output_h)),output_w,output_h);
+    c.label(L"Auto tuning",18,filter_top+28,125,filter_top+50,0,secondary);
+    c.label(output,126,filter_top+28,385,filter_top+50,0,secondary,true);
     const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",
                               L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing",L"Motion blur"};
     const int values[]={0,s.lines,s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness,s.motion_blur};
@@ -218,7 +229,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     const auto update=retro_panel::update_status?retro_panel::update_status():retro_panel::update_idle;
     const decltype(last_state) state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
                                     settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,settings.phosphors,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
-                                    settings.motion_blur};
+                                    settings.motion_blur,w,h};
     UpdateMeter meter=last_meter;
     const bool changed=!painted||last_state!=state;
     const bool active_update=update==retro_panel::update_downloading||update==retro_panel::update_verifying||
@@ -233,7 +244,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     if(changed||!(last_meter==meter)){
         Canvas canvas(pw,ph);
         if(!canvas.pixels)return false;
-        render(canvas,settings,selected,bypass,failed,update,meter);
+        render(canvas,settings,selected,bypass,failed,update,meter,w,h);
         GdiFlush();
         for(size_t at=3;at<size_t(pw)*ph*4;at+=4)canvas.pixels[at]=255;
         try{retro_display::allocate(panel,pw,ph);}

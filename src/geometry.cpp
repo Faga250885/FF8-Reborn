@@ -18,9 +18,9 @@
 #include <string>
 #include <cstddef>
 #include <atomic>
+#include "update_version.h"
 #ifdef GEO_NATIVE_CAPTURE
 #include <winhttp.h>
-#include "update_version.h"
 #include "update_feed.h"
 #include "update_slots.h"
 #endif
@@ -378,6 +378,7 @@ struct TextureState {GLint id=0,env=GL_MODULATE;bool enabled=false;float matrix[
 #include "texture_transfer.h"
 #include "fps_counter.h"
 #include "retro_panel_draw.h"
+#include "update_notice.h"
 static std::shared_ptr<TextureCopy> freeze_texture(GLuint id){
     auto found=texture_cache.find(id);if(found!=texture_cache.end())return found->second;
     demand((uintptr_t)copy_image>3&&(uintptr_t)copy_image!=UINTPTR_MAX,"texture snapshots require copy image support");
@@ -1424,14 +1425,22 @@ static void track_display_refresh(HDC handle,double time){
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
     const int counter=display_settings.fps_counter;
+    bool offered=false;
+#ifdef GEO_NATIVE_CAPTURE
+    mod_update::on_first_present();
+    offered=mod_update::status()==retro_panel::update_available;
+#endif
     auto& history=retro_display::motion_history;
     const int blur=enabled?display_settings.retro.motion_blur:0;
     if(!blur)history.reset();
     if(!counter)fps_counter::reset_meter();
-    if(!panel&&!counter&&!blur&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
+    const double notice_time=offered?now():0;
+    const bool notice_due=offered&&(update_notice::lifetime.began<0||notice_time<update_notice::lifetime.began+12.);
+    if(!panel&&!counter&&!blur&&!notice_due&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
     RECT rect{};
     if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;history.previous_time=0;return false;}
     w=rect.right;h=rect.bottom;
+    const float notice_alpha=notice_due&&w>0&&h>0&&!panel?update_notice::lifetime.opacity(true,notice_time):0.f;
     if(blur){
         const int mode=current.mode;
         const bool gameplay=mode>=1&&mode<=3&&current.layout()==mode&&!current.menu_edge&&
@@ -1443,9 +1452,12 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
     RetroSettings filter=enabled?display_settings.retro:RetroSettings{};
     filter.lines=filter.visible_lines(current.raster_rows);
     const int scale=fps_counter::scale(counter,w,h);
-    if(!retro_display::begin_window(filter,handle,w,h,panel||scale,
-        panel||!scale?w:fps_counter::tile_w*scale,panel||!scale?h:fps_counter::tile_h*scale))return false;
+    const auto notice=notice_alpha>0?update_notice::place(w,h,fps_counter::tile_h*scale):update_notice::Placement{};
+    const int overlay_w=panel?w:std::max(fps_counter::tile_w*scale,notice.x+notice.w);
+    const int overlay_h=panel?h:std::max(fps_counter::tile_h*scale,notice_alpha>0?h-notice.y:0);
+    if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice_alpha>0,overlay_w,overlay_h))return false;
     if(scale&&!retro_display::retiring_front)fps_counter::draw(w,h,scale);
+    if(notice_alpha>0&&!retro_display::retiring_front)update_notice::draw(0,notice,notice_alpha);
     if(panel&&!retro_display::retiring_front)
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
@@ -1835,18 +1847,23 @@ static int game_mode(){
     return value;
 }
 static Surface encounter_native;
+#include "card_transition.h"
 // When a scene changes, parity or the next interpolation pair may not be
 // available yet. Scale this swap's actual image, never an old parity sample.
 static bool present_native_layout(const Frame& f,const WideView& v,GLuint target=0,bool transient_3d=false){
     const bool field=f.layout()==1;
+    const bool results=f.mode==after_battle_mode;
+    if(results&&!v.menu)return false;
     if(!transient_3d&&!v.menu&&!v.outer_width&&!f.menu_edge&&f.travel==Frame::Travel::none)return false;
     if(!v.menu&&!gameplay_layout(f.layout()))return false;
     const int w=f.w,h=f.h;if(w<=0||h<=0)return false;
     Guard guard(Frame{});
     resize(encounter_native,w,h,false);
     blit(target,encounter_native.fbo,w,h,w,h,GL_COLOR_BUFFER_BIT);
-    const int sw=std::min(w,int(std::lround(h*4./3))),sh=std::min(h,int(std::lround(w*3./4)));
-    const int sx=(w-sw)/2,sy=(h-sh)/2;
+    const int sw=results?v.result_viewport[2]:std::min(w,int(std::lround(h*4./3)));
+    const int sh=results?v.result_viewport[3]:std::min(h,int(std::lround(w*3./4)));
+    const int sx=results?v.result_viewport[0]:(w-sw)/2;
+    const int sy=results?v.result_viewport[1]:(h-sh)/2;
     const int lines=f.layout()==3?432:448;
     const int dh=v.outer_height?v.outer_height:int(std::lround(sh*480./lines));
     const bool native_sides=(transient_3d||(f.travel!=Frame::Travel::none&&f.layout()==2))&&!v.full_map;
@@ -1920,6 +1937,19 @@ static BOOL WINAPI swap_hook(HDC handle){
         current.travel=Frame::Travel::none;
         if(display_settings.wide&&resolve_travel_layout(current,previous,transition))
             transition=WideView(current,true);
+        if(enabled&&display_settings.wide&&card_transition::entering(current,previous)){
+            const auto* copy=card_transition::final_copy(current);
+            const auto compact=card_transition::compact(current,copy);
+            if(compact.w){
+                native_scaled=card_transition::present(current,compact,encounter_native);
+                native_endpoint=native_scaled;
+                candidate=false;
+            }else{
+                card_transition::resolve(current,previous,copy);
+                if(current.mode==card_transition::mode&&current.layout()!=current.mode)
+                    transition=WideView(current,true);
+            }
+        }
         if(direct_complete&&mode==2){current.travel=Frame::Travel::scene;native_endpoint=true;}
         current.raster_rows=240;
         if(display_settings.wide&&!transition.full_map){
@@ -2359,6 +2389,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
 // their names without GL deletes: a new context may reuse exactly those names.
 static void forget_deleted_context(){
     retro_panel_draw::forget();
+    update_notice::tile={};
     fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();

@@ -4,6 +4,7 @@
 static bool battle_visibility_enabled=true;
 static double screen_area(const Vertex*a){return double(a[1].p[0]-a[0].p[0])*(a[2].p[1]-a[0].p[1])-double(a[2].p[0]-a[0].p[0])*(a[1].p[1]-a[0].p[1]);}
 static bool opaque_projected(const Op&op){return projected_geometry(op)&&(!op.state.blend||(op.state.src_rgb==GL_ONE&&op.state.dst_rgb==GL_ZERO));}
+#include "battle_edges.h"
 static void mark_battle_front_faces(){
     for(auto&op:current.ops)if(opaque_projected(op)){
         op.front_face.assign(op.vertices.size()/3,0);
@@ -15,7 +16,7 @@ static void suppress_backfaces(const Op&op,std::vector<Vertex>&vertices){
     for(unsigned i=0;i<op.front_face.size();i++)if(op.front_face[i]&&screen_area(&vertices[i*3])>0){
         memcpy(vertices[i*3+1].p,vertices[i*3].p,sizeof(vertices[i*3].p));memcpy(vertices[i*3+2].p,vertices[i*3].p,sizeof(vertices[i*3].p));}
 }
-static void retain_battle_outgoing(const std::vector<Primitive>&old,const std::vector<Primitive>&cur,const ForwardSurface&extra={}){
+static void retain_battle_outgoing(const std::vector<Primitive>&old,const std::vector<Primitive>&cur,const ForwardSurface&extra,const HeldBattlePoints&held){
     struct Shared{std::array<float,4> point;bool valid=true;};std::unordered_map<uint64_t,Shared> shared;
     for(const auto&op:current.ops)if(!op.indexed_complete&&opaque_projected(op)){
         const auto state=surface_state_key(op);
@@ -49,6 +50,14 @@ static void retain_battle_outgoing(const std::vector<Primitive>&old,const std::v
             auto found=shared.find(surface_point_key(before_state,p));if(found==shared.end()||!found->second.valid){valid=false;break;}
             for(int k:{0,1,3})predicted[v].p[k]=found->second.point[k];}
         if(!valid||screen_area(predicted)<1e-5)continue;
+        for(unsigned v=0;v<3;++v){
+            const auto w=(v+1)%3;
+            if((!held.empty()&&held.count(surface_point_key(before_state,predicted[v].p)))||
+               battle_edge_stretches(before.vertices[tri.start+v].p,before.vertices[tri.start+w].p,predicted[v].p,predicted[w].p)){
+                valid=false;break;
+            }
+        }
+        if(!valid)continue;
         auto& draw=departing_batch(before,tri.op,tail->second);draw.front_face.push_back(1);
         for(unsigned v=0;v<3;v++){draw.vertices.push_back(predicted[v]);std::array<float,4> prior;memcpy(prior.data(),before.vertices[tri.start+v].p,sizeof(predicted[v].p));draw.prior_positions.push_back(prior);draw.motion_valid.push_back(1);}
         outgoing_triangles++;
