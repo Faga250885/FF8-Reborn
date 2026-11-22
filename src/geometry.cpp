@@ -18,6 +18,12 @@
 #include <string>
 #include <cstddef>
 #include <atomic>
+#ifdef GEO_NATIVE_CAPTURE
+#include <winhttp.h>
+#include "update_version.h"
+#include "update_feed.h"
+#include "update_slots.h"
+#endif
 
 // Geometry replay, never optical flow. All GL work stays on the game's thread.
 // Unsupported frames stay native. Replay must pass an image parity test first.
@@ -74,6 +80,9 @@ struct DisplaySettings {
 } static display_settings;
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
+#ifdef GEO_NATIVE_CAPTURE
+#include "update_menu.h"
+#endif
 static HGLRC context;
 static HDC dc;
 static std::atomic<DWORD> thread{0};
@@ -1468,9 +1477,13 @@ struct WorldParityTimes {
     unsigned count=0;
 };
 static WorldParityTimes world_parity_times;
-static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times=nullptr){
+static void capture_native_reference(GLuint source){
+    resize(reference_target,width,height,false);
+    blit(source,reference_target.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
+}
+static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times=nullptr,bool native_captured=false){
     const double begin=times?now():0;
-    resize(test_target,width,height);resize(reference_target,width,height,false);
+    resize(test_target,width,height);
     resize(sample_a,160,deck_renderer?180:90,false);
     if(!deck_renderer)resize(sample_b,160,90,false);
     replay(test_target.fbo,1);
@@ -1478,7 +1491,7 @@ static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times
     // Normalize both sources to the same offscreen orientation before scaling.
     // At integral downscale ratios, default-FBO vs FBO nearest sampling can
     // pick adjacent source rows at texel-boundary ties on the NVIDIA driver.
-    blit(native_source,reference_target.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
+    if(!native_captured)capture_native_reference(native_source);
     const double copied=times?now():0;
     blit(reference_target.fbo,sample_a.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
     blit(test_target.fbo,deck_renderer?sample_a.fbo:sample_b.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT,0,0,deck_renderer?90:0);
@@ -1486,6 +1499,44 @@ static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times
         times->replay+=drawn-begin;times->copy+=copied-drawn;times->samples+=now()-copied;
     }
 }
+// A lit endpoint reconstructed from this tick can disagree with an entirely
+// black native backbuffer. Retain the last displayed image for at most one
+// native tick, and only when the accepted scene still matches the new replay.
+struct DeckBlackEndpoint {
+    unsigned tick=0,held=0;
+    int mode=0,w=0,h=0;
+    BYTE thumbnail[12*8*3]{};
+    bool suspect=false;
+    void sample(bool ok,GLenum error,const BYTE* native,const BYTE* reconstructed){
+        suspect=false;
+        if(display_settings.fps!=60||current.mode<1||current.mode>3||current.layout()!=current.mode||
+           current.menu_edge||error){tick=0;return;}
+        const bool consecutive=tick&&tick+1==sources&&mode==current.mode&&w==width&&h==height;
+        if(!ok&&!consecutive){tick=0;return;}
+        int changes[8][3]{};
+        unsigned previous_lit=0,current_lit=0;
+        for(unsigned y=0;y<8;++y)for(unsigned x=0;x<12;++x){
+            const unsigned pixel=((5+11*y)*160+7+13*x)*4,i=(y*12+x)*3;
+            for(unsigned c=0;c<3;++c){
+                if(ok)thumbnail[i+c]=native[pixel+c];
+                else changes[(y/4)*4+x/3][c]+=int(thumbnail[i+c])-reconstructed[pixel+c];
+            }
+            if(!ok){
+                previous_lit+=std::max({thumbnail[i],thumbnail[i+1],thumbnail[i+2]})>16;
+                current_lit+=std::max({reconstructed[pixel],reconstructed[pixel+1],reconstructed[pixel+2]})>16;
+            }
+        }
+        if(ok){tick=sources;mode=current.mode;w=width;h=height;return;}
+        tick=0;
+        unsigned delta=0;
+        for(const auto& block:changes)for(int component:block)delta+=std::abs(component);
+        if(previous_lit<32||current_lit<32||delta>sizeof(thumbnail)*12)return;
+        for(size_t i=0;i<parity_plane_bytes;i+=4)
+            if(std::max({native[i],native[i+1],native[i+2]})>8)return;
+        suspect=true;
+    }
+};
+static DeckBlackEndpoint deck_black;
 static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false){
     static std::vector<BYTE> samples(2*parity_plane_bytes);
     BYTE* a=samples.data();
@@ -1504,6 +1555,7 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
     }
     double error=0;unsigned bad=0;for(size_t i=0;i<parity_plane_bytes;i++)if(i%4!=3){int d=abs(int(a[i])-int(b[i]));error+=d;bad+=d>8;}
     error/=160*90*3;GLenum error_code=glGetError();if(submission_error)error_code=submission_error;bool ok=!error_code&&error<0.75&&bad<160*90*3/100;
+    if(deck_renderer)deck_black.sample(ok,error_code,a,b);
     current.infirmary_room=current.mode==1?infirmary::room_id():-1;
     current.infirmary_top=current.infirmary_room>=0?infirmary::camera_top(current.infirmary_room,samples):-1;
     field_blur::prepare(current);
@@ -1528,9 +1580,9 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
     }
     return ok;
 }
-static bool parity(){
-    submit_parity_samples();
-    return collect_parity();
+static bool parity(bool native_captured=false,GLenum capture_error=GL_NO_ERROR){
+    submit_parity_samples(0,nullptr,native_captured);
+    return collect_parity(capture_error);
 }
 // The native samples and the wide candidate belong to this same game tick.
 // Submit the candidate while the GPU transfers the samples. Only commit it
@@ -1590,6 +1642,10 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
     write_stats(line);ps=sources;po=outputs;last=t;
     if(deck_renderer){
         deck_cadence.report(write_stats);
+        if(deck_black.held){
+            snprintf(line,sizeof(line),"Deck black endpoint | %u single presentations held after native/replay mismatch\n",deck_black.held);
+            write_stats(line);deck_black.held=0;
+        }
         if(deck_interval.held||deck_interval.changes||deck_interval.failures){
             snprintf(line,sizeof(line),"Deck swap interval | %u changes | %u transient native frames | %u driver failures\n",
                      deck_interval.changes,deck_interval.held,deck_interval.failures);write_stats(line);
@@ -1710,6 +1766,7 @@ static BOOL WINAPI swap_hook(HDC handle){
     float displayed_alpha=-1;bool output_due=true,native_endpoint=false,published=false,native_scaled=false;
     double source_replay_start=0,source_backup_time=0;
     bool measure_world=false;
+    bool hold_display=false;
     int deck_scene=0;
     try {
         int mode=game_mode();
@@ -1761,7 +1818,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
-        if(deck_renderer&&enabled&&display_settings.fps==60&&(mode==2||mode==3)&&
+        if(deck_renderer&&enabled&&display_settings.fps==60&&mode>=1&&mode<=3&&
            current.layout()==mode&&!current.menu_edge&&!atlas_open)deck_scene=mode;
         measure_world=deck_renderer&&candidate&&display_settings.wide&&!display_settings.fps&&mode==2&&
             previous.mode==2&&current.layout()==2&&transition.outer_width&&!atlas_open&&!current.menu_edge&&
@@ -1790,6 +1847,17 @@ static BOOL WINAPI swap_hook(HDC handle){
                 replay(0,1,true);native_endpoint=true;
             }
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
+            // Own a copy of the game's exact backbuffer before any extra
+            // swap for the outgoing pair or any offscreen validation draw.
+            const bool captured=deck_renderer&&display_settings.fps==60&&mode>=1&&mode<=3;
+            double native_copy_cost=0;
+            GLenum capture_error=GL_NO_ERROR;
+            if(captured){
+                const double begin=now();capture_native_reference(0);
+                capture_error=glGetError();
+                native_copy_cost=now()-begin;
+                parity_seconds+=native_copy_cost;
+            }
             // A source tick can arrive at the same time as a 60 Hz slot.
             // Present the already validated pair before queuing the next
             // endpoint's GPU work; doing it after the readback adds jitter.
@@ -1809,8 +1877,10 @@ static BOOL WINAPI swap_hook(HDC handle){
             GLenum submit_error=GL_NO_ERROR;
             if(early_samples){
                 const double began=now();
-                submit_parity_samples(0,&world_parity_times);
+                submit_parity_samples(0,&world_parity_times,captured);
                 submit_error=glGetError();
+                if(capture_error)submit_error=capture_error;
+                world_parity_times.copy+=native_copy_cost;
                 if(!submit_error)queued_world=world_readback.enqueue();
                 const double flushing=now();
                 glFlush();
@@ -1830,7 +1900,10 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(!deck_source_budget.busy&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
                 present_reason=9;qa_stage(9);present_during_wait(true);advance_output();}
             qa_stage(10);phase=now();
-            const bool valid=early_samples?collect_parity(submit_error,queued_world):parity();
+            const bool valid=early_samples?collect_parity(submit_error,queued_world):parity(captured,capture_error);
+            hold_display=!valid&&captured&&deck_black.suspect&&was_presenting&&pair&&
+                presentation_mode==mode&&!current.menu_edge&&!atlas_open&&current.layout()==mode;
+            if(hold_display)++deck_black.held;
             if(early_samples){world_parity_times.collect+=now()-phase;++world_parity_times.count;}
             if(valid){
                 parity_ok++;
@@ -1879,8 +1952,8 @@ static BOOL WINAPI swap_hook(HDC handle){
     }
     matching_checkpoint=nullptr;if(!can_present){prepared_previous=false;checkpoint_outgoing.clear();}
     if(deck_renderer&&!can_present)deck_wait_recovery.clear_samples();
-    const bool transient_3d=deck_interval.within(deck_scene,current.w,current.h,t);
-    if(published&&enabled&&display_settings.wide&&!native_endpoint&&!can_present&&
+    const bool transient_3d=deck_scene>=2&&deck_interval.within(deck_scene,current.w,current.h,t);
+    if(published&&enabled&&display_settings.wide&&!native_endpoint&&!can_present&&!hold_display&&
        (current.layout()==6||current.menu_edge||current.layout()==1||current.travel!=Frame::Travel::none||transient_3d)){
         try{
             WideView fallback(current,true);
@@ -1914,7 +1987,7 @@ static BOOL WINAPI swap_hook(HDC handle){
     const double layout_seconds=deck_renderer?now()-t:0;
     double filter_seconds=0;
     const bool time_filter=deck_renderer&&!display_settings.fps&&display_settings.wide;
-    if(!can_present||output_due){
+    if(!hold_display&&(!can_present||output_due)){
         result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr);
         if(source_replay_start&&can_present&&result){
             const double finished=now();
@@ -2147,7 +2220,7 @@ static void forget_deleted_context(){
     deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
-    deck_cadence={};
+    deck_cadence={};deck_black={};
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;
@@ -2207,11 +2280,16 @@ static bool hook(HMODULE module,const char*dll,const char*function,void*replacem
     return false;
 }
 #include "steam_license.h"
-static DWORD WINAPI initialize(void*){
+static DWORD WINAPI initialize(void* module){
     char path[MAX_PATH];GetModuleFileNameA(NULL,path,MAX_PATH);char*leaf=strrchr(path,'\\');if(!leaf||_stricmp(leaf+1,"FFVIII.exe"))return 0;
+#ifdef GEO_NATIVE_CAPTURE
+    if(update_slots::load_newer(static_cast<HMODULE>(module),update_version::channel,update_version::build))return 0;
+#endif
     for(int i=0;i<200&&!engine;i++){engine=GetModuleHandleA("FFVIII_EFIGS.dll");if(!engine)Sleep(50);}
     FILE*f=fopen("FF8_geometry.log","w");if(f){fputs("FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);fclose(f);}
-    if(deck_renderer)log("FF8 Reborn Steam Deck preview 11\n");
+#ifdef GEO_NATIVE_CAPTURE
+    log("FF8 Reborn ");log(update_version::channel);log(" ");log(update_version::tag);log("\n");
+#endif
     if(!engine)return 0;
     SteamLicense license=steam_license();
     for(int retry=0;license==SteamLicense::waiting&&retry<240;++retry){
@@ -2221,6 +2299,9 @@ static DWORD WINAPI initialize(void*){
         log("FF8 Reborn inactive: launch the Steam edition with the account that owns FINAL FANTASY VIII Remastered.\n");
         return 0;
     }
+#ifdef GEO_NATIVE_CAPTURE
+    mod_update::setup(static_cast<HMODULE>(module));
+#endif
     wchar_t exePath[MAX_PATH]={};
     const DWORD length=GetModuleFileNameW(NULL,exePath,MAX_PATH);
     if(length>0&&length<MAX_PATH){
@@ -2291,5 +2372,13 @@ static DWORD WINAPI initialize(void*){
 }
 }
 #ifndef GEO_TEST
-BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID){if(reason==DLL_PROCESS_ATTACH){DisableThreadLibraryCalls(module);HANDLE t=CreateThread(nullptr,0,geo::initialize,nullptr,0,nullptr);if(t)CloseHandle(t);}return TRUE;}
+BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID){
+    if(reason==DLL_PROCESS_ATTACH){
+        DisableThreadLibraryCalls(module);
+        HANDLE thread=CreateThread(nullptr,0,geo::initialize,module,0,nullptr);
+        if(!thread)return FALSE;
+        CloseHandle(thread);
+    }
+    return TRUE;
+}
 #endif

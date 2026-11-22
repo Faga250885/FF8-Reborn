@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **Steam Deck preview 11 is experimental.** On preview 10, a player saw the counter drop to **9 FPS** immediately after a black flash and return to 60 after another. Flashes occurred on the world map and in battle. Preview 11 addresses a presentation change that can occur in those scenes. The flashes and sustained 60 FPS still need testing on a physical Deck. **Original** is the default frame rate on LCD and OLED.
+> **The Steam Deck build is experimental.** On preview 11, a player reported black flashes about every 20 seconds and sudden drops from 60 to around 40 FPS in towns, on the world map and in battle. Version **1.4.0-deck.1** addresses isolated black frames and reduces the CPU time spent matching people in crowded fields. The fixes have been tested with recorded scenes on Windows. Sustained 60 FPS on Deck still needs hardware verification. **Original** is the default frame rate on LCD and OLED.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -25,7 +25,9 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 **60 FPS** draws intermediate positions between original game updates. In a 15 FPS battle this allows up to three extra images per update, while the game keeps its combat timing. Scene cuts and unsupported poses can hold at the native frame. The game-folder log records successful swaps per second and gaps over 25 ms separately for fields, battles and the world map.
 
-**Changes in preview 11.** When the mod cannot match a pose for a few frames in battle or on the world map, it can keep the current presentation timing and widescreen layout while showing the game’s own frame. In battles it reuses the indices that identify bones and the connections between mesh vertices when these stay the same. Each pose still uses the current positions. In crowded towns it can prepare the mesh used to match moving characters alongside other work.
+**Changes in 1.4.0-deck.1.** When the game supplies a single black frame in the middle of a verified, still-lit scene, the renderer can keep the last visible frame on screen. A second black frame passes through. In replay tests at Deling City, on the world map and in battle, the new build suppressed all eight injected flashes and preserved the tested fades. The presentation timing also stays steady through brief gaps in city animation data.
+
+In recorded city scenes, matching characters’ movements took 5.39 ms per update instead of 6.28 ms with six characters, and 2.99 ms instead of 3.22 ms in Deling City. All 45 tested intermediate images across nine recordings matched the previous output pixel for pixel. These are Windows measurements of one rendering step. In-game frame rates on Deck depend on the rest of the frame as well.
 
 A bench test introduced a 111 ms stall. Preview 10 still withheld intermediate frames after 300 inexpensive game updates. Preview 11 allowed them again after three valid updates with low rendering cost. On Windows, the new and previous builds produced identical images at five interpolation points in each of nine recorded scenes.
 
@@ -34,11 +36,11 @@ A bench test introduced a 111 ms stall. Preview 10 still withheld intermediate f
 The LCD and OLED editions offer **Original** (the default) and **60 FPS**. With **Original + Widescreen**, the mod checks the world-map layout when you enter it or the view changes. During ordinary travel the game then draws the wider view in a single pass. The game-folder file `FF8_geometry.log` records frame rate and rendering times. In 60 FPS mode, look for `Deck gap` entries for pauses of at least 80 ms within the same scene. If you see a flash or slowdown, attach the log and describe what was happening. [Report a Steam Deck issue](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml).
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
@@ -111,7 +113,8 @@ Display choices save as you adjust them. Filters have their own profiles. To mak
 
 ## Update, uninstall and troubleshoot
 
-- **Update:** close FFVIII and its launcher, then run the latest installer. Click **Install** to update. Your saved settings carry over.
+- **Update in-game.** Open the panel with **F8** (keyboard) or **View + Menu** (controller). Select **Check for updates** with **Enter** or **A**. When a release is available, select **Download update**. You can keep playing. After the panel shows **Update ready**, close and reopen FFVIII through Steam to use it. Your settings and saves carry over.
+- **First upgrade from an older release.** Install Windows 1.4.0 or Steam Deck 1.4.0-deck.1 (or newer) once to add the menu option. Future updates use the Windows stable channel or the Steam Deck experimental channel automatically. Steam Deck updates work in Gaming Mode. Checking requires internet and downloading requires write access to the game folder. The standalone installer is also available for repairs.
 - **Uninstall:** close the game and launcher, open the installer, select the game folder and click **Uninstall**. The installer verifies and restores the original DLL. Save files are not part of the installation.
 - **F8 does nothing:** give the game window focus and launch through the Steam account that owns the game. On a controller, press both buttons together. For a pad without XInput, use a Steam Input gamepad layout.
 - **Unexpected DLL or incompatible engine:** confirm the edition and game folder. Another mod using `libvgmstream.dll` can conflict. Remove that mod using its own instructions before installing FF8 Reborn.

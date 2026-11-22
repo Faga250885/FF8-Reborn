@@ -17,8 +17,13 @@ static Topology topology_points(const Op* ops,size_t op_count,const std::vector<
     std::vector<uint64_t> states;states.reserve(op_count);
     for(size_t i=0;i<op_count;++i){const auto& op=ops[i];uint64_t key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
         key=hash(key,op.state.projection,sizeof(op.state.projection));states.push_back(hash(key,op.state.viewport,sizeof(op.state.viewport)));}
-    unsigned visited=0;
-    for(const auto&tri:tris){const auto&op=ops[tri.op];if((!field_worker&&op.indexed_complete)||!projected_geometry(op))continue;
+    unsigned visited=0,last_op=UINT_MAX;
+    bool include=false;
+    for(const auto&tri:tris){const auto&op=ops[tri.op];
+        if(last_op!=tri.op){
+            last_op=tri.op;include=(field_worker||!op.indexed_complete)&&projected_geometry(op);
+        }
+        if(!include)continue;
         if(!field_worker&&(visited++&127)==0&&matching_checkpoint)matching_checkpoint();
         uint64_t state=states[tri.op];
         for(unsigned v=0;v<3;v++){const auto&p=op.vertices[tri.start+v].p;if(p[3]<=0||p[3]>=.1f)continue;
@@ -59,25 +64,45 @@ static TopologyVotes resolve_topology(const Topology& before_topology,Topology& 
 #ifdef GEO_AUTOTEST
     if(partial_topology_enabled){
 #endif
+    if(votes.anchors==before.size()||votes.anchors==after.size())return votes;
     // Exact, unique vertex stars already establish identity. Reserve those
     // source vertices before the partial search, so an incomplete neighbour
     // cannot claim the same old vertex and pull two distinct points together.
     std::vector<bool> claimed(before.size());
     for(const auto&point:after)if(point.prior>=0)claimed[point.prior]=true;
-    std::pmr::monotonic_buffer_resource face_storage;
-    std::pmr::unordered_map<uint64_t,std::pmr::vector<unsigned>> face_nodes{&face_storage};face_nodes.reserve(before_topology.faces.size());
-    for(const auto&face:before_topology.faces)if(!claimed[face.first])face_nodes[face.second].push_back(face.first);
+    // Index only faces of the unmatched vertices. Link their incident nodes
+    // in flat storage; a key seen at more than 32 nodes is ambiguous.
+    size_t remaining_faces=0;
+    for(unsigned i=0;i<before.size();++i)if(!claimed[i])
+        remaining_faces+=before_topology.offsets[i+1]-before_topology.offsets[i];
+    PointIndex face_ids(remaining_faces);
+    struct Bucket {unsigned first=0,count=0;};
+    struct Link {unsigned node,next;};
+    std::vector<Bucket> buckets;buckets.reserve(remaining_faces);
+    std::vector<Link> links;links.reserve(remaining_faces);
+    for(const auto&face:before_topology.faces)if(!claimed[face.first]){
+        auto& id=face_ids.entry(face.second);
+        if(!id){buckets.emplace_back();id=unsigned(buckets.size());}
+        auto& bucket=buckets[id-1];
+        if(++bucket.count<=32){
+            links.push_back({face.first,bucket.first});bucket.first=unsigned(links.size());
+        }
+    }
     struct Best{int node=-1;unsigned score=0,second=0;};std::vector<Best> best_old(before.size()),best_new(after.size());
     auto vote=[](Best&best,unsigned node,unsigned score){if(score>best.score){best.second=best.score;best.score=score;best.node=(int)node;}else best.second=std::max(best.second,score);};
-    std::vector<unsigned> candidates;
+    std::vector<unsigned> candidates,scores(before.size());
     for(unsigned i=0;i<after.size();i++){
         if(after[i].prior>=0)continue;
         if(!field_worker&&(i&127)==0&&matching_checkpoint)matching_checkpoint();candidates.clear();
         for(unsigned f=after_topology.offsets[i];f<after_topology.offsets[i+1];f++){
-            auto found=face_nodes.find(after_topology.faces[f].second);if(found==face_nodes.end()||found->second.size()>32)continue;
-            candidates.insert(candidates.end(),found->second.begin(),found->second.end());}
-        std::sort(candidates.begin(),candidates.end());
-        for(size_t at=0;at<candidates.size();){unsigned j=candidates[at],score=0;do{at++;score++;}while(at<candidates.size()&&candidates[at]==j);
+            unsigned id=face_ids.entry(after_topology.faces[f].second);
+            if(!id||buckets[id-1].count>32)continue;
+            for(unsigned link=buckets[id-1].first;link;link=links[link-1].next){
+                unsigned node=links[link-1].node;
+                if(!scores[node]++)candidates.push_back(node);
+            }
+        }
+        for(unsigned j:candidates){const unsigned score=scores[j];scores[j]=0;
             if(score<2)continue;unsigned support=std::min(before_topology.offsets[j+1]-before_topology.offsets[j],after_topology.offsets[i+1]-after_topology.offsets[i]);
             if(score*5<support*3)continue;
             const auto&p=before[j].position;const auto&q=after[i].position;

@@ -14,6 +14,7 @@ import zipfile
 ENGINE = "b0097e4edd96fa2c32745b04328939eb8d182c2e89121d51405bc486b13f9108"
 AUDIO = "20179b6187e278f07b7373465d49d167a7e298f4bca40c1b28d70d8d984191d9"
 RELEASES = {
+    "fed75113fb720842e951ec09bb71ceec7d85aa0e7cf1e9fd8d3a702dd9847720",
     "cf118d4dd2735d0e53b9e8a88097a251023a93327d193a51587fbf7248a50932",
     "b9a0e7957ac4405fc403e99414d909bf1c17aa0f5523cba65e354ca97fd163af",
     "4beeef929975a15f13bd85bf1493563b05d217f0a80db66b61dcd698fa182a88",
@@ -90,6 +91,30 @@ def write_atomic(path, data):
         tmp.unlink(missing_ok=True)
 
 
+def clear_renderer_updates(game):
+    receipt = game / "FF8-Reborn-update.txt"
+    if receipt.is_symlink() or not receipt.is_file():
+        return
+    with receipt.open("rb") as stream:
+        data = stream.read(257)
+    match = re.fullmatch(
+        rb"FF8-Reborn-Update-1\ndeck\n([AB])\n([1-9][0-9]{0,9})\n([0-9a-f]{64}|-)\n([0-9a-f]{64}|-)\n",
+        data,
+    )
+    if not match or int(match[2]) > 0xffffffff:
+        return
+    hashes = {slot: value.decode("ascii") for slot, value in zip("AB", match.groups()[2:])}
+    if hashes[match[1].decode("ascii")] == "-":
+        return
+    for slot, expected in hashes.items():
+        path = game / f"FF8-Reborn-{slot}.dll"
+        if expected == "-" or path.is_symlink() or not path.is_file():
+            continue
+        if path.stat().st_size <= 64 * 1024 * 1024 and digest(path) == expected:
+            path.unlink()
+    receipt.unlink()
+
+
 def apply(game, payload, version, uninstall):
     audio = game / "libvgmstream.dll"
     backup = game / "libvgmstream_orig.dll"
@@ -124,6 +149,7 @@ def apply(game, payload, version, uninstall):
         if digest(audio) != version:
             raise ValueError("Could not verify the installed renderer.")
         write_atomic(marker, version.upper().encode("ascii"))
+    clear_renderer_updates(game)
 
 
 def install_game(game, uninstall):

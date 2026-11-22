@@ -160,7 +160,7 @@ static void coherent_projected_motion(const std::vector<Primitive>* field_faces=
         if(change<1e-5)break;
     }
     for(auto&node:nodes)if(node.reachable){node.result[0]=(float)(node.reference[0]+node.delta[0]);node.result[1]=(float)(node.reference[1]+node.delta[1]);
-        node.result[3]=(float)(node.reference[3]*std::exp(node.delta[2]));}
+        node.result[3]=node.delta[2]==0?node.reference[3]:(float)(node.reference[3]*std::exp(node.delta[2]));}
     if(field_faces && old_faces){
         // A repeated texture can give neighbouring vertices histories from
         // different props. Check the reconstructed edges against the actual

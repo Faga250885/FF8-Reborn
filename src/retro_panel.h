@@ -14,6 +14,14 @@ static std::atomic<bool> capture_pad{false};
 static bool is_open(){return open;}
 static bool save_failed(){return failed;}
 static int selected(){return row;}
+enum UpdateState { update_idle, update_checking, update_current, update_available,
+                   update_downloading, update_ready, update_error };
+static UpdateState (*update_status)()=nullptr;
+static void (*update_action)()=nullptr;
+static void (*update_detail)(wchar_t* text,size_t capacity)=nullptr;
+static bool update_actionable(UpdateState state){
+    return state==update_idle||state==update_current||state==update_available||state==update_error;
+}
 static constexpr int RetroSettings::* fields[]={
     &RetroSettings::lines,&RetroSettings::pixelation,&RetroSettings::scanlines,&RetroSettings::mask,
     &RetroSettings::glow,&RetroSettings::dither,&RetroSettings::edge_softness
@@ -44,8 +52,8 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, RowCount };
-static constexpr Row visual_order[]={Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
+static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
 static_assert(sizeof(visual_order)/sizeof(visual_order[0])==RowCount,"every setting must be reachable");
 static int visual_index(int id){return int(std::find(visual_order,visual_order+RowCount,id)-visual_order);}
 static constexpr int custom=profile_count;
@@ -167,6 +175,10 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     const bool activate=key==VK_RETURN;
     if(!activate&&key!=VK_LEFT&&key!=VK_RIGHT)return;
     const int step=key==VK_LEFT?-1:1;
+    if(row==ModUpdate){
+        if(activate&&update_action&&update_status&&update_actionable(update_status()))update_action();
+        return;
+    }
     if(row>=SaveCustom){
         if(activate&&row==SaveCustom)commit(path,s,custom,false);
         if(activate&&row==Restore&&can_restore(s)){

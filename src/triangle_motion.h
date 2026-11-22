@@ -55,7 +55,8 @@ struct MatchInput {
     std::shared_ptr<SurfaceGraph> battle_surface;
     std::shared_ptr<field_scroll::TileIndex> field_tiles;
 
-    explicit MatchInput(const Frame& frame):triangles(primitives(frame)) {
+    explicit MatchInput(const Frame& frame):triangles(primitives(frame)) {}
+    void index_materials(){
         groups.reserve(triangles.size());
         for(unsigned i=0;i<triangles.size();i++){
             groups[triangles[i].key].push_back(i);
@@ -147,12 +148,22 @@ static void match_frames(int mode=-1){
     // The published endpoints retain their original vertices. Battle depth
     // corrections use separate outgoing batches and replay scratch vertices.
     const bool reusable=previous.started&&(mode==1||mode==2||(deck_renderer&&mode==3&&previous.mode==3));
-    if(!reusable||!previous.match_input)previous.match_input=std::make_shared<MatchInput>(previous);
-    current.match_input=std::make_shared<MatchInput>(current);
+    if(!reusable||!previous.match_input){
+        auto input=std::make_shared<MatchInput>(previous);
+        input->index_materials();previous.match_input=std::move(input);
+    }
+    auto input=std::make_shared<MatchInput>(current);
     const auto& old=previous.match_input->triangles;
-    FieldTopologyJob field_job(current,current.match_input->triangles,deck_renderer&&mode==1&&reusable,
+    FieldTopologyJob field_job(current,input->triangles,deck_renderer&&mode==1&&reusable,
                                previous.match_input->field_topology.get());
-    auto cur=current.match_input->triangles;
+    input->index_materials();current.match_input=std::move(input);
+    // Field matching only annotates each triangle with its prior index.
+    // The topology worker reads the vertex range and material key. World
+    // matching also transforms positions, so it still needs a working copy.
+    const bool field_input=deck_renderer&&mode==1;
+    std::vector<Primitive> working;
+    if(!field_input)working=current.match_input->triangles;
+    auto& cur=field_input?current.match_input->triangles:working;
     const auto& old_groups=previous.match_input->groups;
     const auto& new_groups=current.match_input->groups;
     if(matching_checkpoint)matching_checkpoint();
@@ -199,7 +210,11 @@ static void match_frames(int mode=-1){
     mark_stage("mutual matching");
 #endif
     matched_candidates=0;singular_rejects=0;
+    // All triangles in a batch share the projection. The current primitive
+    // list is in draw order even when its matches came from different draws.
+    unsigned projected_op=UINT_MAX;bool projected=false;
     for(auto&tri:cur)if(tri.prior>=0){auto&op=current.ops[tri.op];const auto&prior=old[tri.prior];const auto&before=previous.ops[prior.op];
+        if(projected_op!=tri.op){projected=projected_geometry(op);projected_op=tri.op;}
         bool same=!memcmp(op.state.model,before.state.model,sizeof(op.state.model));float inverse[16];
         if(!same&&!invert_matrix(op.state.model,inverse)){tri.prior=-1;singular_rejects++;continue;}
         matched_candidates++;
@@ -207,7 +222,7 @@ static void match_frames(int mode=-1){
             if(same)memcpy(point.data(),p,4*sizeof(float));else{double view[4];transform(before.state.model,p,view);
                 for(int r=0;r<4;r++){double value=0;for(int c=0;c<4;c++)value+=inverse[c*4+r]*view[c];point[r]=(float)value;}}
             op.motion_valid[tri.start+v]=1;
-            if(!projected_geometry(op)||(p[3]>0&&p[3]<.1f)){
+            if(!projected||(p[3]>0&&p[3]<.1f)){
                 memcpy(op.prior_colors[tri.start+v].data(),before.vertices[prior.start+v].c,4*sizeof(float));op.color_valid[tri.start+v]=1;}}
     }
 #ifdef GEO_PROFILE
@@ -243,12 +258,15 @@ static void match_frames(int mode=-1){
     std::pmr::unordered_map<uint64_t,Shared> points{&point_storage};
     unsigned last_op=UINT_MAX;uint64_t state_key=0;
     for(unsigned i=0;i<cur.size();i++){const auto&tri=cur[i];const auto&op=current.ops[tri.op];
-        if(projected_geometry(op))continue;
         if(last_op!=tri.op){
-            state_key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
-            state_key=hash(state_key,&op.state.program,sizeof(op.state.program));
-            state_key=hash(state_key,op.state.projection,sizeof(op.state.projection));last_op=tri.op;
+            last_op=tri.op;projected=projected_geometry(op);
+            if(!projected){
+                state_key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
+                state_key=hash(state_key,&op.state.program,sizeof(op.state.program));
+                state_key=hash(state_key,op.state.projection,sizeof(op.state.projection));
+            }
         }
+        if(projected)continue;
         for(unsigned v=0;v<3;v++){unsigned index=tri.start+v;double p[4];matching_position(op.state,op.vertices[index].p,p);
             float canonical[4];for(int k=0;k<4;k++)canonical[k]=p[k]==0?0:(float)p[k];
             uint64_t key=hash(state_key,canonical,sizeof(canonical));

@@ -13,7 +13,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("FF8 Reborn Installer")]
 [assembly: AssemblyProduct("FF8 Reborn")]
-[assembly: AssemblyVersion("1.3.2.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
 
 internal static class Juego {
     internal const string Nombre = "FINAL FANTASY VIII Remastered";
@@ -52,6 +52,7 @@ internal static class Juego {
     const string RebornCustomCopy = "3F5E6E59BB11D85FA59993BD66FBE79D6E420192129EF1A5A21632AB5DD74507";
     const string RebornEnglish = "42ED54AD00B57263C9108B2B42EC7E7E36CB67C470903A8AB487C068E76A035F";
     static bool EsAnterior(string firma) {
+        if(firma=="3292AC8FD5924204644DDDEA45AD3967770B98FA81371AB509202A3CC3F3262D")return true;
         if(firma=="0B1D0584940091A82517C4A589ECCCCE099136B1A7066D3E8079763979C26478")return true;
         if(firma=="B94861D2BE712BA0AEDF0E46678F3622C8864078AAE8524623F71C9EDE0ED23A")return true;
         if(firma=="4850A85CC7C491132D14C4E36E679F1363917CF5EA65E39A3C47868F39A442C3")return true;
@@ -125,6 +126,29 @@ internal static class Juego {
             return BitConverter.ToString(sha.ComputeHash(f)).Replace("-","");
     }
     static void Exigir(bool ok,string motivo) { if(!ok) throw new InvalidOperationException(motivo); }
+    // Both installers use the same receipt as the renderer. A matching file
+    // name alone does not establish ownership of a DLL.
+    static string LimpiarActualizaciones(string ruta,string mensaje) {
+        string registro=Path.Combine(ruta,"FF8-Reborn-update.txt");
+        try {
+            var info=new FileInfo(registro);
+            if(!info.Exists || (info.Attributes&FileAttributes.ReparsePoint)!=0 || info.Length>256)return mensaje;
+            Match m=Regex.Match(File.ReadAllText(registro),
+                @"\AFF8-Reborn-Update-1\nwindows\n([AB])\n([1-9][0-9]{0,9})\n([a-f0-9]{64}|-)\n([a-f0-9]{64}|-)\n\z");
+            uint build;
+            if(!m.Success || !UInt32.TryParse(m.Groups[2].Value,out build) ||
+                m.Groups[m.Groups[1].Value=="A"?3:4].Value=="-")return mensaje;
+            for(int i=0;i<2;i++){
+                string firma=m.Groups[3+i].Value;
+                string archivo=Path.Combine(ruta,i==0?"FF8-Reborn-A.dll":"FF8-Reborn-B.dll");
+                if(firma!="-" && File.Exists(archivo) && (File.GetAttributes(archivo)&FileAttributes.ReparsePoint)==0 &&
+                   String.Equals(Firma(archivo),firma,StringComparison.OrdinalIgnoreCase))File.Delete(archivo);
+            }
+            File.Delete(registro);
+        } catch(UnauthorizedAccessException) {return mensaje+" Could not remove all cached update files.";}
+          catch(IOException) {return mensaje+" Could not remove all cached update files.";}
+        return mensaje;
+    }
     [System.Runtime.InteropServices.DllImport("kernel32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,SetLastError=true)]
     static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle archivo,
         System.Text.StringBuilder ruta,uint capacidad,uint flags);
@@ -181,12 +205,12 @@ internal static class Juego {
         if(activo!=Original) Exigir(File.Exists(copia),"The original DLL backup needed to restore the game is missing.");
         if(instalar && activo==Mod) {
             if(version!=Mod) File.WriteAllText(marca,Mod);
-            return "This version is already installed and verified.";
+            return LimpiarActualizaciones(ruta,"This version is already installed and verified.");
         }
         if(!instalar && activo==Original) {
             if(File.Exists(marca)) File.Delete(marca);
             if(File.Exists(copia)) File.Delete(copia);
-            return "The game already has its original DLL.";
+            return LimpiarActualizaciones(ruta,"The game already has its original DLL.");
         }
         var etapa=Path.Combine(ruta,"FF8-Horizonte-"+Guid.NewGuid().ToString("N")+".tmp");
         var anterior=etapa+".bak";
@@ -205,7 +229,7 @@ internal static class Juego {
                     File.Replace(actualizar?anterior:copia,audio,null);
                     throw;
                 }
-                return "Mod installed. You can now launch the game from Steam.";
+                return LimpiarActualizaciones(ruta,"Mod installed. You can now launch the game from Steam.");
             }
             File.Copy(copia,etapa);
             Exigir(Firma(etapa)==Original,"The original DLL backup could not be verified.");
@@ -213,7 +237,7 @@ internal static class Juego {
             Exigir(Firma(audio)==Original,"The restored DLL could not be verified.");
             File.Delete(marca);
             File.Delete(copia);
-            return "Mod uninstalled. The original DLL has been restored.";
+            return LimpiarActualizaciones(ruta,"Mod uninstalled. The original DLL has been restored.");
         } finally { if(File.Exists(etapa)) File.Delete(etapa); if(File.Exists(anterior)&&Firma(audio)==Mod) File.Delete(anterior); }
     }
 }

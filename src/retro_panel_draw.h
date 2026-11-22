@@ -2,13 +2,16 @@
 // A normal presentation of the open panel is one GPU-to-GPU rectangle blit.
 namespace retro_panel_draw {
 static Surface panel;
-static std::array<int,27> last_state{};
+static std::array<int,28> last_state{};
 static bool painted=false;
-constexpr int design_w=404,design_h=746;
+constexpr int update_space=34;
+constexpr int design_w=404,design_h=746+update_space;
 static int row_top(int id,bool restore_visible){
+    if(id==retro_panel::ModUpdate)return 54;
     int index=retro_panel::visual_index(id);
     if(!restore_visible&&index>retro_panel::visual_index(retro_panel::Restore))--index;
-    return 78+index*29+(index>=5?32:0);
+    const int display_index=index-1;
+    return 78+update_space+display_index*29+(display_index>=5?32:0);
 }
 
 struct Canvas {
@@ -59,22 +62,40 @@ struct Canvas {
     }
 };
 
-static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed){
+static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed,
+                   retro_panel::UpdateState update=retro_panel::update_idle){
     const COLORREF body=RGB(23,31,35),border=RGB(96,119,120),accent=RGB(125,226,200);
     const COLORREF text=RGB(238,243,243),secondary=RGB(181,201,199),muted=RGB(130,146,148);
     c.box(0,0,design_w,design_h,border);c.box(1,1,design_w-1,design_h-1,body);
     c.label(L"FF8 REBORN",17,5,160,26,0,accent);
     c.label(L"Settings",16,23,270,56,2,text);
     if(bypass)c.label(L"Original view",243,18,387,47,0,secondary,true);
-    c.label(L"Display settings",17,52,260,76,0,accent);
-    c.label(L"Auto-save",246,52,387,76,0,secondary,true);
-    c.box(16,224,388,225,RGB(61,77,80));
-    c.label(L"Screen filter",17,227,388,253,0,accent);
     using namespace retro_panel;
+    const int update_top=row_top(ModUpdate,true);
+    if(selected==ModUpdate){
+        c.box(8,update_top,396,update_top+28,RGB(43,65,67));c.box(8,update_top,11,update_top+28,accent);
+    }
+    struct UpdateText {const wchar_t* action;const wchar_t* status;const wchar_t* hint;};
+    static constexpr UpdateText update_text[]={
+        {L"Check for updates",L"",L"Check GitHub for a newer version of FF8 Reborn."},
+        {L"Checking for updates…",L"",L"You can keep playing while FF8 Reborn checks."},
+        {L"Check for updates",L"Up to date",L"You have the latest version for this platform."},
+        {L"Download update",L"Update available",L"Download now and use it the next time you play."},
+        {L"Downloading update…",L"",L"You can keep playing during the download."},
+        {L"Update ready",L"Restart to apply",L"Keep playing. The update takes effect at next launch."},
+        {L"Check for updates again",L"Update failed",L"Try again or use the installer from GitHub."},
+    };
+    const auto& message=update_text[update];
+    c.label(message.action,18,update_top,250,update_top+28,1,update_actionable(update)?text:secondary);
+    c.label(message.status,249,update_top,385,update_top+28,0,update==update_error?RGB(255,185,134):accent,true);
+    c.label(L"Display settings",17,52+update_space,260,76+update_space,0,accent);
+    c.label(L"Auto-save",246,52+update_space,387,76+update_space,0,secondary,true);
+    c.box(16,224+update_space,388,225+update_space,RGB(61,77,80));
+    c.label(L"Screen filter",17,227+update_space,388,253+update_space,0,accent);
     const bool restore_visible=can_restore(s);
     if(dirty||active_profile==custom){
         std::wstring base=std::wstring(L"Based on ")+(base_profile()==8?L"FF8 Reborn":names[base_profile()]);
-        c.label(base.c_str(),122,227,387,253,0,secondary,true);
+        c.label(base.c_str(),122,227+update_space,387,253+update_space,0,secondary,true);
     }
     const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",
                               L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing"};
@@ -108,7 +129,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     const wchar_t* value[]={s.mode==0?L"Off":s.mode==1?L"Pixelated":L"CRT",display_settings.atlas?L"Reborn":L"Original",
         display_settings.wide?L"Widescreen":L"Original (4:3)",display_settings.fps==0?L"Original":display_settings.fps==60?L"60":L"120",
         display_settings.field_sides?L"On":L"Off",counter_sizes[display_settings.fps_counter],screens[s.tv_screen],strength.c_str(),sharpness.c_str()};
-    for(int i=FilterType;i<RowCount;i++){
+    for(int i=FilterType;i<=Restore;i++){
         if(i==Restore&&!restore_visible)continue;
         const int top=row_top(i,restore_visible);
         if(selected==i){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
@@ -117,13 +138,20 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     }
     const int footer=row_top(SaveCustom,restore_visible)+32;
     c.box(16,footer,388,footer+1,RGB(61,77,80));
-    std::wstring state=failed?L"Couldn’t save your changes. Try again.":
+    wchar_t detail[96]={};
+    if(selected==ModUpdate&&update_detail){
+        update_detail(detail,sizeof(detail)/sizeof(detail[0]));
+        detail[sizeof(detail)/sizeof(detail[0])-1]=0;
+    }
+    std::wstring state=selected==ModUpdate?(detail[0]?detail:message.hint):
+        failed?L"Couldn’t save your changes. Try again.":
         selected==Restore?L"Restore the original settings for this filter.":
         selected==SaveCustom&&active_profile!=custom&&custom_exists?L"This will replace your saved custom profile.":
         needs_choice?L"Save your changes or press Esc / B to discard.":
         active_profile==custom?L"Changes are saved to your custom profile.":
         L"Use this filter as the starting point for your copy.";
-    c.label(state.c_str(),13,footer+4,393,footer+27,0,failed?RGB(255,185,134):secondary);
+    const bool warning=selected==ModUpdate?update==update_error:failed;
+    c.label(state.c_str(),13,footer+4,393,footer+27,0,warning?RGB(255,185,134):secondary);
     c.label(L"Arrows / D-pad: adjust · Enter / A: select",13,footer+29,393,footer+51,0,text);
     c.label(L"F8 / Select + Start: close · Esc / B: cancel",13,footer+51,393,footer+75,0,text);
 }
@@ -137,12 +165,13 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     const int pw=int(std::lround(design_w*scale)),ph=int(std::lround(height*scale));
     const int margin=int(std::lround(16*scale));
     const bool failed=retro_panel::save_failed();
-    const std::array<int,27> state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
-                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter};
+    const auto update=retro_panel::update_status?retro_panel::update_status():retro_panel::update_idle;
+    const std::array<int,28> state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
+                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update};
     if(!painted||last_state!=state){
         Canvas canvas(pw,ph);
         if(!canvas.pixels)return false;
-        render(canvas,settings,selected,bypass,failed);
+        render(canvas,settings,selected,bypass,failed,update);
         GdiFlush();
         for(size_t at=3;at<size_t(pw)*ph*4;at+=4)canvas.pixels[at]=255;
         try{retro_display::allocate(panel,pw,ph);}

@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **La versión 11 de Steam Deck es experimental.** En la versión 10, un jugador vio que el contador bajaba a **9 FPS** justo después de un destello negro y volvía a 60 tras otro destello. Los destellos ocurrieron en el mapamundi y en combate. La versión 11 corrige un cambio de presentación que puede ocurrir en esas escenas. Falta comprobar en una Deck física si desaparecen los destellos y se mantienen los 60 FPS. **Original** es la cadencia predeterminada en LCD y OLED.
+> **La versión de Steam Deck es experimental.** En la versión 11, un jugador observó destellos negros aproximadamente cada 20 segundos y caídas repentinas de 60 a unos 40 FPS en ciudades, mapamundi y batallas. La **1.4.0-deck.1** corrige un caso de cuadro negro aislado y reduce el tiempo que la CPU dedica a los personajes en escenarios concurridos. Probamos los cambios en Windows con escenas grabadas. Aún falta confirmar los 60 FPS sostenidos en una Deck física. **Original** es la cadencia predeterminada en LCD y OLED.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -25,7 +25,9 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 **60 FPS** dibuja posiciones intermedias entre las actualizaciones originales del juego. En una batalla a 15 FPS puede añadir hasta tres imágenes por actualización y mantener los tiempos del combate. En cambios de plano o poses que el mod no pueda relacionar, se puede conservar el cuadro original. El registro del juego indica los cuadros enviados por segundo y los intervalos superiores a 25 ms por separado para ciudades, batallas y mapamundi.
 
-**Cambios de la versión 11.** Si durante unos cuadros el mod pierde la correspondencia entre dos poses en combate o en el mapamundi, puede mantener el ritmo de presentación y el encuadre panorámico mientras muestra la imagen del juego. En batalla reutiliza los índices de los huesos y las conexiones entre vértices cuando siguen siendo los mismos. Cada pose se calcula con las posiciones actuales. En ciudades con muchos personajes, puede preparar la malla que permite seguir sus movimientos mientras realiza otros cálculos.
+**Cambios de la 1.4.0-deck.1.** Si el juego entrega un cuadro negro aislado en mitad de una escena que el mod acaba de comprobar y que sigue iluminada, el renderizador puede mantener en pantalla la última imagen visible. Si el negro continúa en el cuadro siguiente, lo muestra. En pruebas con grabaciones de Ciudad de Deling, el mapamundi y una batalla, la revisión evitó los ocho destellos que introdujimos y conservó los fundidos de prueba. También mantiene el ritmo de presentación cuando falta brevemente información sobre la animación de los personajes en ciudad.
+
+En grabaciones de ciudad, calcular el movimiento de seis personajes pasó de 6,28 a 5,39 ms por actualización. En la calle de Deling pasó de 3,22 a 2,99 ms. Las 45 imágenes intermedias comprobadas en nueve grabaciones coincidieron píxel por píxel con la versión anterior. Estos tiempos corresponden a una etapa del renderizado medida en Windows. Los FPS reales en Deck dependen también del resto del cuadro.
 
 En una prueba de banco se introdujo una pausa de 111 ms. La versión 10 seguía omitiendo cuadros intermedios incluso después de 300 actualizaciones de bajo coste. La 11 volvió a permitirlos tras tres actualizaciones válidas de bajo coste. En Windows, la versión anterior y la nueva produjeron imágenes idénticas en cinco instantes de interpolación de cada una de las nueve escenas grabadas.
 
@@ -34,11 +36,11 @@ En una prueba de banco se introdujo una pausa de 111 ms. La versión 10 seguía 
 En LCD y OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Con **Original + Widescreen**, el mod comprueba el encuadre al entrar al mapamundi o cuando cambia la vista. Durante el recorrido normal, el juego dibuja la vista panorámica en una sola pasada. El archivo `FF8_geometry.log` de la carpeta del juego registra los FPS y los tiempos de renderizado. En el modo de 60 FPS, busca las entradas `Deck gap` para localizar pausas de al menos 80 ms dentro de una misma escena. Si ves un destello o una ralentización, adjunta el registro e indica qué ocurría en ese momento. [Informar de un problema en Steam Deck](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml).
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.11/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.1/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
@@ -111,7 +113,8 @@ Las opciones de pantalla se guardan al cambiarlas. Los filtros tienen sus propio
 
 ## Actualizar, desinstalar y resolver problemas
 
-- **Actualizar.** Cierra el juego y su lanzador y abre el último instalador. Pulsa **Install** para actualizar. Se conservan tus preferencias.
+- **Actualizar desde el juego.** Abre el panel con **F8** (teclado) o **Vista + Menú** (mando). Selecciona **Check for updates** con **Intro** o **A**. Cuando haya una versión nueva, pulsa **Download update**. Puedes seguir jugando. Cuando aparezca **Update ready**, cierra FFVIII y vuelve a abrirlo desde Steam para usar la actualización. Se conservan tus preferencias y partidas.
+- **Primera actualización desde una versión anterior.** Instala una vez la versión 1.4.0 de Windows o la 1.4.0-deck.1 de Steam Deck (o posterior) para añadir la opción al menú. Las siguientes actualizaciones usan automáticamente el canal estable de Windows o el experimental de Steam Deck. En Deck funciona desde el modo Juego. La consulta necesita internet y la descarga necesita permiso de escritura en la carpeta del juego. El instalador también sirve para reparaciones.
 - **Desinstalar.** Cierra FFVIII y el lanzador, selecciona la carpeta del juego en el instalador y pulsa **Uninstall**. Se verifica y restaura la DLL original. La instalación no modifica las partidas.
 - **F8 no responde.** Dale el foco a la ventana del juego y ábrelo desde la cuenta de Steam propietaria. En el mando pulsa ambos botones a la vez. Si tu mando no ofrece XInput, usa una distribución de mando en Steam Input.
 - **DLL inesperada o motor incompatible.** Comprueba la edición y la carpeta. Si otro mod utiliza `libvgmstream.dll`, retíralo con sus propias instrucciones antes de instalar FF8 Reborn.
