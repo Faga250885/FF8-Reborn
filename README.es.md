@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **Steam Deck sigue en fase experimental.** Un jugador confirmó 30 FPS estables en su Deck con la versión 1.4.0-deck.4. La versión 1.4.0-deck.5 añade tres efectos de movimiento opcionales, desactivados de forma predeterminada. Se probaron en Windows con el renderizador de Deck. Falta confirmar su rendimiento en la consola.
+> **Steam Deck sigue en fase experimental.** Un jugador confirmó 30 FPS estables en su Deck con la versión 1.4.0-deck.4. La versión 1.4.0-deck.6 añade un único control de desenfoque de movimiento a los filtros de pantalla. Falta confirmar el rendimiento con el efecto activado en una Deck física.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 60 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -32,28 +32,24 @@ Los menús y las cinemáticas conservan su cadencia original. En cambios de plan
 
 En una batalla grabada de 42 segundos a 1280 × 800 en Windows, la versión 1.4.0-deck.4 envió 30,00 cuadros/s. Al subir a 53 ms el trabajo simulado por cada ciclo de combate, envió 29,51 cuadros/s y el percentil 99 del intervalo entre imágenes llegó a 52,39 ms.
 
-### Efectos de movimiento en Steam Deck
+### Desenfoque de movimiento en Steam Deck
 
-Pulsa **View + Menu** a la vez y busca **Motion effects**. Cada ajuste empieza en **Off** y se guarda por separado del filtro de pantalla. Usa izquierda o derecha para cambiar la intensidad en pasos de 5 puntos porcentuales. Mantén **RB** en el mando o **Mayús** en el teclado para avanzar de 20 en 20.
+Pulsa **View + Menu** a la vez (o **F8** en el teclado) y entra en **Screen filter → Motion blur**. Con izquierda o derecha puedes ajustar la intensidad mientras juegas, de **Off** a **100 %** en pasos de **10 puntos**. El mismo control funciona en ciudades, mapamundi y batallas. Cuanto más alta es la intensidad, más visible es la estela al moverse un personaje o al girar la cámara.
 
-| Ajuste | Dónde se aprecia |
-| --- | --- |
-| **Battle character blur** | Suaviza el movimiento de los personajes y enemigos en las batallas a **30 FPS**. El desenfoque sigue el desplazamiento entre poses compatibles. |
-| **Field background blur** | Suaviza los fondos prerenderizados compatibles cuando se desplaza la cámara. Los personajes que se dibujan encima conservan su propio renderizado. |
-| **CRT persistence** | Simula el breve resplandor del fósforo en los bordes que se mueven en escenarios prerenderizados, mapamundi y batallas. Funciona con cualquier filtro de pantalla, incluido **Off**. |
+El desenfoque viene apagado en todos los perfiles de fábrica. Para conservar una intensidad, guárdala como cualquier otro cambio del filtro. **Create a custom copy** guarda tu primer filtro personalizado. Si estás editando esa copia, elige **Save my changes**. **Restore filter defaults** recupera los ajustes originales del perfil base.
 
-Para un resplandor sutil de televisor de tubo, empieza con **CRT persistence al 25 %** y deja apagados los otros dos efectos. En una batalla grabada a 1280 × 800, el renderizador de Deck en Windows envió 30,00 cuadros/s con los tres efectos apagados, 29,99 con solo la persistencia al 25 % y 28,92 con los tres controles al 100 %. Las tres pruebas usaron el filtro de pantalla recomendado.
+Al actualizar desde **deck.5**, el último filtro que usaste toma el mayor de los tres ajustes de movimiento anteriores, redondeado a la decena más cercana. Por ejemplo, si tenías la persistencia CRT al 25 %, ese filtro empezará con el **desenfoque al 30 %**. También puedes usar el desenfoque con el filtro **Off** para conservar los colores originales del juego.
 
 ### Instalar o actualizar en Steam Deck
 
 Si tienes la versión **1.4.0-deck.1** o posterior, pulsa **View + Menu → Check for updates → Download update**. Cuando aparezca **Update ready**, cierra FFVIII y su lanzador y vuelve a abrir el juego. Si ya tenías seleccionado **Original**, se conserva. Para instalar por primera vez, sigue estos pasos.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 

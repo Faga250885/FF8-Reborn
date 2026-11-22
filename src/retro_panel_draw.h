@@ -2,17 +2,16 @@
 // A normal presentation of the open panel is one GPU-to-GPU rectangle blit.
 namespace retro_panel_draw {
 static Surface panel;
-static std::array<int,31> last_state{};
+static std::array<int,29> last_state{};
 static bool painted=false;
 constexpr int update_space=34;
 constexpr int row_height=29,section_gap=32;
-constexpr int design_w=404,design_h=746+update_space+(deck_renderer?3:2)*row_height+section_gap;
+constexpr int design_w=404,design_h=746+update_space+row_height;
 static int row_top(int id,bool restore_visible){
     if(id==retro_panel::ModUpdate)return 54;
     int index=retro_panel::visual_index(id);
     if(!restore_visible&&index>retro_panel::visual_index(retro_panel::Restore))--index;
     return 78+update_space+(index-1)*row_height+
-           (index>=retro_panel::visual_index(retro_panel::Motion3D)?section_gap:0)+
            (index>=retro_panel::visual_index(retro_panel::Profile)?section_gap:0);
 }
 
@@ -97,9 +96,6 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     c.label(message.status,249,update_top,385,update_top+28,0,update==update_error?RGB(255,185,134):accent,true);
     c.label(L"Display settings",17,52+update_space,260,76+update_space,0,accent);
     c.label(L"Auto-save",246,52+update_space,387,76+update_space,0,secondary,true);
-    const int motion_top=row_top(Motion3D,true)-section_gap;
-    c.box(16,motion_top+1,388,motion_top+2,RGB(61,77,80));
-    c.label(L"Motion effects",17,motion_top+3,388,motion_top+29,0,accent);
     const int filter_top=row_top(Profile,true)-section_gap;
     c.box(16,filter_top+1,388,filter_top+2,RGB(61,77,80));
     c.label(L"Screen filter",17,filter_top+3,388,filter_top+29,0,accent);
@@ -108,24 +104,13 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         std::wstring base=std::wstring(L"Based on ")+(base_profile()==8?L"FF8 Reborn":names[base_profile()]);
         c.label(base.c_str(),122,filter_top+3,387,filter_top+29,0,secondary,true);
     }
-    for(const Row id:visual_order){
-        if(id<Motion3D||id>CRTPersistence)continue;
-        const auto& control=motion_controls[id-Motion3D];
-        const int top=row_top(id,restore_visible);
-        const int amount=display_settings.*control.setting;
-        if(selected==id){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
-        c.label(control.label,18,top,251,top+28,1,text);
-        c.meter(top,amount,accent);
-        const std::wstring value=amount?std::to_wstring(amount)+L" %":L"Off";
-        c.label(value.c_str(),318,top,385,top+28,1,amount?accent:secondary,true);
-    }
     const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",
-                              L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing"};
-    const int values[]={0,s.lines,s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness};
-    for(int i=0;i<8;i++){
+                              L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing",L"Motion blur"};
+    const int values[]={0,s.lines,s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness,s.motion_blur};
+    for(int i=Profile;i<=MotionBlur;i++){
         const int top=row_top(i,restore_visible);
         const bool current=selected==i;
-        const bool editable=i==0||(s.mode!=0&&(!(i>=3&&i<=5)||s.mode==2));
+        const bool editable=retro_panel::editable(s.mode,i);
         if(current){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
         c.label(labels[i],18,top,226,top+28,1,editable?text:muted);
         if(!i){
@@ -133,7 +118,8 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
             c.label(retro_panel::names[profile],111,top,385,top+28,1,accent,true);
         }else{
             wchar_t value[30];
-            swprintf(value,30,i==1?L"%d lines":L"%d %%",values[i]);
+            if(i==MotionBlur&&values[i]==0)wcscpy(value,L"Off");
+            else swprintf(value,30,i==Lines?L"%d lines":L"%d %%",values[i]);
             if(i!=1)c.meter(top,values[i],editable?accent:muted);
             c.label(value,318-(i==1?42:0),top,385,top+28,1,editable?secondary:muted,true);
         }
@@ -164,9 +150,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     }
     std::wstring state=selected==ModUpdate?(detail[0]?detail:message.hint):
         failed?L"Couldn’t save your changes. Try again.":
-        selected==Motion3D?(deck_renderer?L"Softens fighters and enemies in 30 FPS mode.":L"Softens fighters and enemies at 60 or 120 FPS."):
-        selected==MotionBackground?L"Softens scrolling prerendered scenery.":
-        selected==CRTPersistence?L"Adds a fading phosphor trail to movement.":
+        selected==MotionBlur?L"Softens movement across gameplay in 10% steps.":
         selected==Restore?L"Restore the original settings for this filter.":
         selected==SaveCustom&&active_profile!=custom&&custom_exists?L"This will replace your saved custom profile.":
         needs_choice?L"Save your changes or press Esc / B to discard.":
@@ -190,7 +174,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     const auto update=retro_panel::update_status?retro_panel::update_status():retro_panel::update_idle;
     const decltype(last_state) state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
                                     settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
-                                    display_settings.motion_3d,display_settings.motion_background,display_settings.crt_persistence};
+                                    settings.motion_blur};
     if(!painted||last_state!=state){
         Canvas canvas(pw,ph);
         if(!canvas.pixels)return false;

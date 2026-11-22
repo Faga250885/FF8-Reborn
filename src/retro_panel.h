@@ -24,7 +24,7 @@ static bool update_actionable(UpdateState state){
 }
 static constexpr int RetroSettings::* fields[]={
     &RetroSettings::lines,&RetroSettings::pixelation,&RetroSettings::scanlines,&RetroSettings::mask,
-    &RetroSettings::glow,&RetroSettings::dither,&RetroSettings::edge_softness
+    &RetroSettings::glow,&RetroSettings::dither,&RetroSettings::edge_softness,&RetroSettings::motion_blur
 };
 static constexpr RetroSettings profiles[]={
     {},{1,240,100,0,0,0,100,0,true},{2,320,85,35,20,10,20,0},
@@ -36,8 +36,9 @@ static constexpr RetroSettings profiles[]={
     {2,240,80,44,70,32,6,60,true,false,RetroSettings::dot_triad}
 };
 static constexpr int profile_count=sizeof(profiles)/sizeof(profiles[0]);
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
 static bool editable(int mode,int index) {
-    return index==0 || mode==2 || (mode==1 && (index<=2 || index>=6));
+    return index==Profile || index==MotionBlur || mode==2 || (mode==1 && (index<=Pixels || index>=Dither));
 }
 static int preset(const RetroSettings& s) {
     if(s.mode!=1 && s.mode!=2)return 0;
@@ -52,21 +53,9 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, Motion3D, MotionBackground, CRTPersistence, RowCount };
-struct MotionControl { const wchar_t* label; const wchar_t* key; int DisplaySettings::* setting; };
-static constexpr MotionControl motion_controls[]={
-    {L"Battle character blur",L"MotionBlur3D",&DisplaySettings::motion_3d},
-    {L"Field background blur",L"MotionBlurBackground",&DisplaySettings::motion_background},
-    {L"CRT persistence",L"CRTPersistence",&DisplaySettings::crt_persistence}
-};
-static_assert(sizeof(motion_controls)/sizeof(motion_controls[0])==CRTPersistence-Motion3D+1);
-static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Motion3D,
-#ifdef GEO_STEAM_DECK
-    MotionBackground,
-#endif
-    CRTPersistence,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
+static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,MotionBlur,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
 static constexpr int visible_rows=sizeof(visual_order)/sizeof(visual_order[0]);
-static_assert(visible_rows==RowCount-(deck_renderer?0:1),"every available setting must be reachable");
+static_assert(visible_rows==RowCount,"every available setting must be reachable");
 static int visual_index(int id){return int(std::find(visual_order,visual_order+visible_rows,id)-visual_order);}
 static constexpr int custom=profile_count;
 static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · RGB Monitor",L"PS1 Backgrounds",
@@ -74,7 +63,7 @@ static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · 
     L"RCA Precision In-Line",L"RCA CT-100",L"Custom"};
 static int active_profile=8,custom_base=8;
 static bool custom_exists=false,migrate_custom=false,needs_choice=false;
-static int legacy_screen_slot=-1;
+static int migrated_slot=-1;
 static RetroSettings slots[custom+1];
 static int base_profile(){return active_profile==custom?custom_base:active_profile;}
 static bool can_restore(const RetroSettings& s){
@@ -110,12 +99,18 @@ static void load_slots(const wchar_t* path,const RetroSettings& live){
     migrate_custom=active_profile==custom&&!custom_exists;
     if(migrate_custom){slots[custom]=live;custom_exists=true;}
     wchar_t marker[32];
-    legacy_screen_slot=-1;
+    migrated_slot=-1;
     if(!GetPrivateProfileStringW(L"Retro",L"TVScreen",L"",marker,32,path) &&
        (live.tv_screen||live.phosphor_strength!=100||live.phosphor_sharpness!=70)){
-        legacy_screen_slot=active_profile;
+        migrated_slot=active_profile;
         auto& slot=slots[active_profile];
         slot.tv_screen=live.tv_screen;slot.phosphor_strength=live.phosphor_strength;slot.phosphor_sharpness=live.phosphor_sharpness;
+    }
+    if(!GetPrivateProfileStringW(L"Retro",L"MotionBlur",L"",marker,32,path)&&live.motion_blur){
+        // The old three sliders were global. Carry their highest setting into
+        // the filter selected at upgrade; each other filter keeps its own value.
+        migrated_slot=active_profile;
+        slots[active_profile].motion_blur=live.motion_blur;
     }
     dirty=false;needs_choice=false;failed=false;
 }
@@ -123,11 +118,12 @@ static bool number(const wchar_t* file,const wchar_t* group,const wchar_t* key,i
     return WritePrivateProfileStringW(group,key,std::to_wstring(value).c_str(),file)!=FALSE;
 }
 static bool write_filter(const wchar_t* file,const wchar_t* group,const RetroSettings& s){
-    static const wchar_t* keys[]={L"Lines",L"Pixelation",L"Scanlines",L"Mask",L"Glow",L"Dither",L"EdgeSoftness"};
+    static const wchar_t* keys[]={L"Lines",L"Pixelation",L"Scanlines",L"Mask",L"Glow",L"Dither",L"EdgeSoftness",L"MotionBlur"};
     if(!number(file,group,L"Mode",s.mode)||!number(file,group,L"PS1Raster",s.ps1_raster))return false;
     if(!number(file,group,L"Phosphors",s.phosphors))return false;
     if(!number(file,group,L"TVScreen",s.tv_screen)||!number(file,group,L"PhosphorStrength",s.phosphor_strength)||!number(file,group,L"PhosphorSharpness",s.phosphor_sharpness))return false;
-    for(int i=0;i<7;i++)if(!number(file,group,keys[i],s.*fields[i]))return false;
+    static_assert(std::size(keys)==std::size(fields));
+    for(size_t i=0;i<std::size(keys);i++)if(!number(file,group,keys[i],s.*fields[i]))return false;
     return true;
 }
 // The installer uses the same mutex and writes through a temporary copy.
@@ -141,10 +137,9 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
     if(ok&&exists)ok=CopyFileW(path,temp,FALSE)!=FALSE;
     if(display_row>=0){
         static const wchar_t* const keys[]={L"Atlas",L"Wide",L"FPS",L"FieldSides",L"FPSCounter"};
-        const wchar_t* key=display_row>=Motion3D?motion_controls[display_row-Motion3D].key:keys[display_row-Map];
-        if(ok)ok=number(temp,L"Display",key,display_value);
+        if(ok)ok=number(temp,L"Display",keys[display_row-Map],display_value);
     }else{
-        if(ok&&legacy_screen_slot>=0&&legacy_screen_slot!=write_slot)ok=write_filter(temp,section(legacy_screen_slot).c_str(),slots[legacy_screen_slot]);
+        if(ok&&migrated_slot>=0&&migrated_slot!=write_slot)ok=write_filter(temp,section(migrated_slot).c_str(),slots[migrated_slot]);
         if(ok&&migrate_custom)ok=write_filter(temp,section(custom).c_str(),slots[custom]);
         if(ok&&write_slot>=0){
             const auto key=section(write_slot);
@@ -163,7 +158,7 @@ static bool persist(const wchar_t* path,const RetroSettings& value,int selected,
     bool lock=wait==WAIT_OBJECT_0||wait==WAIT_ABANDONED;
     failed=!lock||!save_file(path,value,selected,write_slot,reset,display_row,display_value);
     if(lock)ReleaseMutex(writer);if(writer)CloseHandle(writer);
-    if(!failed&&display_row<0){migrate_custom=false;legacy_screen_slot=-1;}
+    if(!failed&&display_row<0){migrate_custom=false;migrated_slot=-1;}
     return !failed;
 }
 static void commit(const wchar_t* path,RetroSettings& s,int destination,bool reset){
@@ -182,7 +177,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     if(key==VK_UP||key==VK_DOWN){
         int step=key==VK_UP?-1:1,index=visual_index(row);
         do{index=(index+step+visible_rows)%visible_rows;row=visual_order[index];}
-        while((row>=Lines&&row<=Edges&&!editable(s.mode,row))||(row==Restore&&!can_restore(s)));
+        while((row>=Lines&&row<=MotionBlur&&!editable(s.mode,row))||(row==Restore&&!can_restore(s)));
         return;
     }
     const bool activate=key==VK_RETURN;
@@ -203,13 +198,6 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     if(row==Counter){
         const int size=(display_settings.fps_counter+4+step)%4;
         if(persist(path,s,active_profile,-1,false,row,size))display_settings.fps_counter=size;
-        return;
-    }
-    if(row>=Motion3D&&row<=CRTPersistence){
-        if(activate)return;
-        int& setting=display_settings.*motion_controls[row-Motion3D].setting;
-        const int next=std::clamp(setting+step*(coarse?20:5),0,100);
-        if(next!=setting&&persist(path,s,active_profile,-1,false,row,next))setting=next;
         return;
     }
     if(row>=Map&&row<=Sides){
@@ -241,7 +229,8 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     }else if(row==FilterType)s.mode=(s.mode+step+3)%3;
     else{
         if(activate||!editable(s.mode,row))return;
-        int& v=s.*fields[row-1];int n=std::clamp(v+step*(row==Lines?20:coarse?10:1),row==Lines?120:0,row==Lines?720:100);
+        const int increment=row==Lines?20:(row==MotionBlur||coarse?10:1);
+        int& v=s.*fields[row-1];int n=std::clamp(v+step*increment,row==Lines?120:0,row==Lines?720:100);
         if(v==n)return;v=n;
     }
     dirty=true;failed=false;

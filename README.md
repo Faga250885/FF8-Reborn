@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **Steam Deck is experimental.** A player confirmed stable 30 FPS on their Deck with version 1.4.0-deck.4. Version 1.4.0-deck.5 adds three optional motion effects, all off by default. These effects were tested on Windows with the Deck renderer. Their performance on a physical Deck still needs confirmation.
+> **Steam Deck is experimental.** A player confirmed stable 30 FPS on their Deck with version 1.4.0-deck.4. Version 1.4.0-deck.6 adds one motion blur setting to screen filters. Its performance still needs confirmation on a physical Deck.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 FPS on Steam Deck and 60 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -32,28 +32,24 @@ Menus and movies keep their native timing. Scene changes and battle frames that 
 
 In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 submitted 30.00 frames/s. With simulated game work raised to 53 ms per battle update, it submitted 29.51 frames/s and the 99th-percentile interval reached 52.39 ms.
 
-### Motion effects on Steam Deck
+### Motion blur on Steam Deck
 
-Press **View + Menu** together and find **Motion effects**. Each slider starts at **Off** and saves independently of your screen filter. Adjust with Left/Right in steps of 5 percentage points, or hold **RB** on the controller or **Shift** on the keyboard for steps of 20.
+Press **View + Menu** together (or **F8** on a keyboard) and open **Screen filter → Motion blur**. Use Left/Right to adjust it live in steps of **10%**, from **Off** to **100%**. The same slider controls motion blur in towns, on the world map and in battles. Higher values leave a more visible trail when characters or the camera move.
 
-| Setting | Where the effect appears |
-| --- | --- |
-| **Battle character blur** | Softens moving fighters and enemies during **30 FPS** battles, using the motion between matched poses. |
-| **Field background blur** | Softens supported prerendered scenery while the field camera scrolls. Characters drawn over the scenery keep their own rendering. |
-| **CRT persistence** | Adds a short glow along moving edges in fields, on the world map and in battle. It works with any screen-filter preset, including **Off**. |
+Motion blur starts at **Off** in every factory preset. To keep a value, use the same save action you use for other filter edits. **Create a custom copy** saves your first custom filter. When editing that copy, choose **Save my changes**. **Restore filter defaults** returns the base preset to its original settings.
 
-For a subtle CRT glow, start with **CRT persistence at 25%** and leave the other two effects off. At 1280 × 800 in a recorded battle, the Deck renderer on Windows submitted 30.00 frames/s with all three effects off, 29.99 with only persistence at 25%, and 28.92 with all three sliders at 100%. The recommended screen filter was enabled in all three runs.
+When upgrading from **deck.5**, the filter you last selected inherits the highest of your three old motion settings, rounded to the nearest 10%. For example, if you used 25% CRT persistence, that filter starts at **30% motion blur**. You can also use motion blur with the **Off** filter for the game's original colors.
 
 ### Install or update on Steam Deck
 
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.5/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 

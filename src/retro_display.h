@@ -12,38 +12,15 @@ struct Pipeline {
     FilterUniforms last{};
     bool configured=false;
 };
-enum class Stage { full, cells, screen, tv_rows, tv_screen, persistence, field_background };
+enum class Stage { full, cells, screen, tv_rows, tv_screen, motion };
 static Pipeline pipeline,television_pipeline,cell_pipeline,screen_pipeline,tv_rows_pipeline,tv_screen_pipeline;
-static Pipeline persistence_pipeline;
-static Pipeline field_background_pipeline;
-// Positive/negative samples stay within the source color layer. Coverage and
-// its independently rendered depth mask retain their original silhouette.
-static constexpr char field_background_fragment[]=R"GLSL(
-uniform sampler2D sourceImage;
-uniform vec2 size;
-uniform vec2 grid;
-void main(){
-    vec2 uv=gl_FragCoord.xy/size;
-    vec2 edge=.5/size;
-    vec4 center=texture2D(sourceImage,uv);
-    vec3 sum=3.*center.rgb;
-    float total=3.;
-    for(int i=-2;i<=2;++i){
-        if(i==0)continue;
-        vec4 tap=texture2D(sourceImage,clamp(uv+float(i)*grid,edge,1.-edge));
-        float w=(3.-abs(float(i)))*max(0.,1.-8.*abs(tap.a-center.a));
-        sum+=w*tap.rgb;total+=w;
-    }
-    gl_FragColor=vec4(sum/total,center.a);
-}
-)GLSL";
-#include "crt_persistence.h"
+static Pipeline motion_pipeline;
+#include "motion_blur.h"
 static Surface signal_surface;
 static int failed_signal_w=0,failed_signal_h=0;
 static Pipeline& select_pipeline(bool tv,Stage stage){
     switch(stage){
-        case Stage::field_background:return field_background_pipeline;
-        case Stage::persistence:return persistence_pipeline;
+        case Stage::motion:return motion_pipeline;
         case Stage::cells:return cell_pipeline;
         case Stage::screen:return screen_pipeline;
         case Stage::tv_rows:return tv_rows_pipeline;
@@ -103,8 +80,7 @@ static bool prepare(bool tv=false,Stage stage=Stage::full){
     }
     inspect_context();
     const char* vertex="#version 120\nvoid main(){gl_Position=gl_Vertex;}\n";
-    const char* fragment=stage==Stage::field_background?field_background_fragment:
-        stage==Stage::persistence?persistence_fragment:tv?television_fragment:R"GLSL(
+    const char* fragment=stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
 uniform sampler2D sourceImage;
 uniform vec2 size;
 uniform vec2 grid;
@@ -216,11 +192,11 @@ void main(){
     effect.size=pGetUniformLocation(program,"size");effect.grid=pGetUniformLocation(program,"grid");
     effect.strengths=pGetUniformLocation(program,"strengths");effect.tube=pGetUniformLocation(program,"tube");
     effect.screen=pGetUniformLocation(program,"tvSettings");effect.program=program;
-    if(stage==Stage::persistence)effect.response=pGetUniformLocation(program,"response");
-    if(stage==Stage::tv_screen||stage==Stage::persistence){
+    if(stage==Stage::motion)effect.response=pGetUniformLocation(program,"response");
+    if(stage==Stage::tv_screen||stage==Stage::motion){
         GLint previous;glGetIntegerv(GL_CURRENT_PROGRAM,&previous);
         const GLint unit=1;
-        const char* second=stage==Stage::persistence?"historyImage":"rowImage";
+        const char* second=stage==Stage::motion?"historyImage":"rowImage";
         pUseProgram(program);pUniform1iv(pGetUniformLocation(program,second),1,&unit);pUseProgram(previous);
     }
     return true;
@@ -332,9 +308,9 @@ static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h)
 }
 static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
     const bool filter=active(settings)&&prepare(television(settings));
-    auto& history=phosphor_history;
-    const bool persistence=history.strength&&prepare(false,Stage::persistence);
-    if((!filter&&!persistence)||w<=0||h<=0||w>8192||h>8192||
+    auto& history=motion_history;
+    const bool motion=history.strength&&prepare(false,Stage::motion);
+    if((!filter&&!motion)||w<=0||h<=0||w>8192||h>8192||
        (failed_width==w&&failed_height==h))return false;
     try{allocate(source,w,h);}
     catch(const std::exception&){
@@ -343,15 +319,15 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
     TargetState state(target,true);
     pBindFramebuffer(GL_DRAW_FRAMEBUFFER,source.fbo);copy_color(w,h);
     pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
-    history.pending=persistence;
+    history.pending=motion;
     const auto& prior=exchanges_front?previous_front:history.raw;
-    bool blend=persistence&&history.carry>0&&prior.w==w&&prior.h==h&&prior.color;
+    bool blend=motion&&history.exposure>0&&prior.w==w&&prior.h==h&&prior.color;
     if(blend&&filter){
         if(history.failed_signal_w==w&&history.failed_signal_h==h)blend=false;
         else try{allocate(history.signal,w,h);}
         catch(const std::exception&){
             history.failed_signal_w=w;history.failed_signal_h=h;blend=false;
-            log("CRT persistence buffer unavailable at this size; using the selected filter\n");
+            log("Motion blur buffer unavailable at this size; using the selected filter\n");
         }
     }
     if(!filter&&!blend)return true; // First frame seeds history without changing the picture.
@@ -378,10 +354,10 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
             glGetIntegerv(GL_SAMPLER_BINDING,&last_sampler);pipeline.bind_sampler(1,0);
         }
         glBindTexture(GL_TEXTURE_2D,prior.color);
-        pUseProgram(persistence_pipeline.program);
-        const GLfloat extent[]={float(w),float(h)},response[]={history.carry,.01f*history.strength};
-        pUniform2fv(persistence_pipeline.size,1,extent);
-        pUniform2fv(persistence_pipeline.response,1,response);
+        pUseProgram(motion_pipeline.program);
+        const GLfloat extent[]={float(w),float(h)},response[]={history.exposure,.01f*history.strength};
+        pUniform2fv(motion_pipeline.size,1,extent);
+        pUniform2fv(motion_pipeline.response,1,response);
         fullscreen_triangle();
         glBindTexture(GL_TEXTURE_2D,last_texture);
         if(pipeline.bind_sampler)pipeline.bind_sampler(1,last_sampler);
@@ -427,11 +403,11 @@ static bool retire_front(HDC handle,int w,int h){
 }
 static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0){
     retiring_front=false;
-    if((!active(settings)&&!phosphor_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
+    if((!active(settings)&&!motion_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
        (failed_width==w&&failed_height==h))return retire_front(handle,w,h);
     inspect_context();
     const bool filter=(active(settings)&&prepare(television(settings)))||
-        (phosphor_history.strength&&prepare(false,Stage::persistence));
+        (motion_history.strength&&prepare(false,Stage::motion));
     if(!filter&&!overlay)return retire_front(handle,w,h);
     inspect_swap_method(handle);
     const int cw=!filter&&overlay_w>0?std::min(w,overlay_w):w;
@@ -471,13 +447,12 @@ static void end_window(bool swapped,bool outer_restores,int w,int h){
         std::swap(source,previous_front);valid_front=true;
     }else{
         if(!outer_restores)restore(0,w,h);
-        if(swapped&&phosphor_history.pending)std::swap(source,phosphor_history.raw);
+        if(swapped&&motion_history.pending)std::swap(source,motion_history.raw);
     }
-    phosphor_history.commit(swapped);
+    motion_history.commit(swapped);
 }
 static void forget(){
-    field_background_pipeline={};
-    persistence_pipeline={};phosphor_history={};
+    motion_pipeline={};motion_history={};
     pipeline={};television_pipeline={};cell_pipeline={};screen_pipeline={};tv_rows_pipeline={};tv_screen_pipeline={};signal_surface={};source={};previous_front={};failed_width=failed_height=0;
     failed_signal_w=failed_signal_h=0;valid_front=retiring_front=false;swap_dc=nullptr;exchanges_front=false;
 }

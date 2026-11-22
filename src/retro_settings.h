@@ -4,7 +4,7 @@ struct RetroSettings {
     bool ps1_raster=false, hd_blend=false;
     enum Tube { standard, aperture_grille, slot_mask, dot_triad };
     Tube phosphors=standard;
-    int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70;
+    int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70,motion_blur=0;
     static constexpr int hd_profile=7;
     int visible_lines(int active_rows)const{
         return ps1_raster?(lines*active_rows+120)/240:lines;
@@ -36,6 +36,12 @@ struct RetroSettings {
         glow=read(L"Glow",defaults.glow,0,100);
         dither=read(L"Dither",defaults.dither,0,100);
         edge_softness=read(L"EdgeSoftness",defaults.edge_softness,0,100);
+        int old_blur=0;
+        if(!wcscmp(section,L"Retro")&&!GetPrivateProfileStringW(section,L"MotionBlur",L"",configured,32,path)){
+            for(const wchar_t* key:{L"MotionBlur3D",L"MotionBlurBackground",L"CRTPersistence"})
+                old_blur=std::max(old_blur,std::clamp(int(GetPrivateProfileIntW(L"Display",key,0,path)),0,100));
+        }
+        motion_blur=((read(L"MotionBlur",old_blur,0,100)+5)/10)*10;
         ps1_raster=read(L"PS1Raster",0,0,1)!=0;
         phosphors=Tube(read(L"Phosphors",standard,standard,dot_triad));
         const bool legacy=!wcscmp(section,L"Retro") && !GetPrivateProfileStringW(section,L"TVScreen",L"",configured,32,path);
