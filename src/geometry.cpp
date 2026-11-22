@@ -607,9 +607,10 @@ static void attach_replay_depth(GLuint key,Surface& surface,const Target& target
 static GLuint capture_target=0;
 static std::vector<Vertex> scratch;
 static void fail_frame(const char*s){static char last[200]="";if(building.valid&&strcmp(last,s)){char line[256];snprintf(line,sizeof(line),"native fallback: %s\n",s);log(line);snprintf(last,sizeof(last),"%s",s);}building.valid=false;}
+static bool native_deck_frame(){return deck_renderer&&!display_settings.fps&&!display_settings.wide;}
 static bool capture_start() {
     if(inside||!wglGetCurrentContext())return false;
-    if(!display_settings.fps&&!display_settings.wide&&!display_settings.atlas)return false;
+    if(!display_settings.fps&&!display_settings.wide&&(deck_renderer||!display_settings.atlas))return false;
     if(!loaded&&!initialize_gl())return false;
     if(GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return false;
     GLint fbo=0;glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&fbo);
@@ -776,7 +777,12 @@ static void service_at(int);
 static void present_during_wait(bool force_previous=false);
 static void pump_due();
 static double world_capture_time=0;
+static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
 static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*indices){
+    if(native_deck_frame()){
+        if(enabled&&display_settings.atlas&&draw_native_atlas(mode,count,type,indices))return;
+        real_draw(mode,count,type,indices);return;
+    }
     double began=loaded?now():0;
     try{if(count>0)record_draw(mode,count,type,indices);}catch(const std::exception&e){fail_frame(e.what());}
     if(began&&!inside){
@@ -788,6 +794,7 @@ static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*
     service_at(1);
 }
 static void APIENTRY clear_hook(GLbitfield mask){
+    if(native_deck_frame()){real_clear(mask);return;}
     try{if(capture_start()){Op op;op.clear=mask;op.target=capture_target;op.state=get_state(&op.raster,(mask&GL_STENCIL_BUFFER_BIT)!=0);building.ops.push_back(std::move(op));}}
     catch(const std::exception&e){fail_frame(e.what());}real_clear(mask);service_at(2);
 }
@@ -982,6 +989,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     // Only the renderer can change GL state between these calls. Forget the
     // cache before the game resumes or a custom atlas touches the bindings.
     const bool native_world=deck_renderer&&!display_settings.fps&&current.mode==2&&current.layout()==2&&!view.full_map;
+    const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
     SamplerState world_samplers;
     auto draw_op=[&](const Op&op){
         if(!last_draw||op.target!=last_draw->target){
@@ -1011,7 +1019,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         if(!last_draw||memcmp(&op.raster,&last_draw->raster,sizeof(op.raster)))apply_extra(op.raster);
         last_draw=&op;
         if(!same_world_view)view.apply(op);
-        if(display_settings.atlas&&view.full_map==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;world_samplers.clear();}
+        if(atlas_draw==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;world_samplers.clear();}
         if(op.clear){real_clear(op.clear);return;}
         // Card transitions intentionally switch between client arrays. Use
         // the packed CPU vertices for that draw and rebind the stream after it.
@@ -1445,6 +1453,7 @@ static void present_encounter(int w,int h,int lines){
 static BOOL WINAPI swap_hook(HDC handle){
     if(inside||!wglGetCurrentContext()||(!loaded&&!initialize_gl())||
        GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return real_swap(handle);
+    native_atlas_view=unread_atlas_view;
     retro_panel::poll(WindowFromDC(handle),retro_ini_path.c_str(),display_settings.retro);
 #ifdef GEO_AUTOTEST
     test_input_poll();
@@ -1458,7 +1467,7 @@ static BOOL WINAPI swap_hook(HDC handle){
     bool measure_world=false;
     try {
         int mode=game_mode();
-        bool candidate=enabled&&building.valid&&building.started&&!building.ops.empty();
+        bool candidate=enabled&&!native_deck_frame()&&building.valid&&building.started&&!building.ops.empty();
         if(engine&&(mode<1||(mode>3&&mode!=6)))candidate=false;
         building.stride_dt=float(dt);building.mode=mode;building.infirmary_room=-1;building.infirmary_top=-1;building.reactive_sides=false;
         if(!building.started&&display_settings.wide){
@@ -1523,7 +1532,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         }
         if(!native_endpoint&&candidate&&(display_settings.fps==0||atlas_open||scene_entry)){
             // One endpoint per game swap. Keep the native wait and swap interval.
-            if((display_settings.wide||(display_settings.atlas&&mode==2))&&parity()){
+            if((display_settings.wide||(display_settings.atlas&&atlas_open))&&parity()){
                 replay(0,1,true);native_endpoint=true;
             }
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
@@ -1775,7 +1784,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
 // their names without GL deletes: a new context may reuse exactly those names.
 static void forget_deleted_context(){
     retro_panel_draw::forget();
-    atlas_detail_texture=0;atlas_allocation_attempted=false;
+    atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;
     retro_display::forget();
     deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_readback={};

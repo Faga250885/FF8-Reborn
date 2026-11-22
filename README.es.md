@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.3/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.4/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **Steam Deck sigue en pruebas.** Un jugador observa 30 FPS estables mirando el horizonte en el mapamundi panorámico, con FPS originales y filtros desactivados. Al activar un filtro puede bajar el rendimiento. La tercera versión de prueba reduce el trabajo de los filtros a 1280 × 800 y 1280 × 720, especialmente en los perfiles de televisor. Falta confirmar los 30 FPS con filtros activos en la consola.
+> **Steam Deck sigue en pruebas.** Un jugador observó unos 31 FPS frente al horizonte con los ajustes originales y unos 26 FPS al seleccionar únicamente el mapa Reborn, incluso cerrado. La cuarta versión de prueba elimina la captura y el redibujado innecesarios en FPS originales y 4:3. El arte HD se aplica cuando el juego dibuja el mapa grande. El terreno panorámico y los filtros activos tienen su propio coste. Falta confirmar los FPS de esta versión en la consola.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -20,11 +20,11 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 En LCD y OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Con **Original + Widescreen**, el mod reutiliza los ajustes de textura, cámara y sombreador que coinciden entre los envíos de terreno. Sigue comprobando la imagen original en cada cuadro del mapamundi antes de presentar la vista panorámica. El archivo `FF8_geometry.log` de la carpeta del juego registra los FPS y el tiempo dedicado a capturar, comprobar, dibujar y presentar el mapamundi.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.3/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.4/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.3/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.4/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
