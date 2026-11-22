@@ -20,7 +20,7 @@ static bool same_card(const Op&a,const Op&b,bool& changed){
     changed=false;
     const auto&s=a.state;const auto&t=b.state;
     if(a.vertices.size()!=b.vertices.size()||a.target!=b.target||memcmp(&s,&t,offsetof(State,texture))||s.uniforms.size()!=t.uniforms.size())return false;
-    for(size_t i=0;i<s.uniforms.size();i++){auto&u=s.uniforms[i];auto&v=t.uniforms[i];if(u.location!=v.location||u.type!=v.type||u.i!=v.i||u.f!=v.f)return false;}
+    for(size_t i=0;i<s.uniforms.size();i++)if(!same_uniform(s.uniforms[i],t.uniforms[i]))return false;
     for(int i=0;i<4;i++)if(s.texture[i].copy!=t.texture[i].copy||memcmp(&s.texture[i],&t.texture[i],offsetof(TextureState,copy)))return false;
     for(size_t j=0;j<a.vertices.size();j+=6){const auto*v=&a.vertices[j];const auto*w=&b.vertices[j];
         float du=w[0].uv[0][0]-v[0].uv[0][0],dv=w[0].uv[0][1]-v[0].uv[0][1];

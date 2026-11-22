@@ -4,8 +4,7 @@ struct OutgoingDraw {Op op;unsigned after=0;};
 static std::vector<OutgoingDraw> outgoing_draws;
 static unsigned outgoing_triangles=0;
 static uint64_t surface_point_key(uint64_t state,const float*p){
-    float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]==0?0:p[3]};
-    return hash(state,xyw,sizeof(xyw));
+    return projected_point_key(state,p);
 }
 static uint64_t surface_state_key(const Op&op){
     uint64_t key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));

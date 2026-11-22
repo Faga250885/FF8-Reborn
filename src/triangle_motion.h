@@ -2,6 +2,13 @@
 static void (*matching_checkpoint)()=nullptr;
 struct Primitive {unsigned op,start;uint64_t key;int prior=-1;std::array<std::array<double,4>,3> points{};};
 static bool zero_model(const State&s){for(float value:s.model)if(value!=0)return false;return true;}
+// XXH64 lane round for transient geometry identities on Deck.
+static uint64_t match_hash_lane(uint64_t key,const float* words){
+    constexpr uint64_t p1=11400714785074694791ULL,p2=14029467366897019727ULL,p4=9650029242287828579ULL;
+    uint64_t lane;memcpy(&lane,words,sizeof(lane));
+    lane*=p2;lane=(lane<<31)|(lane>>33);key^=lane*p1;
+    return ((key<<27)|(key>>37))*p1+p4;
+}
 static void matching_position(const State&s,const float*p,double*out){
     // Actual battle shaders 1/7 render with a zero legacy modelview matrix.
     // That unused matrix must not collapse every scene vertex into one point.
@@ -20,7 +27,10 @@ static std::vector<Primitive> primitives(const Frame&frame){
         for(int j=0;j<4;j++)if(used[j])base=hash(base,&op.state.texture[j].id,sizeof(GLint));
         const bool screen_coordinates=op.state.program&&zero_model(op.state);
         for(unsigned start=0;start<op.vertices.size();start+=3){uint64_t key=base;
-            for(unsigned v=0;v<3;v++)for(int j=0;j<4;j++)if(used[j])key=hash(key,op.vertices[start+v].uv[j],sizeof(op.vertices[start+v].uv[j]));
+            for(unsigned v=0;v<3;v++)for(int j=0;j<4;j++)if(used[j]){
+                const auto& uv=op.vertices[start+v].uv[j];
+                key=deck_renderer&&frame.mode!=2?match_hash_lane(match_hash_lane(key,uv),uv+2):hash(key,uv,sizeof(uv));
+            }
             out.push_back({i,start,key,-1});
             for(unsigned v=0;v<3;v++){
                 const float* point=op.vertices[start+v].p;
@@ -207,7 +217,9 @@ static void match_frames(int mode=-1){
 #endif
     ForwardSurface forward_surface;
     if(mode==3&&surface_motion_enabled)forward_surface=prepare_surface_motion();
-    coherent_projected_motion(mode==1?&cur:nullptr,mode==1?&old:nullptr);
+    const Topology* field_topology=mode==1?current.match_input->field_topology.get():nullptr;
+    coherent_projected_motion(mode==1?&cur:nullptr,mode==1?&old:nullptr,
+        field_topology?&field_topology->refs:nullptr,field_topology?field_topology->points.size():0);
     if(matching_checkpoint)matching_checkpoint();
     retain_outgoing(old,cur);
     if(mode==3&&battle_visibility_enabled){mark_battle_front_faces();retain_battle_outgoing(old,cur,forward_surface);}

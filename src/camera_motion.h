@@ -63,6 +63,7 @@ static void fit_camera_motion(const std::vector<Primitive>&old,const std::vector
         owner[i]=slots[slot]-1;
     }
     double solution[4][3]{};
+    unsigned stable_iterations=0;
     for(int iteration=0;iteration<24;iteration++){
         double normal[4][4]{},rhs[4][3]{};
         for(unsigned n=0;n<samples.size();n++){const auto& s=samples[n];double weight=s.weight*samples[owner[n]].robust;for(int i=0;i<4;i++){
@@ -74,10 +75,18 @@ static void fit_camera_motion(const std::vector<Primitive>&old,const std::vector
         // Once the floating-point solution stops changing, every remaining
         // iteration would repeat the same normal equations.
         if(iteration&&memcmp(last_solution,solution,sizeof(solution))==0)break;
-        for(unsigned index:unique){auto& s=samples[index];double dest[3]{};for(int j=0;j<3;j++)for(int k=0;k<4;k++)dest[j]+=s.design[k]*solution[k][j];
-            if(dest[2]<=1){s.error=1e6;s.robust=1e-12;continue;}
+        double weight_change=0;
+        for(unsigned index:unique){auto& s=samples[index];double last_weight=s.robust;
+            double dest[3]{};for(int j=0;j<3;j++)for(int k=0;k<4;k++)dest[j]+=s.design[k]*solution[k][j];
+            if(dest[2]<=1){s.error=1e6;s.robust=1e-12;weight_change=std::max(weight_change,fabs(s.robust-last_weight));continue;}
             double dx=dest[0]/dest[2]-s.screen[0],dy=dest[1]/dest[2]-s.screen[1],depth=250*std::log((1/dest[2])/s.screen[3]);
-            s.error=std::sqrt(dx*dx+dy*dy+depth*depth);s.robust=1/(1+(s.error/.75)*(s.error/.75));}
+            s.error=std::sqrt(dx*dx+dy*dy+depth*depth);s.robust=1/(1+(s.error/.75)*(s.error/.75));
+            weight_change=std::max(weight_change,fabs(s.robust-last_weight));}
+        // Stop when every contributing corner has kept its weight to twelve
+        // decimal places for two successive fits. Outliers still get all
+        // 24 iterations while their influence on the camera is changing.
+        if(deck_renderer&&weight_change<1e-12){if(++stable_iterations==2)break;}
+        else stable_iterations=0;
     }
     double total=0,inliers=0;for(unsigned i=0;i<samples.size();i++){total+=samples[i].weight;if(samples[owner[i]].error<1)inliers+=samples[i].weight;}
     camera_motion.confidence=inliers/total;camera_motion.points=(unsigned)samples.size();

@@ -48,17 +48,39 @@ static void group_neighbours(std::vector<std::pair<unsigned,Value>>& entries,
     entries.resize(write);
 }
 static bool projected_geometry(const Op&op){return !op.clear&&op.mode==GL_TRIANGLES&&op.state.program&&zero_model(op.state);}
+static uint64_t projected_point_key(uint64_t state,const float* p){
+    const float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]==0?0:p[3]};
+    if(!deck_renderer)return hash(state,xyw,sizeof(xyw));
+    // XXH64 lane and four-byte tail on the canonical screen coordinates.
+    constexpr uint64_t p1=11400714785074694791ULL,p2=14029467366897019727ULL;
+    constexpr uint64_t p3=1609587929392839161ULL;
+    uint32_t w;memcpy(&w,xyw+2,sizeof(w));
+    state=match_hash_lane(state,xyw);
+    state^=uint64_t(w)*p1;
+    return ((state<<23)|(state>>41))*p2+p3;
+}
+struct TopologyRef {unsigned op,vertex,node;};
 static void coherent_projected_motion(const std::vector<Primitive>* field_faces=nullptr,
-                                      const std::vector<Primitive>* old_faces=nullptr){
+                                      const std::vector<Primitive>* old_faces=nullptr,
+                                      const std::vector<TopologyRef>* topology_refs=nullptr,
+                                      size_t topology_points=0){
     struct Node{
         std::array<float,4> point{},reference{},first_prior{},result{};
         std::array<double,3> delta{};
         bool vote=false,anchor=false,conflict=false,reachable=false,camera=false,hold=false;
     };
     struct Ref{unsigned op,vertex,node;};
-    size_t vertices=0;for(const auto&op:current.ops)if(!op.indexed_complete&&projected_geometry(op))vertices+=op.vertices.size();
+    size_t vertices=0;for(const auto&op:current.ops)if(!op.indexed_complete&&projected_geometry(op)){
+        vertices+=op.vertices.size();
+        if(op.vertices.size()%3)topology_refs=nullptr;
+    }
     std::vector<Node> nodes;nodes.reserve(vertices/2);
-    PointIndex lookup(vertices);
+    // The field topology just indexed all positive-depth scene corners with
+    // the same target/projection/viewport/XYW identity. Share those IDs;
+    // screen-space corners occupy a separate depth range and use the lookup.
+    PointIndex lookup(topology_refs?vertices-topology_refs->size():vertices);
+    std::vector<unsigned> topology_ids(topology_refs?topology_points:0);
+    size_t next_ref=0;
     std::vector<Ref> refs;refs.reserve(vertices);
     auto distance=[](const std::array<double,3>&a,const std::array<double,3>&b){return std::hypot(a[0]-b[0],a[1]-b[1])+250*fabs(a[2]-b[2]);};
     for(unsigned i=0;i<current.ops.size();i++){
@@ -67,9 +89,15 @@ static void coherent_projected_motion(const std::vector<Primitive>* field_faces=
         uint64_t state_key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
         state_key=hash(state_key,op.state.projection,sizeof(op.state.projection));state_key=hash(state_key,op.state.viewport,sizeof(op.state.viewport));
         for(unsigned j=0;j<op.vertices.size();j++){
-            const auto&p=op.vertices[j].p;float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]==0?0:p[3]};
-            uint64_t key=hash(state_key,xyw,sizeof(xyw));
-            const unsigned n=lookup.node(key,static_cast<unsigned>(nodes.size()));
+            const auto&p=op.vertices[j].p;
+            unsigned n;
+            if(topology_refs&&next_ref<topology_refs->size()&&(*topology_refs)[next_ref].op==i&&(*topology_refs)[next_ref].vertex==j){
+                unsigned& id=topology_ids[(*topology_refs)[next_ref++].node];
+                if(!id)id=unsigned(nodes.size())+1;
+                n=id-1;
+            }else{
+                n=lookup.node(projected_point_key(state_key,p),static_cast<unsigned>(nodes.size()));
+            }
             if(n==nodes.size()){
                 nodes.emplace_back();auto&node=nodes.back();
                 memcpy(node.point.data(),p,sizeof(p));node.reference=node.point;

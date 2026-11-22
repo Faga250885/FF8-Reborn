@@ -9,6 +9,9 @@ struct File {
         demand((reading?fread(p,1,n,f):fwrite(p,1,n,f))==n,"snapshot IO failed");}
     template<class T>void item(T&v){bytes(&v,sizeof(v));}
     template<class T>void list(std::vector<T>&v,unsigned limit){unsigned n=(unsigned)v.size();item(n);demand(n<=limit,"snapshot list limit");if(reading)v.resize(n);if(n)bytes(v.data(),n*sizeof(T));}
+    template<class T,size_t Capacity>void uniform_values(std::array<T,Capacity>&v,unsigned count){
+        unsigned n=count;item(n);demand(n==count&&n<=Capacity,"snapshot uniform size");if(n)bytes(v.data(),n*sizeof(T));
+    }
     void string(std::string&s){std::vector<char> value(s.begin(),s.end());list(value,1000000);if(reading)s.assign(value.begin(),value.end());}
 };
 static void pixel_state(){pBindBuffer(GL_PIXEL_PACK_BUFFER,0);pBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);
@@ -130,7 +133,9 @@ static void pair(const char*path,bool reading){
             for(auto&t:s.texture){file.bytes(&t,offsetof(TextureState,copy));GLuint copy=t.copy?t.copy->id:0;file.item(copy);
                 if(reading){t.copy.reset();if(copy){auto&ref=copies[copy];if(!ref){ref=std::make_shared<TextureCopy>();ref->id=textures.at(copy);}t.copy=ref;}}}
             unsigned count=(unsigned)s.uniforms.size();file.item(count);demand(count<=1024,"snapshot uniform limit");if(reading)s.uniforms.resize(count);
-            for(auto&u:s.uniforms){std::string name;if(!reading)name=uniform_name(s.program,u.location);file.string(name);file.item(u.type);file.list(u.f,16);file.list(u.i,16);if(reading)u.location=pGetUniformLocation(s.program,name.c_str());}
+            for(auto&u:s.uniforms){std::string name;if(!reading)name=uniform_name(s.program,u.location);file.string(name);file.item(u.type);
+                const auto shape=uniform_shape(u.type);file.uniform_values(u.f,shape.floats);file.uniform_values(u.i,shape.integers);
+                if(reading)u.location=pGetUniformLocation(s.program,name.c_str());}
         }
     }
     demand(glGetError()==GL_NO_ERROR,"snapshot GL state error");

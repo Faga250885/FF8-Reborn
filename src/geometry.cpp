@@ -146,30 +146,40 @@ static bool initialize_gl() {
 #include "deck_world_bindings.h"
 #include "deck_programs.h"
 struct Uniform {
-    GLint location;GLenum type;std::vector<float> f;std::vector<GLint> i;
+    GLint location;GLenum type;std::array<float,16> f{};std::array<GLint,4> i{};
 };
-static void read_uniform(GLuint program,GLint location,GLenum type,std::vector<Uniform>& out){
-    Uniform u{};u.location=location;u.type=type;
-    int n=0;bool integer=false;
+struct UniformShape {unsigned floats,integers;};
+static UniformShape uniform_shape(GLenum type){
     switch(type) {
-    case GL_FLOAT:n=1;break;case GL_FLOAT_VEC2:n=2;break;case GL_FLOAT_VEC3:n=3;break;case GL_FLOAT_VEC4:n=4;break;
-    case GL_FLOAT_MAT2:n=4;break;case GL_FLOAT_MAT3:n=9;break;case GL_FLOAT_MAT4:n=16;break;
-    case GL_INT:case GL_BOOL:case GL_SAMPLER_2D:n=1;integer=true;break;
-    case GL_INT_VEC2:case GL_BOOL_VEC2:n=2;integer=true;break;
-    case GL_INT_VEC3:case GL_BOOL_VEC3:n=3;integer=true;break;
-    case GL_INT_VEC4:case GL_BOOL_VEC4:n=4;integer=true;break;
-    default:demand(false,"unsupported shader uniform type");}
-    if(integer){u.i.resize(n);pGetUniformiv(program,u.location,u.i.data());
+    case GL_FLOAT:return {1,0};case GL_FLOAT_VEC2:return {2,0};case GL_FLOAT_VEC3:return {3,0};
+    case GL_FLOAT_VEC4:case GL_FLOAT_MAT2:return {4,0};
+    case GL_FLOAT_MAT3:return {9,0};case GL_FLOAT_MAT4:return {16,0};
+    case GL_INT:case GL_BOOL:case GL_SAMPLER_2D:return {0,1};
+    case GL_INT_VEC2:case GL_BOOL_VEC2:return {0,2};
+    case GL_INT_VEC3:case GL_BOOL_VEC3:return {0,3};
+    case GL_INT_VEC4:case GL_BOOL_VEC4:return {0,4};
+    default:throw std::runtime_error("unsupported shader uniform type");}
+}
+static bool same_uniform(const Uniform& a,const Uniform& b){
+    if(a.location!=b.location||a.type!=b.type)return false;
+    const auto shape=uniform_shape(a.type);
+    return std::equal(a.f.begin(),a.f.begin()+shape.floats,b.f.begin())&&
+           std::equal(a.i.begin(),a.i.begin()+shape.integers,b.i.begin());
+}
+static void read_uniform(GLuint program,GLint location,GLenum type,std::vector<Uniform>& out){
+    auto& u=out.emplace_back();u.location=location;u.type=type;
+    if(uniform_shape(type).integers){pGetUniformiv(program,u.location,u.i.data());
         if(type==GL_SAMPLER_2D)demand(u.i[0]>=0&&u.i[0]<4,"sampler outside captured units");}
-    else {u.f.resize(n);pGetUniformfv(program,u.location,u.f.data());}
-    out.push_back(std::move(u));
+    else pGetUniformfv(program,u.location,u.f.data());
 }
 static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,bool terrain=false) {
     if(inputs)*inputs=program?1u:127u;
     std::vector<Uniform> out;if(!program)return out;
     // Locations and input semantics belong to the link. Values (including
     // sampler unit selections) still belong to the individual draw.
-    const bool cache=deck_renderer&&terrain&&display_settings.fps&&inputs&&deck_programs::available();
+    // Reflection describes the linked shader for every primitive type.
+    // Fields submit many tile strips and quads through the same program.
+    const bool cache=deck_renderer&&display_settings.fps&&inputs&&deck_programs::available();
     if(cache){
         auto entry=deck_programs::layouts.find(program);
         if(entry!=deck_programs::layouts.end()){
@@ -222,7 +232,7 @@ static void apply_uniforms(GLuint program,const std::vector<Uniform>& values,con
         const auto& u=values[index];
         if(previous&&index<previous->size()){
             const auto& before=(*previous)[index];
-            if(u.location==before.location&&u.type==before.type&&u.f==before.f&&u.i==before.i)continue;
+            if(same_uniform(u,before))continue;
         }
         const GLfloat*f=u.f.data();const GLint*i=u.i.data();
         switch(u.type){
@@ -478,7 +488,7 @@ static bool same_uniforms(const State& a,const State& b){
     if(a.program!=b.program||a.uniforms.size()!=b.uniforms.size())return false;
     for(size_t i=0;i<a.uniforms.size();++i){
         const auto& x=a.uniforms[i];const auto& y=b.uniforms[i];
-        if(x.location!=y.location||x.type!=y.type||x.f!=y.f||x.i!=y.i)return false;
+        if(!same_uniform(x,y))return false;
     }
     return true;
 }
@@ -668,10 +678,11 @@ struct ReadableRegion { uintptr_t begin=0,end=0; };
 struct CaptureRegions { ReadableRegion indices,arrays[7]; };
 static thread_local CaptureRegions capture_regions;
 static bool capture_start() {
-    if(inside||!wglGetCurrentContext())return false;
+    if(inside)return false;
     if(!display_settings.fps&&!display_settings.wide&&(deck_renderer||!display_settings.atlas))return false;
+    const auto active_context=wglGetCurrentContext();if(!active_context)return false;
     if(!loaded&&!initialize_gl())return false;
-    if(GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return false;
+    if(GetCurrentThreadId()!=thread||active_context!=context)return false;
     if(!building.valid)return false;
     if(!building.started){RECT r{};demand(GetClientRect(WindowFromDC(dc),&r),"no drawable");
         building.w=r.right;building.h=r.bottom;demand(r.right>0&&r.bottom>0&&r.right<=8192&&r.bottom<=8192,"drawable extent unsupported");
@@ -766,20 +777,33 @@ static void read_array(const Array&a,unsigned index,float*out,bool color) {
         demand(std::isfinite(out[j]),"nonfinite vertex data");}
 }
 static uint64_t hash(uint64_t h,const void*p,size_t n){auto b=(const BYTE*)p;while(n--){h^=*b++;h*=1099511628211ULL;}return h;}
+template<class Index,class Visitor>
+static void visit_draw_indices(const BYTE* indices,GLsizei count,Visitor visit){
+    for(GLsizei i=0;i<count;i++){
+        Index index;memcpy(&index,indices+i*sizeof(Index),sizeof(Index));
+        visit(i,unsigned(index));
+    }
+}
+template<class Visitor>static void visit_draw_indices(GLenum type,const void* data,GLsizei count,Visitor visit){
+    const auto* indices=static_cast<const BYTE*>(data);
+    if(type==GL_UNSIGNED_SHORT)visit_draw_indices<GLushort>(indices,count,visit);
+    else if(type==GL_UNSIGNED_INT)visit_draw_indices<GLuint>(indices,count,visit);
+    else visit_draw_indices<GLubyte>(indices,count,visit);
+}
 static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,const void*indices,CaptureRegions* regions=nullptr){
     struct RestoreClient {GLint client;RestoreClient(){glGetIntegerv(GL_CLIENT_ACTIVE_TEXTURE,&client);}~RestoreClient(){pClientActiveTexture(client);}} restore_client;
     GLint element=0;glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&element);
     demand(!element,"index VBO unsupported");size_t bytes=type==GL_UNSIGNED_SHORT?2:type==GL_UNSIGNED_INT?4:type==GL_UNSIGNED_BYTE?1:0;
     demand(bytes&&readable(indices,size_t(count)*bytes,regions?&regions->indices:nullptr),"index memory invalid");
-    std::vector<unsigned> ids(count);unsigned maxid=0;
-    for(int i=0;i<count;i++){unsigned v=0;memcpy(&v,(const BYTE*)indices+i*bytes,bytes);ids[i]=v;maxid=std::max(maxid,v);}
+    unsigned maxid=0;
+    visit_draw_indices(type,indices,count,[&](int,unsigned id){maxid=std::max(maxid,id);});
     demand(maxid<1000000,"index range too large");
     op.vertices.resize(count);
     auto pos=array(GL_VERTEX_ARRAY,GL_VERTEX_ARRAY_POINTER,GL_VERTEX_ARRAY_SIZE,GL_VERTEX_ARRAY_TYPE,GL_VERTEX_ARRAY_STRIDE,GL_VERTEX_ARRAY_BUFFER_BINDING);
     auto color=(inputs&4)?array(GL_COLOR_ARRAY,GL_COLOR_ARRAY_POINTER,GL_COLOR_ARRAY_SIZE,GL_COLOR_ARRAY_TYPE,GL_COLOR_ARRAY_STRIDE,GL_COLOR_ARRAY_BUFFER_BINDING):Array{};
     auto normal=(inputs&2)?array(GL_NORMAL_ARRAY,GL_NORMAL_ARRAY_POINTER,0,GL_NORMAL_ARRAY_TYPE,GL_NORMAL_ARRAY_STRIDE,GL_NORMAL_ARRAY_BUFFER_BINDING):Array{};
     Array uv[4];for(int j=0;j<4;j++)if(inputs&(8u<<j)){pClientActiveTexture(GL_TEXTURE0+j);uv[j]=array(GL_TEXTURE_COORD_ARRAY,GL_TEXTURE_COORD_ARRAY_POINTER,GL_TEXTURE_COORD_ARRAY_SIZE,GL_TEXTURE_COORD_ARRAY_TYPE,GL_TEXTURE_COORD_ARRAY_STRIDE,GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING);}
-    pClientActiveTexture(restore_client.client);demand(pos.enabled,"vertex array disabled");
+    demand(pos.enabled,"vertex array disabled");
     ReadableRegion local;
     auto validate=[&](const Array&a,int attribute){if(a.enabled)demand(readable(a.p,size_t(maxid)*a.stride+a.size*(a.type==GL_FLOAT?4:1),regions?&regions->arrays[attribute]:&local),"vertex memory invalid");};
     validate(pos,0);validate(color,1);validate(normal,2);for(int j=0;j<4;++j)validate(uv[j],3+j);
@@ -796,11 +820,12 @@ static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,
         glGetFloatv(GL_CURRENT_TEXTURE_COORDS,constant_uv[j]);
     }
     if(active>=0)pActiveTexture(active);
-    for(int i=0;i<count;i++){auto&v=op.vertices[i];v.p[3]=1;read_array(pos,ids[i],v.p,false);
-        memcpy(v.c,constant_color,sizeof(v.c));if(color.enabled){v.c[3]=1;read_array(color,ids[i],v.c,true);}
-        memcpy(v.n,constant_normal,sizeof(v.n));if(normal.enabled)read_array(normal,ids[i],v.n,false);
-        for(int j=0;j<4;j++){memcpy(v.uv[j],constant_uv[j],sizeof(v.uv[j]));if(uv[j].enabled){v.uv[j][0]=v.uv[j][1]=v.uv[j][2]=0;v.uv[j][3]=1;read_array(uv[j],ids[i],v.uv[j],false);}}
-    }
+    visit_draw_indices(type,indices,count,[&](int i,unsigned id){
+        auto&v=op.vertices[i];v.p[3]=1;read_array(pos,id,v.p,false);
+        memcpy(v.c,constant_color,sizeof(v.c));if(color.enabled){v.c[3]=1;read_array(color,id,v.c,true);}
+        memcpy(v.n,constant_normal,sizeof(v.n));if(normal.enabled)read_array(normal,id,v.n,false);
+        for(int j=0;j<4;j++){memcpy(v.uv[j],constant_uv[j],sizeof(v.uv[j]));if(uv[j].enabled)read_array(uv[j],id,v.uv[j],false);}
+    });
 }
 static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices) {
     if(!capture_start())return;
@@ -932,7 +957,7 @@ static FieldPrefixCache field_prefix;
 #include "vertex_stream_policy.h"
 static VertexStreamPolicy vertex_policy;
 static GLuint vertex_stream=0;
-static void replay(GLuint target,float alpha,bool widescreen=false){
+static float replay(GLuint target,float alpha,bool widescreen=false){
     if(current.camera_cut)alpha=1;
     WideView view(current,widescreen);
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
@@ -1179,6 +1204,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     const double finished=now();
     if(stream_choice.timing&&(!stream||uploaded))VertexStreamPolicy::measured(stream_choice,finished-submit_begin);
     replay_seconds+=finished-began;replay_count++;
+    return alpha;
 }
 static int game_mode();
 static int presentation_mode=-1;
@@ -1188,15 +1214,24 @@ static double output_period(){
     const double requested=1./std::max(display_settings.fps,1);
     return deck_renderer?std::max(requested,presentation_clock.refresh_period):requested;
 }
-// Once the game's own frames run late, reserve its rendering thread for the
-// next source frame. The scheduler can still present during actual idle waits.
-static unsigned deck_busy_frames=0;
+// A long tick followed by a short one can still deliver the full native rate.
+// Reserve the rendering thread when the average slips, or immediately on a
+// major stall. The scheduler can still present during actual idle waits.
+struct DeckSourceBudget {
+    double relative_period=1;
+    bool busy=false;
+    void observe(double interval,double nominal){
+        const double ratio=interval/nominal;
+        relative_period+=.25*(std::clamp(ratio,0.,2.)-relative_period);
+        busy=ratio>=1.5||relative_period>(busy?1.06:1.12);
+    }
+};
+static DeckSourceBudget deck_source_budget;
 static bool deck_native_layout_wait=false;
 static void track_source_budget(int mode,double interval,bool continuous){
-    if(!deck_renderer||!continuous){deck_busy_frames=0;return;}
+    if(!deck_renderer||!continuous){deck_source_budget={};return;}
     const double native_period=mode==3?1./15.:mode==6?1./60.:1./30.;
-    if(interval>native_period*1.12)deck_busy_frames=8;
-    else if(deck_busy_frames)--deck_busy_frames;
+    deck_source_budget.observe(interval,native_period);
 }
 static double previous_origin=0,previous_period=1./30.;
 static bool prepared_previous=false;
@@ -1210,7 +1245,7 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     }
     float alpha=(float)std::clamp((t-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
     if(old){std::swap(current,previous);std::swap(outgoing_draws,checkpoint_outgoing);}
-    try{replay(target,alpha,true);}
+    try{alpha=replay(target,alpha,true);}
     catch(...){if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}throw;}
     if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}
     displayed_source=sources-(old&&sources?1:0);return alpha;
@@ -1219,7 +1254,7 @@ static void advance_output(){
     next_output=presentation_clock.next_slot(next_output,now(),output_period());
 }
 static void matching_pump(){
-    if(deck_busy_frames)return;
+    if(deck_source_budget.busy)return;
     present_reason=6;qa_stage(6);
     // Publish is pending: previous still contains the fully prepared pair
     // shown on the preceding tick. Temporarily replay it at CPU checkpoints.
@@ -1308,7 +1343,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
     }
     BOOL result=real_swap(handle);
     if(deck_renderer){
-        if(result&&display_settings.fps==60)deck_cadence.present(current.mode,now());
+        if(result&&display_settings.fps==60)deck_cadence.present(current.mode,now(),alpha);
         else deck_cadence.last_mode=0;
     }
     if(result&&display_settings.fps_counter)fps_counter::presented(now());
@@ -1612,11 +1647,13 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
     qa_stage(7);
     double t=now(),dt=last_swap?t-last_swap:0;last_swap=t;sources++;bool was_presenting=can_present;can_present=false;bool saved=false;
+    const double pair_work_start=deck_renderer?matching_seconds+parity_seconds:0;
     previous_origin=origin;previous_period=period;prepared_previous=false;
     float displayed_alpha=-1;bool output_due=true,native_endpoint=false,published=false,native_scaled=false;
     bool measure_world=false;
     try {
         int mode=game_mode();
+        if(deck_renderer)deck_cadence.source(display_settings.fps==60?mode:0,t);
         bool candidate=enabled&&!native_deck_frame()&&building.valid&&building.started&&!building.ops.empty();
         if(engine&&(mode<1||(mode>3&&mode!=6)))candidate=false;
         building.stride_dt=float(dt);building.mode=mode;building.infirmary_room=-1;building.infirmary_top=-1;building.reactive_sides=false;
@@ -1692,7 +1729,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             // A source tick can arrive at the same time as a 60 Hz slot.
             // Present the already validated pair before queuing the next
             // endpoint's GPU work; doing it after the readback adds jitter.
-            if(deck_renderer&&display_settings.fps==60&&(mode==1||mode==2)&&!deck_busy_frames&&
+            if(deck_renderer&&display_settings.fps==60&&(mode==1||mode==2)&&!deck_source_budget.busy&&
                pair&&was_presenting&&presentation_mode==mode&&!current.menu_edge&&!atlas_open){
                 const double time=now();
                 if(time>=next_output&&time-origin<period*1.5){
@@ -1727,7 +1764,7 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
             // A GPU readback can span the next deadline. Finish one prepared
             // intermediate frame before blocking for the endpoint comparison.
-            if(!deck_busy_frames&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
+            if(!deck_source_budget.busy&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
                 present_reason=9;qa_stage(9);present_during_wait(true);advance_output();}
             qa_stage(10);phase=now();
             const bool valid=early_samples?collect_parity(submit_error,queued_world):parity();
@@ -1800,8 +1837,18 @@ static BOOL WINAPI swap_hook(HDC handle){
         // projection work that was not already credited before this swap.
         native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds+
             (direct_complete&&current.mode==2?deck_world.wait_credit:0.),true);
-    else
+    else {
         native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
+        // The limiter delay belongs to this tick. The previous tick may have
+        // been punctual even if today's matching/validation used most of the
+        // budget. Only the portion that overruns this tick's deadline can be
+        // reclaimed, at most once; unrelated game/driver time earns no credit.
+        if(deck_renderer&&display_settings.fps==60&&can_present&&prepared_previous&&
+           current.mode>=1&&current.mode<=3){
+            const double pair_work=matching_seconds+parity_seconds-pair_work_start;
+            native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
+        }
+    }
     if(measure_world||(direct_complete&&dt>0&&dt<.25)){
         auto& w=world_frame_stats;
         ++w.frames;w.direct_frames+=direct_complete;w.draws+=direct_complete?deck_world.draws:unsigned(current.ops.size());w.intervals+=dt;
@@ -1855,14 +1902,15 @@ static void present_during_wait(bool force_previous){
     presentation_clock.measured_replay(now()-started);
 }
 static void pump_due(){
-    if(inside||!enabled||!loaded||!can_present||GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return;
+    if(inside||!enabled||!loaded||!can_present||GetCurrentThreadId()!=thread)return;
     double t=now();if(t<next_output||t-origin>period*1.5)return;
+    if(wglGetCurrentContext()!=context)return;
     if(engine&&game_mode()!=presentation_mode){can_present=false;return;}
     try{present_during_wait();advance_output();}
     catch(const std::exception&e){can_present=false;log("mid-frame presentation fallback: ");log(e.what());log("\n");}
 }
 static void service_at(int reason){
-    if(deck_busy_frames&&reason!=4)return;
+    if(deck_source_budget.busy&&reason!=4)return;
     if(GetCurrentThreadId()!=thread||!loaded||inside)return;
     present_reason=reason;qa_stage(reason);pump_due();
 }
@@ -1998,7 +2046,7 @@ static void forget_deleted_context(){
     fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
-    deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
+    deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     deck_cadence={};
     world_readback={};
@@ -2064,6 +2112,7 @@ static DWORD WINAPI initialize(void*){
     char path[MAX_PATH];GetModuleFileNameA(NULL,path,MAX_PATH);char*leaf=strrchr(path,'\\');if(!leaf||_stricmp(leaf+1,"FFVIII.exe"))return 0;
     for(int i=0;i<200&&!engine;i++){engine=GetModuleHandleA("FFVIII_EFIGS.dll");if(!engine)Sleep(50);}
     FILE*f=fopen("FF8_geometry.log","w");if(f){fputs("FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);fclose(f);}
+    if(deck_renderer)log("FF8 Reborn Steam Deck preview 10\n");
     if(!engine)return 0;
     SteamLicense license=steam_license();
     for(int retry=0;license==SteamLicense::waiting&&retry<240;++retry){

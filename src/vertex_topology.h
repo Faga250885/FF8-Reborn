@@ -10,7 +10,6 @@ struct TopologyPoint {
     uint64_t sum=0,xors=0,signature=0;
     unsigned count=0;int prior=-1;
 };
-struct TopologyRef {unsigned op,vertex,node;};
 struct Topology {std::vector<TopologyPoint> points;std::vector<TopologyRef> refs;std::vector<std::pair<unsigned,uint64_t>> faces;std::vector<unsigned> offsets;};
 static Topology topology_points(const Frame&frame,const std::vector<Primitive>&tris){
     Topology result;auto&points=result.points;points.reserve(tris.size());result.refs.reserve(tris.size()*3);
@@ -23,7 +22,7 @@ static Topology topology_points(const Frame&frame,const std::vector<Primitive>&t
         if((visited++&127)==0&&matching_checkpoint)matching_checkpoint();
         uint64_t state=states[tri.op];
         for(unsigned v=0;v<3;v++){const auto&p=op.vertices[tri.start+v].p;if(p[3]<=0||p[3]>=.1f)continue;
-            float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]};uint64_t key=hash(state,xyw,sizeof(xyw));
+            uint64_t key=projected_point_key(state,p);
             const unsigned n=lookup.node(key,static_cast<unsigned>(points.size()));
             if(n==points.size()){points.emplace_back();memcpy(points.back().position.data(),p,sizeof(p));}
             uint64_t face=hash(tri.key,&v,sizeof(v));auto&point=points[n];point.sum+=face;point.xors^=face;point.count++;
@@ -56,7 +55,8 @@ static void anchor_vertex_topology(const std::vector<Primitive>&old,const std::v
         if(source.count<2||source.count!=dest.count||source.sum!=dest.sum||source.xors!=dest.xors)continue;
         float predicted[4];camera_predict(dest.position.data(),predicted);
         double radius=1,delta=0;for(int k=0;k<2;k++){radius=std::max(radius,std::max(fabs(double(source.position[k])),fabs(double(predicted[k]))));delta=std::max(delta,fabs(double(source.position[k])-predicted[k]));}
-        if(delta>std::max(32.,radius*.35)||fabs(std::log(double(source.position[3])/predicted[3]))>.7)continue;
+        const double depth_ratio=double(source.position[3])/predicted[3];
+        if(delta>std::max(32.,radius*.35)||depth_ratio<std::exp(-.7)||depth_ratio>std::exp(.7))continue;
         topology_anchors++;dest.prior=int(id-1);
     }
 #ifdef GEO_AUTOTEST
@@ -84,7 +84,8 @@ static void anchor_vertex_topology(const std::vector<Primitive>&old,const std::v
             if(score<2)continue;unsigned support=std::min(before_topology.offsets[j+1]-before_topology.offsets[j],after_topology.offsets[i+1]-after_topology.offsets[i]);
             if(score*5<support*3)continue;
             const auto&p=before[j].position;const auto&q=after[i].position;
-            if(std::hypot(p[0]-q[0],p[1]-q[1])>160||fabs(std::log(double(p[3])/q[3]))>.7)continue;
+            const double dx=p[0]-q[0],dy=p[1]-q[1],depth_ratio=double(p[3])/q[3];
+            if(dx*dx+dy*dy>160.*160.||depth_ratio<std::exp(-.7)||depth_ratio>std::exp(.7))continue;
             vote(best_new[i],j,score);vote(best_old[j],i,score);
         }
     }
