@@ -7,35 +7,39 @@ struct DeckWorldPass {
     std::unique_ptr<WideView> view;
     int selector=-1;
     unsigned draws=0;
+    ReadableRegion indices_region,position_region;
     double setup_seconds=0,wait_credit=0;
     bool checked=false,active=false,scene=false,output=false,failed=false;
-    void begin(){checked=active=scene=output=failed=false;draws=0;setup_seconds=wait_credit=0;world_state::state={};world_state::tracking=false;}
+    void begin(){checked=active=scene=output=failed=false;draws=0;setup_seconds=wait_credit=0;indices_region=position_region={};world_state::state={};world_state::tracking=false;}
 };
 static DeckWorldPass deck_world;
-// Inspect only positions for potential minimap, cloud and fade layers.
-// The caller validates the format and memory range before reading.
+// Inspect the same enabled client position array and the same indices the
+// native glDrawElements call consumes synchronously. Keep the validated
+// memory-region bounds only for this source frame. VBO offsets must never
+// be interpreted as host addresses.
 
 struct WorldPositions {
     const BYTE* base=nullptr;
     size_t stride=0,index_size=0;
     const BYTE* indices=nullptr;
-    ReadableRegion region;
     bool open(GLsizei count,GLenum type,const void* elements){
         Array pos;
-        if(world_state::observing&&world_state::state.position_known){
-            GLint vbo=0;glGetIntegerv(GL_VERTEX_ARRAY_BUFFER_BINDING,&vbo);if(vbo)return false;
-            pos=world_state::state.position;
+        auto& live=world_state::state;
+        if(world_state::cached_buffers&&live.position_known){
+            if(live.position_enabled<0)live.position_enabled=glIsEnabled(GL_VERTEX_ARRAY);
+            if(!live.position_enabled||live.position_binding!=0)return false;
+            pos=live.position;
         }else pos=array(GL_VERTEX_ARRAY,GL_VERTEX_ARRAY_POINTER,GL_VERTEX_ARRAY_SIZE,GL_VERTEX_ARRAY_TYPE,GL_VERTEX_ARRAY_STRIDE,GL_VERTEX_ARRAY_BUFFER_BINDING);
-        if(!pos.enabled||pos.size!=4||pos.type!=GL_FLOAT)return false;
-        GLint buffer=0;glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&buffer);
+        if(!pos.enabled||!pos.p||pos.size!=4||pos.type!=GL_FLOAT)return false;
+        if(!world_state::cached_buffers||live.element_binding<0)glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&live.element_binding);
         index_size=type==GL_UNSIGNED_SHORT?2:type==GL_UNSIGNED_INT?4:type==GL_UNSIGNED_BYTE?1:0;
-        if(buffer||!index_size||!readable(elements,size_t(count)*index_size))return false;
+        if(live.element_binding||!index_size||!readable(elements,size_t(count)*index_size,&deck_world.indices_region))return false;
         base=pos.p;stride=size_t(pos.stride);indices=static_cast<const BYTE*>(elements);return true;
     }
     void get(int i,float* destination){
         unsigned index=0;memcpy(&index,indices+i*index_size,index_size);
         const uint64_t addr=uint64_t(uintptr_t(base))+uint64_t(index)*stride;
-        demand(addr<=UINTPTR_MAX-16&&readable(reinterpret_cast<const void*>(uintptr_t(addr)),16,&region),"invalid world position");
+        demand(addr<=UINTPTR_MAX-16&&readable(reinterpret_cast<const void*>(uintptr_t(addr)),16,&deck_world.position_region),"invalid world position");
         memcpy(destination,reinterpret_cast<const void*>(uintptr_t(addr)),16);
     }
 };
@@ -49,6 +53,7 @@ static bool direct_world_frame(){
         pass.active=game_mode()==2&&!native_atlas_possible()&&native_atlas_view==pass.selector&&
             GetClientRect(WindowFromDC(dc),&r)&&r.right==pass.view->drawable_width&&r.bottom==pass.view->drawable_height;
         world_state::tracking=pass.active;
+        if(pass.active){world_bindings::begin_frame();world_state::begin_buffers();}
     }
     return pass.active;
 }
@@ -112,6 +117,10 @@ static void draw_world_geometry(const WideView& view,GLenum mode,GLsizei count,G
         bool possible_overlay=false;
         if(s.blend)for(int i=0;i<count;i+=6){
             Vertex corners[6];pos.get(i,corners[0].p);
+            // Each corner of a qualifying rectangle lies on one of its
+            // horizontal limits, or its vertical limits for a split fade.
+            const float x=corners[0].p[0],y=corners[0].p[1];
+            if(!((x>=-2&&x<=1)||(x>=639&&x<=642)||(count==12&&(y<=24||y>=456))))continue;
             for(int j=1;j<6;++j)pos.get(i+j,corners[j].p);
             WideView::Bounds b;
             if(WideView::flat_rect(corners,b)&&
@@ -141,8 +150,8 @@ static void draw_world_geometry(const WideView& view,GLenum mode,GLsizei count,G
 static void direct_world_draw(GLenum mode,GLsizei count,GLenum type,const void* indices){
     ++deck_world.draws;
     const double began=now();
-    GLint framebuffer=0;glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&framebuffer);
-    try{draw_world_geometry(*deck_world.view,mode,count,type,indices,GLuint(framebuffer),0,began);}
+    const GLuint framebuffer=world_bindings::draw_target();
+    try{draw_world_geometry(*deck_world.view,mode,count,type,indices,framebuffer,0,began);}
     catch(const std::exception&){
         deck_world.failed=true;real_draw(mode,count,type,indices);
     }

@@ -9,6 +9,7 @@ struct Cache {
     GLfloat projection[16]{};
     Array position{};
     bool position_known=false;
+    GLint array_binding=-1,position_binding=-1,position_enabled=-1,element_binding=-1;
 };
 static thread_local Cache state;
 static bool observing=false;
@@ -24,11 +25,21 @@ static decltype(&glPopAttrib) attrib_original;
 static decltype(&glEnable) enable_original;
 static decltype(&glDisable) disable_original;
 static decltype(&glVertexPointer) vertex_original;
+static decltype(&glEnableClientState) client_enable_original;
+#include "deck_client_buffers.h"
+static void APIENTRY client_enable(GLenum key){
+    client_enable_original(key);
+    if(tracking&&key==GL_VERTEX_ARRAY&&state.position_enabled==0)state.position_enabled=-1;
+}
 static void APIENTRY vertex(GLint size,GLenum type,GLsizei stride,const void* ptr){
     vertex_original(size,type,stride,ptr);
     if(!tracking)return;
     state.position_known=GetCurrentThreadId()==thread&&wglGetCurrentContext()==context&&size==4&&type==GL_FLOAT&&stride>=0&&stride<4096;
     if(state.position_known)state.position={static_cast<const BYTE*>(ptr),GL_FLOAT,4,stride?stride:16,true};
+    if(cached_buffers&&state.position_known){
+        if(state.array_binding<0)glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&state.array_binding);
+        state.position_binding=state.array_binding;
+    }
 }
 static void APIENTRY viewport(GLint x,GLint y,GLsizei w,GLsizei h){
     viewport_original(x,y,w,h);state.viewport_known=false;

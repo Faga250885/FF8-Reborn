@@ -115,6 +115,7 @@ static void APIENTRY qa_gl_message(GLenum,GLenum type,GLuint,GLenum,GLsizei len,
     if(seen.size()>=24||std::find(seen.begin(),seen.end(),s)!=seen.end())return;seen.push_back(s);
     log("QA GL: ");log(s.c_str());log("\n");
 }
+static void initialize_deck_bindings();
 static bool initialize_gl() {
 #define LOAD(type,name) p##name=(type)wglGetProcAddress("gl" #name);if((uintptr_t)p##name<=3 || (uintptr_t)p##name==UINTPTR_MAX)return false;
     API_LIST(LOAD)
@@ -123,6 +124,7 @@ static bool initialize_gl() {
     glGetIntegerv(GL_STENCIL_BITS,&stencil_bits);loaded=true;
     terrain_resource=nullptr;
     if(deck_renderer){
+        initialize_deck_bindings();
         int major=0,minor=0;
         const char* version=(const char*)glGetString(GL_VERSION);
         if(version&&sscanf(version,"%d.%d",&major,&minor)==2&&(major>4||(major==4&&minor>=3))){
@@ -360,6 +362,7 @@ static std::shared_ptr<TextureCopy> freeze_texture(GLuint id){
 }
 static void invalidate_texture(GLenum target){
     if(inside||!loaded||target!=GL_TEXTURE_2D||wglGetCurrentContext()!=context)return;
+    if(texture_cache.empty())return;
     GLint id;glGetIntegerv(GL_TEXTURE_BINDING_2D,&id);if(texture_cache.erase(id))texture_updates++;
 }
 static void APIENTRY tex_image_hook(GLenum target,GLint level,GLint format,GLsizei w,GLsizei h,GLint border,GLenum pixel_format,GLenum type,const void*data){
@@ -889,7 +892,12 @@ static bool invert_matrix(const float*m,float*out){
 #include "native_capture.h"
 #endif
 #include "world_map_detail.h"
+#include "deck_world_bindings.h"
 #include "deck_world_pass.h"
+static void initialize_deck_bindings(){
+    world_bindings::install();
+    world_state::install_buffers();
+}
 #include "infirmary/presentation.h"
 #include "field_blur.h"
 #include "stride_trace.h"
@@ -1259,7 +1267,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         if(f){fprintf(f,"%.9f,%u,%d,%.6f,%.6f,%.6f,%d,%d\n",began,sources,present_reason,alpha,began-next_output,maximum_gap,gap_from,gap_to);
             if(++rows%120==0)fflush(f);if(rows==9000){fclose(f);f=nullptr;}}}
     maximum_gap=0;qa_stage(12);
-    track_display_refresh(handle,began);
+    if(!deck_renderer||display_settings.fps)track_display_refresh(handle,began);
     if(alpha>=0){
         presentation_clock.submitted(now());
     }
@@ -1444,18 +1452,26 @@ static unsigned frame_waits=0;
 static double requested_wait=0,reclaimed_wait=0;
 struct WorldFrameStats {
     unsigned frames=0,draws=0;
-    unsigned direct_frames=0;
+    unsigned direct_frames=0,cached_targets=0,cached_arrays=0;
     double intervals=0,capture=0,layout=0,filter=0,swap=0;
 };
 static WorldFrameStats world_frame_stats;
+static unsigned world_original_frames=0;
+static double world_original_intervals=0;
 static void stats(){static double last=0;static unsigned ps=0,po=0;
     double t=now();if(t-last<5)return;char line[320];snprintf(line,sizeof(line),
         "source %.2f/s | geometry presents %.2f/s | moved draws %u | parity pass %u fail %u | waits %u | %s\n",
         (sources-ps)/(t-last),(outputs-po)/(t-last),moving_draws,parity_ok,parity_fail,waits,can_present?"geometry":"native");
     log(line);ps=sources;po=outputs;last=t;
+    if(world_original_frames){
+        snprintf(line,sizeof(line),"Deck world Original 4:3 | %.1f FPS | %u travel frames\n",
+            world_original_frames/world_original_intervals,world_original_frames);
+        log(line);world_original_frames=0;world_original_intervals=0;
+    }
     if(world_frame_stats.frames){
         const auto& w=world_frame_stats;
-        snprintf(line,sizeof(line),"Deck world native projection: %u of %u travel frames\n",w.direct_frames,w.frames);log(line);
+        snprintf(line,sizeof(line),"Deck world native projection: %u of %u travel frames | cached target %u | cached arrays %u\n",
+            w.direct_frames,w.frames,w.cached_targets,w.cached_arrays);log(line);
         snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | capture or projection setup %.2f ms | validation and layout %.2f ms | filter CPU %.2f ms | swap and other %.2f ms | drawable %dx%d\n",
             w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.filter/w.frames,1000*w.swap/w.frames,width,height);
         log(line);world_frame_stats={};
@@ -1727,13 +1743,21 @@ static BOOL WINAPI swap_hook(HDC handle){
     if(deck_native_layout_wait)
         // Only measured compositor work earns credit against an overdue native
         // delay. Waiting for vertical sync inside SwapBuffers earns none.
-        native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds,true);
+        // Some engine ticks request their delay after swapping. Carry only
+        // projection work that was not already credited before this swap.
+        native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds+
+            (direct_complete&&current.mode==2?deck_world.wait_credit:0.),true);
     else
         native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
     if(measure_world||(direct_complete&&dt>0&&dt<.25)){
         auto& w=world_frame_stats;
         ++w.frames;w.direct_frames+=direct_complete;w.draws+=direct_complete?deck_world.draws:unsigned(current.ops.size());w.intervals+=dt;
+        w.cached_targets+=direct_complete&&world_bindings::tracked;
+        w.cached_arrays+=direct_complete&&world_state::cached_buffers;
         w.capture+=world_capture_time+deck_world.setup_seconds;w.layout+=layout_seconds;w.filter+=filter_seconds;w.swap+=now()-t-layout_seconds-filter_seconds;
+    }
+    if(native_deck_frame()&&current.mode==2&&previous.mode==2&&dt>0&&dt<.25&&!native_atlas_possible()){
+        ++world_original_frames;world_original_intervals+=dt;
     }
     world_capture_time=0;
     deck_world.begin();native_atlas_view=unread_atlas_view;
@@ -1906,6 +1930,7 @@ static void forget_deleted_context(){
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
     deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
+    world_original_frames=0;world_original_intervals=0;
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;
@@ -2020,6 +2045,7 @@ static DWORD WINAPI initialize(void*){
                 hook(engine,"OPENGL32.dll","glPopAttrib",(void*)world_state::attrib,(void**)&attrib_original)&&
                 hook(engine,"OPENGL32.dll","glEnable",(void*)world_state::enable,(void**)&enable_original)&&
                 hook(engine,"OPENGL32.dll","glDisable",(void*)world_state::disable,(void**)&disable_original)&&
+                hook(engine,"OPENGL32.dll","glEnableClientState",(void*)world_state::client_enable,(void**)&client_enable_original)&&
                 hook(engine,"OPENGL32.dll","glVertexPointer",(void*)world_state::vertex,(void**)&vertex_original);
         }
         demand(hook(engine,"OPENGL32.dll","glDrawElements",(void*)draw_hook,(void**)&real_draw),"draw import missing");

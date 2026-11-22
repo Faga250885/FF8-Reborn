@@ -105,6 +105,50 @@ static void take(std::vector<Point>&out,unsigned&seen,unsigned&groups){
 static int world_margin(){
     return height>0?std::clamp(int(std::ceil(896.*width/height))-1280+8,0,8192):512;
 }
+// On the supported engine all 2^20 guest-page slots lie inside the DLL's
+// static .data. Remember the table's location, never the pages it points to.
+static const uint32_t* terrain_page_table=nullptr;
+static void identify_terrain_page_table(){
+    const auto table=reinterpret_cast<const uint32_t*>((BYTE*)engine+0x188edd0);
+    const uintptr_t begin=reinterpret_cast<uintptr_t>(table),end=begin+4u*(1u<<20);
+    terrain_page_table=nullptr;
+    if(end<=begin)return;
+    for(uintptr_t pos=begin;pos<end;){
+        MEMORY_BASIC_INFORMATION info{};
+        if(!VirtualQuery(reinterpret_cast<const void*>(pos),&info,sizeof(info))||
+           info.AllocationBase!=engine||info.Type!=MEM_IMAGE||info.State!=MEM_COMMIT||
+           (info.Protect!=PAGE_READWRITE&&info.Protect!=PAGE_WRITECOPY))return;
+        const uintptr_t next=reinterpret_cast<uintptr_t>(info.BaseAddress)+info.RegionSize;
+        if(next<=pos)return;
+        pos=next;
+    }
+    terrain_page_table=table;
+}
+static bool terrain_count(uint32_t address,uint32_t& count){
+    if(!terrain_page_table||(address&4095)>4092)return fetch(address,&count,4);
+    const auto page=terrain_page_table[address>>12];
+    if(!page)return false;
+    const auto ptr=reinterpret_cast<const BYTE*>(uintptr_t(page))+(address&4095);
+    if(!readable(ptr,4))return false;
+    memcpy(&count,ptr,4);return true;
+}
+// Adjacent guest pages often share one writable host allocation. Reuse its
+// bounds only while walking the result of a single projector invocation.
+static int16_t* terrain_points(uint32_t address,size_t size,ReadableRegion& writable){
+    if(!terrain_page_table)return static_cast<int16_t*>(writable_guest(address,size));
+    const uintptr_t page=terrain_page_table[address>>12];
+    const uintptr_t ptr=page+(address&4095),end=ptr+size;
+    if(!page||ptr<page||end<=ptr)return nullptr;
+    if(ptr<writable.begin||end>writable.end){
+        MEMORY_BASIC_INFORMATION info{};
+        if(!VirtualQuery(reinterpret_cast<const void*>(ptr),&info,sizeof(info))||
+           info.State!=MEM_COMMIT||info.Protect!=PAGE_READWRITE)return nullptr;
+        writable.begin=reinterpret_cast<uintptr_t>(info.BaseAddress);
+        writable.end=writable.begin+info.RegionSize;
+        if(end>writable.end)return nullptr;
+    }
+    return reinterpret_cast<int16_t*>(ptr);
+}
 // 651FB0 projects the controlled world model in bone-sized batches. Read
 // its indexed screen positions before the engine discards back-facing faces.
 static void __cdecl foot_projected(void* cpu){
@@ -145,14 +189,16 @@ static bool install_foot(){
 }
 static void __cdecl world_projected(void*cpu){
     uint32_t sp=0,count=0;memcpy(&sp,(BYTE*)cpu+0x2c,4);
-    bool valid=enabled&&display_settings.wide&&sp<=UINT32_MAX-8&&fetch(sp+4,&count,4)&&count>0&&count<=4096;
+    bool valid=enabled&&display_settings.wide&&sp<=UINT32_MAX-8&&
+        (deck_renderer?terrain_count(sp+4,count):fetch(sp+4,&count,4))&&count>0&&count<=4096;
     world_original(cpu);
     if(!valid)return;
     const int margin=world_margin()+int(std::ceil(4*turn_guard(width,height,448)));
+    ReadableRegion writable;
     for(uint32_t i=0;i<count;){
         const uint32_t addr=0x1f9dc40u+8*i;
         const uint32_t n=std::min(count-i,(4096u-(addr&4095u))/8u);
-        auto point=(int16_t*)writable_guest(addr,8*n);
+        auto point=deck_renderer?terrain_points(addr,8*n,writable):(int16_t*)writable_guest(addr,8*n);
         if(!point||!n)break;
         // Bit zero is the native horizontal visibility bit. Its original
         // interval is [0,2560); retain the original near and vertical flags.
@@ -193,6 +239,7 @@ static bool install_world(){
     const Branch legacy[]={{0x8b30e0,{0x0f,0x85,0x4a,1,0,0}},
         {0x8b3151,{0x0f,0x84,0xd9,0,0,0}},{0x906189,{0x0f,0x84,0x1b,0x15,0,0}}};
     for(auto&b:legacy)if(memcmp((BYTE*)engine+b.rva,b.bytes,6))return false;
+    if(deck_renderer)identify_terrain_page_table();
     for(auto&b:legacy){auto p=(BYTE*)engine+b.rva;DWORD old,tmp;
         if(!VirtualProtect(p,6,PAGE_EXECUTE_READWRITE,&old))return false;
         memset(p,0x90,6);FlushInstructionCache(GetCurrentProcess(),p,6);VirtualProtect(p,6,old,&tmp);}
