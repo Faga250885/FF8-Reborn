@@ -98,6 +98,7 @@ struct WideView {
         const int mode=frame.layout();
         if(!requested||(!gameplay_layout(mode)&&mode!=6)||frame.w<1||frame.h<1)return;
         if(mode==6){
+            int top=frame.menu_top,bottom=frame.menu_bottom,half_width=frame.menu_half_width;
             if(frame.mode==after_battle_mode){
                 // Results are composed natively even at 60/120 FPS. Only
                 // fit the centered 4:3 image submitted on this actual swap.
@@ -107,13 +108,11 @@ struct WideView {
                 const auto* vp=last->state.viewport;
                 if(vp[0]<0||vp[1]<0||vp[0]+vp[2]>frame.w||vp[1]+vp[3]>frame.h)return;
                 std::copy_n(vp,4,result_viewport.begin());
+                include_result_icons(frame,last,top,bottom,half_width);
             }
-            // Native menu panels span y=28..448 and x=40..602. Fit that
-            // rectangle once, independent of cursor motion and open panels.
-            const double scale=std::min(double(frame.h)/(frame.menu_bottom-frame.menu_top),
-                                        double(frame.w)/(2*frame.menu_half_width));
+            const double scale=std::min(double(frame.h)/(bottom-top),double(frame.w)/(2*half_width));
             menu=true;outer_width=int(std::lround(640*scale));outer_height=int(std::lround(480*scale));
-            menu_y=int(std::lround(frame.h*.5-(480-(frame.menu_top+frame.menu_bottom)*.5)*scale));
+            menu_y=int(std::lround(frame.h*.5-(480-(top+bottom)*.5)*scale));
             return;
         }
         if(frame.ops.empty())return;
@@ -283,6 +282,64 @@ struct WideView {
             for(const auto& u:s.uniforms)if(u.type==GL_SAMPLER_2D)return true;
         }else for(const auto& t:s.texture)if(t.enabled)return true;
         return false;
+    }
+    static void include_result_icons(const Frame& frame,std::vector<Op>::const_reverse_iterator copy,
+                                     int& top,int& bottom,int& half_width){
+        const GLuint source=copy->state.texture[0].id;
+        const auto surface=frame.targets.find(source);
+        if(!source||surface==frame.targets.end()||surface->second.w<=0||surface->second.h<=0)return;
+        const double sx=640./surface->second.w,sy=480./surface->second.h;
+        // Battle assists are small textured quads added to the final surface
+        // after the game copies the result page. Their projection differs
+        // from the panel projection. Measure only the visible part this swap.
+        for(auto it=std::next(copy);it!=frame.ops.rend();++it){
+            const auto& op=*it;
+            if(op.target!=source)continue;
+            if(op.clear&GL_COLOR_BUFFER_BIT)break;
+            const auto& s=op.state;
+            if(op.mode!=GL_TRIANGLES||op.vertices.size()!=6||!uses_texture(s))continue;
+            Bounds quad;
+            if(!flat_rect(op.vertices.data(),quad))continue;
+            if(quad.l==-1&&quad.r==1&&quad.t==-1&&quad.b==1){
+                const int w=surface->second.w,h=surface->second.h;
+                const bool full_clip=!s.scissor_on||(s.scissor[0]==0&&s.scissor[1]==0&&
+                                                     s.scissor[2]>=w&&s.scissor[3]>=h);
+                if(!s.blend&&full_clip&&frame.targets.count(s.texture[0].id)&&s.viewport[0]==0&&
+                   s.viewport[1]==0&&s.viewport[2]==w&&s.viewport[3]==h)break;
+                continue; // full-page copies and effects use clip coordinates directly
+            }
+            if(op.vertices[0].p[2]!=0||op.vertices[0].p[3]!=1)continue;
+            double left=640,right=0,low=480,high=0;
+            bool projected=true;
+            for(const auto& v:op.vertices){
+                // FFVIII's transformed sprite shader uses gl_ProjectionMatrix
+                // directly. Fixed-function sprites also apply the modelview.
+                float point[4];
+                std::copy_n(v.p,4,point);
+                if(!s.program){
+                    double eye[4];transform(s.model,point,eye);std::copy_n(eye,4,point);
+                }
+                double clip[4];transform(s.projection,point,clip);
+                if(!(clip[3]>0)||!std::isfinite(clip[3])){projected=false;break;}
+                const double x=(s.viewport[0]+(1+clip[0]/clip[3])*.5*s.viewport[2])*sx;
+                const double y=(s.viewport[1]+(1+clip[1]/clip[3])*.5*s.viewport[3])*sy;
+                if(!std::isfinite(x)||!std::isfinite(y)){projected=false;break;}
+                left=std::min(left,x);right=std::max(right,x);
+                low=std::min(low,y);high=std::max(high,y);
+            }
+            // Reject large layers before clipping: a scissored fullscreen
+            // overlay still represents a screen effect, not an icon.
+            if(!projected||right-left>80||high-low>80)continue;
+            if(s.scissor_on){
+                left=std::max(left,s.scissor[0]*sx);right=std::min(right,(s.scissor[0]+s.scissor[2])*sx);
+                low=std::max(low,s.scissor[1]*sy);high=std::min(high,(s.scissor[1]+s.scissor[3])*sy);
+            }
+            left=std::max(left,0.);right=std::min(right,640.);
+            low=std::max(low,0.);high=std::min(high,480.);
+            if(left>=right||low>=high)continue;
+            top=std::min(top,int(std::floor(480-high)));bottom=std::max(bottom,int(std::ceil(480-low)));
+            half_width=std::max(half_width,int(std::ceil(std::max(320-left,right-320))));
+        }
     }
     // The native battle canvas is 640 x 480, with rows 24..456 visible.
     // Flashes may be opaque, additive or textured. Use the screen footprint
