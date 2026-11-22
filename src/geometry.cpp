@@ -61,25 +61,33 @@ API_LIST(DECLARE)
 static bool loaded=false,inside=false,enabled=true,can_present=false,accessibility_test=false,diagnostic_trace=false;
 #include "retro_settings.h"
 struct DisplaySettings {
-    int fps=60;
+    int fps=deck_renderer?0:60;
     int fps_counter=0;
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
-    void load(const wchar_t* path){
-        const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
-        automatic_fps=value!=0&&value!=60&&value!=120;
-        fps=value==0||value==120?value:60;
-        if(deck_renderer){fps=value==60||value==90||value==120?60:0;automatic_fps=false;}
-        wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
-        atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
-        field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
-        fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
-        retro.load(path);
-    }
+    void load(const wchar_t* path);
 } static display_settings;
+static bool deck_fixed_rate(){return deck_renderer&&display_settings.fps==30;}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
+void DisplaySettings::load(const wchar_t* path){
+    const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
+    if(deck_renderer){
+        const bool legacy=value==60||value==90||value==120;
+        fps=value==30||legacy?30:0;
+        automatic_fps=false;
+        if(legacy)retro_panel::persist(path,retro,0,-1,false,retro_panel::FPS,30);
+    }else{
+        automatic_fps=value!=0&&value!=60&&value!=120;
+        fps=value==0||value==120?value:60;
+    }
+    wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
+    atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
+    field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
+    fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
+    retro.load(path);
+}
 #ifdef GEO_NATIVE_CAPTURE
 #include "update_menu.h"
 #endif
@@ -208,6 +216,7 @@ static void read_uniform(GLuint program,GLint location,GLenum type,std::vector<U
         if(type==GL_SAMPLER_2D)demand(u.i[0]>=0&&u.i[0]<4,"sampler outside captured units");}
     else pGetUniformfv(program,u.location,u.f.data());
 }
+static bool deck_battle_capture();
 static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,bool terrain=false) {
     if(inputs)*inputs=program?1u:127u;
     std::vector<Uniform> out;if(!program)return out;
@@ -215,7 +224,7 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,boo
     // sampler unit selections) still belong to the individual draw.
     // Reflection describes the linked shader for every primitive type.
     // Fields submit many tile strips and quads through the same program.
-    const bool cache=deck_renderer&&display_settings.fps&&inputs&&deck_programs::available();
+    const bool cache=inputs&&deck_battle_capture()&&deck_programs::available();
     if(cache){
         auto entry=deck_programs::layouts.find(program);
         if(entry!=deck_programs::layouts.end()){
@@ -634,7 +643,9 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     int menu_top=28,menu_bottom=448,menu_half_width=282;
     int layout()const{return layout_override<0?mode:layout_override;}
     StrideFollow stride_follow;float stride_dt=1.f/30;
-    bool reactive_sides=false,camera_cut=false;};
+    bool reactive_sides=false,camera_cut=false;
+    GLuint native_field_target=0;
+    bool field_layout_only=false;};
 static Frame building,previous,current;static Surface test_target,backup,reference_target,sample_a,sample_b;
 #include "deck_draw_storage.h"
 static DeckDrawStorage draw_storage;
@@ -713,7 +724,25 @@ static void attach_replay_depth(GLuint key,Surface& surface,const Target& target
 static GLuint capture_target=0;
 static std::vector<Vertex> scratch;
 static void fail_frame(const char*s){static char last[200]="";if(building.valid&&strcmp(last,s)){char line[256];snprintf(line,sizeof(line),"native fallback: %s\n",s);log(line);snprintf(last,sizeof(last),"%s",s);}building.valid=false;}
-static bool native_deck_frame(){return deck_renderer&&!display_settings.fps&&!display_settings.wide;}
+static int game_mode();
+// Fields and world travel already advance at 30 Hz. Their original endpoint
+// also keeps every NPC, animated tile and HUD layer on the same engine tick.
+static bool native_rate_for_mode(int mode){
+    return !display_settings.fps||(deck_renderer&&display_settings.fps==30&&mode!=3);
+}
+static constexpr int unknown_draw_mode=-2;
+static thread_local int deck_draw_mode=unknown_draw_mode;
+static bool deck_battle_capture(){
+    if(!deck_fixed_rate())return false;
+    if(deck_draw_mode==unknown_draw_mode)deck_draw_mode=game_mode();
+    return deck_draw_mode==3;
+}
+static bool native_deck_frame(){
+    if(!deck_renderer||display_settings.wide)return false;
+    if(!display_settings.fps)return true;
+    if(display_settings.fps!=30)return false;
+    return !deck_battle_capture();
+}
 struct ReadableRegion { uintptr_t begin=0,end=0; };
 struct CaptureRegions { ReadableRegion indices,arrays[7]; };
 static thread_local CaptureRegions capture_regions;
@@ -727,9 +756,9 @@ static bool capture_start(Op* clear=nullptr) {
     if(!building.valid)return false;
     if(!building.started){RECT r{};demand(GetClientRect(WindowFromDC(dc),&r),"no drawable");
         building.w=r.right;building.h=r.bottom;demand(r.right>0&&r.bottom>0&&r.right<=8192&&r.bottom<=8192,"drawable extent unsupported");
-        if(deck_renderer&&display_settings.fps){capture_regions={};world_bindings::begin_frame();}
+        if(deck_battle_capture()){capture_regions={};world_bindings::begin_frame();}
         building.started=true;}
-    GLint fbo=0;if(deck_renderer&&display_settings.fps)fbo=world_bindings::draw_target();
+    GLint fbo=0;if(deck_battle_capture())fbo=world_bindings::draw_target();
     else glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&fbo);
     // FFVIII reattaches multiple particle textures to the same scratch FBO
     // during one attack. Each texture retains its own image when detached.
@@ -783,7 +812,7 @@ static bool capture_start(Op* clear=nullptr) {
 #ifndef GEO_AUTOTEST
         // Diagnostic snapshot files serialize all attachments, including
         // the initial contents of planes the stock scene never reads.
-        if(deck_renderer&&display_settings.fps==60&&clear){
+        if(clear&&deck_battle_capture()){
             const auto retained=bits&~discarded_seed_planes(building,current,*clear,target);
             if(retained!=bits)building.captured_seed_planes[capture_target]=retained;
             bits=retained;
@@ -884,15 +913,26 @@ static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,
         for(int j=0;j<4;j++){memcpy(v.uv[j],constant_uv[j],sizeof(v.uv[j]));if(uv[j].enabled)read_array(uv[j],id,v.uv[j],false);}
     });
 }
+static void recognize_native_field_target(const Op&);
+static bool field_draw_is_native(GLuint target){
+    if(!target||target!=building.native_field_target||building.vertex_count<144)return false;
+    building.field_layout_only=true;
+    // Preserve the order of target changes, including a scene that ends
+    // offscreen. The stock draw itself still renders the complete geometry.
+    if(building.ops.back().target!=target)building.ops.emplace_back().target=target;
+    return true;
+}
 static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices) {
     if(!capture_start())return;
+    if(deck_renderer&&field_draw_is_native(capture_target))return;
     demand(count>0&&unsigned(count)<=MAX_VERTICES&&building.vertex_count+count<=MAX_VERTICES,"vertex budget exceeded");
     demand(mode==GL_TRIANGLES||mode==GL_TRIANGLE_STRIP||mode==GL_TRIANGLE_FAN||mode==GL_LINES||mode==GL_POINTS||mode==GL_QUADS,"primitive mode unsupported");
+    const bool battle=deck_battle_capture();
     const bool compact_draw=deck_renderer&&mode==GL_TRIANGLES&&
-        (display_settings.fps||(display_settings.wide&&current.mode==2&&capture_target));
+        (battle||(display_settings.wide&&current.mode==2&&capture_target));
     unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,compact_draw);
-    if(deck_renderer&&display_settings.fps==60)draw_storage.take(op,count);
-    read_draw_vertices(op,inputs,count,type,indices,deck_renderer&&display_settings.fps?&capture_regions:nullptr);
+    if(battle)draw_storage.take(op,count);
+    read_draw_vertices(op,inputs,count,type,indices,battle?&capture_regions:nullptr);
     bool used_texture[4]={};
     for(int j=0;j<4;j++)used_texture[j]=!op.state.program&&op.state.texture[j].enabled;
     for(auto&u:op.state.uniforms)if(u.type==GL_SAMPLER_2D)used_texture[u.i[0]]=true;
@@ -911,6 +951,7 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
     op.key=key;
 #endif
     building.vertex_count+=count;building.ops.push_back(std::move(op));
+    if(deck_renderer&&!building.native_field_target)recognize_native_field_target(building.ops.back());
 }
 static int present_reason=0,previous_stage=0,gap_from=0,gap_to=0;
 static double last_stage_time=0,maximum_gap=0;
@@ -921,7 +962,7 @@ static void qa_stage(int reason){
     previous_stage=reason;last_stage_time=t;
 }
 static void service_at(int,double earliest=next_output);
-static void present_during_wait(bool force_previous=false);
+static bool present_during_wait(bool force_previous=false);
 static void pump_due(double earliest=next_output);
 static double world_capture_time=0;
 static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
@@ -938,7 +979,7 @@ static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*
     if(began&&!inside){
         const double elapsed=now()-began;
         capture_seconds+=elapsed;capture_count++;
-        if(deck_renderer&&current.mode==2&&display_settings.wide&&!display_settings.fps)world_capture_time+=elapsed;
+        if(deck_renderer&&current.mode==2&&display_settings.wide&&native_rate_for_mode(2))world_capture_time+=elapsed;
     }
     real_draw(mode,count,type,indices);
     service_at(1);
@@ -961,7 +1002,7 @@ struct Guard {
         for(const auto&op:f.ops)if(op.state.program&&!values.count(op.state.program)){
             unsigned inputs=127;
             values.emplace(op.state.program,uniforms(op.state.program,inspect_inputs?&inputs:nullptr,
-                deck_renderer&&inspect_inputs&&display_settings.fps==60));
+                deck_fixed_rate()&&f.mode==3&&inspect_inputs));
             if(inspect_inputs)vertex_inputs.emplace(op.state.program,inputs);
         }
         for(int j=0;j<4;j++){pActiveTexture(GL_TEXTURE0+j);glGetFloatv(GL_TEXTURE_MATRIX,texture[j]);}pActiveTexture(active);
@@ -1008,6 +1049,23 @@ static void initialize_deck_bindings(){
 }
 #include "infirmary/presentation.h"
 #include "field_blur.h"
+static void recognize_native_field_target(const Op& op){
+#ifndef GEO_AUTOTEST
+    // A moving camera, NPCs and masks share the native field target. After
+    // confirming an actual gameplay tile on this tick, an already established
+    // native field needs only its completed image and final layout metadata.
+    if(!deck_fixed_rate()||!enabled||!display_settings.wide||!field_blur::preferred||
+       current.mode!=1||current.layout()!=1||current.menu_edge||!current.reactive_sides||
+       !scenery_draw(op))return;
+    const auto& s=op.state;
+    if(s.viewport[2]<=0||s.viewport[3]<=0||std::abs(3*s.viewport[2]-4*s.viewport[3])>4||
+       !field_blur::tile(op,s.viewport[2],s.viewport[3]))return;
+    const auto found=building.targets.find(op.target);
+    if(found==building.targets.end()||found->second.w!=s.viewport[2]||found->second.h!=s.viewport[3])return;
+    if(deck_draw_mode==unknown_draw_mode)deck_draw_mode=game_mode();
+    if(deck_draw_mode==1)building.native_field_target=op.target;
+#endif
+}
 #include "stride_trace.h"
 #include "replay_seed.h"
 #include "field_prefix.h"
@@ -1024,7 +1082,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false){
     // A linked program consumes the same attributes at every interpolation
     // phase. Reflect the inputs once per replay, including on intermediate poses.
     const bool deck_gameplay=deck_renderer&&current.layout()==current.mode&&
-        (display_settings.fps==60?gameplay_layout(current.mode):current.mode==2&&alpha==1);
+        ((deck_fixed_rate()&&current.mode==3)||(current.mode==2&&alpha==1));
     Guard guard(current,deck_gameplay);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
     const ReplaySeedPlan seed_plan(alpha);
@@ -1276,19 +1334,6 @@ static double output_period(){
     const double requested=1./std::max(display_settings.fps,1);
     return deck_renderer?std::max(requested,presentation_clock.refresh_period):requested;
 }
-// A long tick followed by a short one can still deliver the full native rate.
-// Reserve the rendering thread when the average slips, or immediately on a
-// major stall. The scheduler can still present during actual idle waits.
-struct DeckSourceBudget {
-    double relative_period=1;
-    bool busy=false;
-    void observe(double interval,double nominal){
-        const double ratio=interval/nominal;
-        relative_period+=.25*(std::clamp(ratio,0.,2.)-relative_period);
-        busy=ratio>=1.5||relative_period>(busy?1.06:1.12);
-    }
-};
-static DeckSourceBudget deck_source_budget;
 static bool deck_native_layout_wait=false;
 static void track_source_budget(int mode,double interval,bool continuous){
     if(!deck_renderer||!continuous){deck_source_budget={};return;}
@@ -1297,6 +1342,7 @@ static void track_source_budget(int mode,double interval,bool continuous){
 }
 static double previous_origin=0,previous_period=1./30.;
 static bool prepared_previous=false;
+static bool deck_needs_native_swap=false;
 static unsigned displayed_source=0;
 static float replay_presentation(GLuint target,bool force_previous=false){
     double t=now();bool old=force_previous||(prepared_previous&&t<origin);
@@ -1312,16 +1358,17 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}
     displayed_source=sources-(old&&sources?1:0);return alpha;
 }
-static void advance_output(){
+static void finish_generated_output(){
+    ++outputs;
     next_output=presentation_clock.next_slot(next_output,now(),output_period());
 }
 static void matching_pump(){
-    if(deck_source_budget.busy)return;
+    if(deck_source_budget.busy||deck_needs_native_swap)return;
     present_reason=6;qa_stage(6);
     // Publish is pending: previous still contains the fully prepared pair
     // shown on the preceding tick. Temporarily replay it at CPU checkpoints.
     double t=now();if(t<next_output||t-origin>period*1.5)return;
-    present_during_wait(true);advance_output();
+    present_during_wait(true);
 }
 static bool test_capture_requested=false;
 #include "test_input.h"
@@ -1359,8 +1406,6 @@ static void track_display_refresh(HDC handle,double time){
     static double next_check=0;
     if(time<next_check)return;
     next_check=time+2.;
-    const double previous_refresh=presentation_clock.refresh_period;
-    const double query_start=deck_renderer?now():0;
     MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);
     HMONITOR nearest=MonitorFromWindow(WindowFromDC(handle),MONITOR_DEFAULTTONEAREST);
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
@@ -1369,13 +1414,6 @@ static void track_display_refresh(HDC handle,double time){
         if(display_settings.automatic_fps)display_settings.fps=mode.dmDisplayFrequency>60?120:60;
     }
     else presentation_clock.refresh_period=0;
-    if(deck_renderer&&display_settings.fps==60){
-        const double finished=now(),duration=finished-query_start;
-        if(duration>=.04||previous_refresh!=presentation_clock.refresh_period){
-            deck_cadence.record({DeckCadence::EventKind::display_query,finished,duration,0,sources,current.mode,
-                presentation_clock.refresh_period>0?int(1./presentation_clock.refresh_period+.5):0,0});
-        }
-    }
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
@@ -1409,13 +1447,21 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         if(f){fprintf(f,"%.9f,%u,%d,%.6f,%.6f,%.6f,%d,%d\n",began,sources,present_reason,alpha,began-next_output,maximum_gap,gap_from,gap_to);
             if(++rows%120==0)fflush(f);if(rows==9000){fclose(f);f=nullptr;}}}
     maximum_gap=0;qa_stage(12);
-    if(!deck_renderer||display_settings.fps)track_display_refresh(handle,began);
-    if(alpha>=0){
-        presentation_clock.submitted(now());
-    }
-    const bool probed=deck_renderer&&deck_output_diagnostics&&display_settings.fps==60&&deck_output.before_swap(alpha,began,outer_restores,native_replayed);
-    const double swap_start=deck_renderer&&display_settings.fps==60?now():0;
+    // The Deck's fixed 30 Hz target has the same period on LCD and OLED.
+    if(!deck_renderer)track_display_refresh(handle,began);
+    const bool probed=deck_fixed_rate()&&current.mode==3&&deck_output_diagnostics&&
+        deck_output.before_swap(alpha,began,outer_restores,native_replayed);
+    const double swap_start=(deck_fixed_rate()||alpha>=0)?now():0;
     BOOL result=real_swap(handle);
+    if(result&&alpha>=0)presentation_clock.submitted(swap_start);
+    if(!result&&alpha>=0)can_present=false;
+    if(deck_fixed_rate()&&!result){
+        // The submitted image did not become visible. A new native endpoint
+        // must reach the screen before another synthetic frame gets a slot.
+        deck_needs_native_swap=true;
+        can_present=false;prepared_previous=false;next_output=0;
+        presentation_clock={};deck_wait_recovery={};
+    }else if(result&&alpha<0)deck_needs_native_swap=false;
     if(probed&&!result)--deck_output.count;
     if(deck_renderer){
         if(result&&swap_start){
@@ -1544,7 +1590,7 @@ struct DeckBlackEndpoint {
     bool suspect=false;
     void sample(bool ok,GLenum error,const BYTE* native,const BYTE* reconstructed){
         suspect=false;
-        if(display_settings.fps!=60||current.mode<1||current.mode>3||current.layout()!=current.mode||
+        if(!deck_fixed_rate()||current.mode!=3||current.layout()!=current.mode||
            current.menu_edge||error){tick=0;return;}
         const bool consecutive=tick&&tick+1==sources&&mode==current.mode&&w==width&&h==height;
         if(!ok&&!consecutive){tick=0;return;}
@@ -1660,7 +1706,8 @@ static bool present_native_world(GLuint native=0,GLuint output=0){
     return true;
 }
 static void reset_building(){
-    if(deck_renderer)draw_storage.retire(building,display_settings.fps==60);
+    building.native_field_target=0;building.field_layout_only=false;
+    if(deck_renderer)draw_storage.retire(building,deck_fixed_rate()&&building.mode==3);
     building.match_input.reset();
     building.seed_clears.clear();
     building.captured_seed_planes.clear();
@@ -1716,7 +1763,7 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
         }
     }
     if(world_original_frames){
-        snprintf(line,sizeof(line),"Deck world Original 4:3 | %.1f FPS | %u travel frames\n",
+        snprintf(line,sizeof(line),"Deck world native 4:3 | %.1f FPS | %u travel frames\n",
             world_original_frames/world_original_intervals,world_original_frames);
         write_stats(line);world_original_frames=0;world_original_intervals=0;
     }
@@ -1724,7 +1771,7 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
         const auto& w=world_frame_stats;
         snprintf(line,sizeof(line),"Deck world native projection: %u of %u travel frames | cached target %u | cached arrays %u\n",
             w.direct_frames,w.frames,w.cached_targets,w.cached_arrays);write_stats(line);
-        snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | capture or projection setup %.2f ms | validation and layout %.2f ms | filter CPU %.2f ms | swap and other %.2f ms | drawable %dx%d\n",
+        snprintf(line,sizeof(line),"Deck world native widescreen | %.1f FPS | %.0f commands/frame | capture or projection setup %.2f ms | validation and layout %.2f ms | filter CPU %.2f ms | swap and other %.2f ms | drawable %dx%d\n",
             w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.filter/w.frames,1000*w.swap/w.frames,width,height);
         write_stats(line);world_frame_stats={};
     }
@@ -1760,7 +1807,9 @@ static int game_mode(){
     if(!readable(entry,4))return -1;const void*p=(const void*)(uintptr_t)(*entry+(guest&4095));
     if(!readable(p,2))return -1;unsigned short value;memcpy(&value,p,2);
 #ifdef GEO_NATIVE_CAPTURE
-    if(display_settings.wide){
+    // The encounter effect shares guest mode 3 with combat even at 4:3.
+    // Only that ambiguous word needs an extra lookup on the native 4:3 path.
+    if(display_settings.wide||(deck_fixed_rate()&&value==3)){
         uint32_t obj=0,loop=0;
         if(native_pose::fetch(0x1a79d88,&obj,4)&&obj&&obj<0x10000000&&
            native_pose::fetch(obj+0xb40,&loop,4)&&loop==0x559890)return encounter_transition;
@@ -1824,6 +1873,7 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
     qa_stage(7);
     double t=now(),dt=last_swap?t-last_swap:0;last_swap=t;sources++;bool was_presenting=can_present;can_present=false;bool saved=false;
+    if(deck_renderer)deck_source_budget.outputs_at_tick=outputs;
     const double pair_work_start=deck_renderer?matching_seconds+parity_seconds:0;
     previous_origin=origin;previous_period=period;prepared_previous=false;
     float displayed_alpha=-1;bool output_due=true,native_endpoint=false,published=false,native_scaled=false;
@@ -1833,8 +1883,14 @@ static BOOL WINAPI swap_hook(HDC handle){
     int deck_scene=0;
     try {
         int mode=game_mode();
-        if(deck_renderer)deck_cadence.source(display_settings.fps==60?mode:0,t);
-        bool candidate=enabled&&!native_deck_frame()&&building.valid&&building.started&&!building.ops.empty();
+        if(deck_renderer)deck_cadence.source(deck_fixed_rate()?mode:0,t);
+        bool candidate=enabled&&!deck_needs_native_swap&&!native_deck_frame()&&building.valid&&building.started&&!building.ops.empty();
+        // In 4:3 a native field can hand off to battle between two draws.
+        // A partial battle capture cannot stand in for this native frame.
+        if(deck_renderer&&deck_draw_mode!=unknown_draw_mode&&deck_draw_mode!=mode&&
+           (!display_settings.wide||building.field_layout_only)){
+            candidate=false;building.valid=false;
+        }
         if(engine&&(mode<1||(mode>3&&mode!=6)))candidate=false;
         building.stride_dt=float(dt);building.mode=mode;building.infirmary_room=-1;building.infirmary_top=-1;building.reactive_sides=false;
         if(!building.started&&display_settings.wide){
@@ -1854,7 +1910,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             else if(transition.battle&&transition.outer_width)current.raster_rows=216;
         }
         bool pair=previous.valid&&previous.started&&previous.w==width&&previous.h==height&&previous.mode==mode&&previous.layout()==current.layout()&&previous.travel==current.travel;
-        if(deck_renderer&&(display_settings.fps!=60||previous.mode!=mode||previous.w!=width||previous.h!=height))
+        if(deck_renderer&&(!deck_fixed_rate()||previous.mode!=mode||previous.w!=width||previous.h!=height))
             deck_wait_recovery={};
         if(candidate&&(current.menu_edge||current.travel!=Frame::Travel::none)){
             candidate=transition.menu?transition.menu_composite(current.ops.back()):transition.outer_width!=0;
@@ -1881,9 +1937,10 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
-        if(deck_renderer&&enabled&&display_settings.fps==60&&mode>=1&&mode<=3&&
+        if(deck_fixed_rate()&&enabled&&mode==3&&
            current.layout()==mode&&!current.menu_edge&&!atlas_open)deck_scene=mode;
-        measure_world=deck_renderer&&candidate&&display_settings.wide&&!display_settings.fps&&mode==2&&
+        const bool native_rate=native_rate_for_mode(mode);
+        measure_world=deck_renderer&&candidate&&display_settings.wide&&native_rate&&mode==2&&
             previous.mode==2&&current.layout()==2&&transition.outer_width&&!atlas_open&&!current.menu_edge&&
             current.travel==Frame::Travel::scene&&dt>0&&dt<.25;
         // The atlas is a 2D interface inside world mode. Never match an atlas
@@ -1891,10 +1948,10 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(pair && mode==2 && !was_presenting && !atlas_open &&
            WideView(previous,true).full_map)pair=false;
         const bool scene_entry=candidate&&display_settings.wide&&(current.layout()!=mode||!pair||dt<0.008||dt>0.15);
-        track_source_budget(mode,dt,pair&&display_settings.fps!=0);
+        track_source_budget(mode,dt,pair&&!native_rate);
         // A prerendered field has a fixed camera. At the original frame rate
         // the game already composed the actors, masks and animated tiles.
-        if(deck_renderer&&candidate&&display_settings.fps==0&&display_settings.wide&&
+        if(deck_renderer&&candidate&&native_rate&&display_settings.wide&&
            current.layout()==1&&pair&&!current.menu_edge&&transition.outer_width&&field_blur::preferred){
             field_blur::prepare(current);
             if(current.reactive_sides){
@@ -1902,7 +1959,10 @@ static BOOL WINAPI swap_hook(HDC handle){
                 native_endpoint=native_scaled;
             }
         }
-        if(!native_endpoint&&candidate&&(display_settings.fps==0||atlas_open||scene_entry)){
+        // A layout-only field record never enters parity or geometry replay,
+        // even if the menu, drawable dimensions, or scene changed mid-frame.
+        if(current.field_layout_only)candidate=false;
+        if(!native_endpoint&&candidate&&(native_rate||atlas_open||scene_entry)){
             // One endpoint per game swap. Keep the native wait and swap interval.
             if(measure_world&&pair){
                 native_endpoint=present_native_world();
@@ -1912,7 +1972,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
             // Own a copy of the game's exact backbuffer before any extra
             // swap for the outgoing pair or any offscreen validation draw.
-            const bool captured=deck_renderer&&display_settings.fps==60&&mode>=1&&mode<=3;
+            const bool captured=deck_fixed_rate()&&mode==3;
             double native_copy_cost=0;
             GLenum capture_error=GL_NO_ERROR;
             if(captured){
@@ -1921,22 +1981,12 @@ static BOOL WINAPI swap_hook(HDC handle){
                 native_copy_cost=now()-begin;
                 parity_seconds+=native_copy_cost;
             }
-            // A source tick can arrive at the same time as a 60 Hz slot.
-            // Present the already validated pair before queuing the next
-            // endpoint's GPU work; doing it after the readback adds jitter.
-            if(deck_renderer&&display_settings.fps==60&&(mode==1||mode==2)&&!deck_source_budget.busy&&
-               pair&&was_presenting&&presentation_mode==mode&&!current.menu_edge&&!atlas_open){
-                const double time=now();
-                if(time>=next_output&&time-origin<period*1.5){
-                    present_during_wait(true);advance_output();
-                }
-            }
             // At alpha=1 battle replay uses captured vertices. Its depth
             // corrections and departing faces apply only to intermediate
             // poses. Queue validation of this endpoint before CPU matching.
-            const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&(mode==1||mode==3)))&&
+            const bool early_samples=pair&&(mode==2||(deck_fixed_rate()&&mode==3))&&
                 world_readback.available();
-            MatchPreparation pair_work(previous,current,early_samples&&deck_renderer&&display_settings.fps==60);
+            MatchPreparation pair_work(previous,current,early_samples&&deck_fixed_rate());
             bool queued_world=false;
             GLenum submit_error=GL_NO_ERROR;
             if(early_samples){
@@ -1962,17 +2012,17 @@ static BOOL WINAPI swap_hook(HDC handle){
             // A GPU readback can span the next deadline. Finish one prepared
             // intermediate frame before blocking for the endpoint comparison.
             if(!deck_source_budget.busy&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
-                present_reason=9;qa_stage(9);present_during_wait(true);advance_output();}
+                present_reason=9;qa_stage(9);present_during_wait(true);}
             qa_stage(10);phase=now();
             const bool valid=early_samples?collect_parity(submit_error,queued_world):parity(captured,capture_error);
-            hold_display=!valid&&captured&&deck_black.suspect&&was_presenting&&pair&&
+            hold_display=!deck_needs_native_swap&&!valid&&captured&&deck_black.suspect&&was_presenting&&pair&&
                 presentation_mode==mode&&!current.menu_edge&&!atlas_open&&current.layout()==mode;
             if(hold_display)++deck_black.held;
             if(early_samples){world_parity_times.collect+=now()-phase;++world_parity_times.count;}
             if(valid){
                 parity_ok++;
-                can_present=pair&&(moving_draws>0||matched_candidates>0||(mode==6&&menu_pairs>0)||(was_presenting&&presentation_mode==mode));
-                if(!can_present&&display_settings.wide){
+                can_present=!deck_needs_native_swap&&pair&&(moving_draws>0||matched_candidates>0||(mode==6&&menu_pairs>0)||(was_presenting&&presentation_mode==mode));
+                if(!can_present&&!deck_needs_native_swap&&display_settings.wide){
                     replay(0,1,true);
                     native_endpoint=true;
                 }
@@ -1982,7 +2032,7 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
         }
         if(deck_renderer){
-            if(!enabled||display_settings.fps||!display_settings.wide||mode!=2||current.menu_edge||atlas_open||
+            if(!enabled||!native_rate||!display_settings.wide||mode!=2||current.menu_edge||atlas_open||
                (direct_world&&(!direct_complete||deck_world.failed)))deck_world.view.reset();
             else if(!direct_world){
                 deck_world.view.reset();
@@ -2003,7 +2053,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(!was_presenting)next_output=t;
             output_due=now()>=next_output;
             if(output_due){
-                if(deck_renderer&&display_settings.fps==60&&prepared_previous&&mode>=1&&mode<=3&&
+                if(deck_fixed_rate()&&prepared_previous&&mode==3&&
                    deck_source_budget.busy&&deck_wait_recovery.needs_sample(presentation_clock,t))source_replay_start=now();
                 resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());saved=true;
                 if(source_replay_start)source_backup_time=now()-source_replay_start;
@@ -2050,7 +2100,8 @@ static BOOL WINAPI swap_hook(HDC handle){
     present_reason=7;qa_stage(11);BOOL result=TRUE;
     const double layout_seconds=deck_renderer?now()-t:0;
     double filter_seconds=0;
-    const bool time_filter=deck_renderer&&!display_settings.fps&&display_settings.wide;
+    const bool native_deck_rate=deck_renderer&&native_rate_for_mode(current.mode);
+    const bool time_filter=native_deck_rate&&display_settings.wide;
     if(!hold_display&&(!can_present||output_due)){
         result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr,native_endpoint);
         if(source_replay_start&&can_present&&result){
@@ -2058,9 +2109,10 @@ static BOOL WINAPI swap_hook(HDC handle){
             deck_wait_recovery.source(presentation_clock,finished,finished-source_replay_start,source_backup_time);
         }
         if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
-        if(can_present){outputs++;advance_output();}
+        if(saved&&deck_needs_native_swap)blit(backup.fbo,0,width,height,width,height,all_buffers());
+        if(can_present&&result)finish_generated_output();
     }
-    deck_native_layout_wait=deck_renderer&&!can_present&&!display_settings.fps&&
+    deck_native_layout_wait=native_deck_rate&&!can_present&&
         display_settings.wide&&(native_endpoint||native_scaled)&&(current.mode>=1&&current.mode<=3||current.mode==6);
     if(deck_native_layout_wait)
         // Only measured compositor work earns credit against an overdue native
@@ -2075,8 +2127,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         // been punctual even if today's matching/validation used most of the
         // budget. Only the portion that overruns this tick's deadline can be
         // reclaimed, at most once; unrelated game/driver time earns no credit.
-        if(deck_renderer&&display_settings.fps==60&&can_present&&prepared_previous&&
-           current.mode>=1&&current.mode<=3){
+        if(deck_fixed_rate()&&can_present&&prepared_previous&&current.mode==3){
             const double pair_work=matching_seconds+parity_seconds-pair_work_start;
             native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
         }
@@ -2092,7 +2143,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         ++world_original_frames;world_original_intervals+=dt;
     }
     world_capture_time=0;
-    deck_world.begin();native_atlas_view=unread_atlas_view;
+    deck_world.begin();native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;
     stats();return result;
 }
 // Users can also choose original frame rate, original aspect and original
@@ -2116,12 +2167,13 @@ struct DeckIdleBackup {
     static inline thread_local DeckIdleBackup* active=nullptr;
     DeckIdleBackup* parent=active;
     bool saved=false;
-    DeckIdleBackup(){if(deck_renderer&&display_settings.fps==60)active=this;}
+    DeckIdleBackup(){if(deck_fixed_rate())active=this;}
     ~DeckIdleBackup(){active=parent;}
 };
-static void present_during_wait(bool force_previous){
+static bool present_during_wait(bool force_previous){
     // Snapshot and restore the entire native BACK buffer (including depth),
     // so extra swaps never become input to incremental game rendering.
+    if(deck_needs_native_swap)return false;
     const double started=now();
     auto window=DeckIdleBackup::active;
     if(!window||!window->saved){
@@ -2129,24 +2181,32 @@ static void present_during_wait(bool force_previous){
         if(window)window->saved=true;
     }
     BOOL swapped=FALSE;
-    try{float alpha=replay_presentation(0,force_previous);swapped=timed_swap(dc,alpha,true);outputs++;}
+    try{float alpha=replay_presentation(0,force_previous);swapped=timed_swap(dc,alpha,true);}
     catch(...){blit(backup.fbo,0,width,height,width,height,all_buffers());throw;}
     blit(backup.fbo,0,width,height,width,height,all_buffers());
+    if(!swapped)return false;
     const double finished=now(),elapsed=finished-started;
     presentation_clock.measured_replay(elapsed);
-    if(deck_renderer&&display_settings.fps==60&&swapped)deck_wait_recovery.extra(finished,elapsed);
+    if(deck_fixed_rate())deck_wait_recovery.extra(finished,elapsed);
+    finish_generated_output();
+    return true;
 }
 static void pump_due(double earliest){
     if(inside||!enabled||!loaded||!can_present||GetCurrentThreadId()!=thread)return;
     double t=now();if(t<earliest||t-origin>period*1.5)return;
     if(wglGetCurrentContext()!=context)return;
     if(engine&&game_mode()!=presentation_mode){can_present=false;return;}
-    try{present_during_wait();advance_output();}
+    try{present_during_wait();}
     catch(const std::exception&e){can_present=false;log("mid-frame presentation fallback: ");log(e.what());log("\n");}
 }
 static void service_at(int reason,double earliest){
-    if(deck_source_budget.busy&&reason!=4)return;
     if(GetCurrentThreadId()!=thread||!loaded||inside)return;
+    const bool busy=deck_source_budget.busy&&reason!=4;
+    if(busy){
+        if(!deck_fixed_rate()||presentation_mode!=3||!can_present)return;
+        const double t=now();
+        if(t<earliest||!deck_source_budget.can_draw_battle(outputs,t-last_swap,presentation_clock.replay_cost))return;
+    }
     present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
 static bool pacing_callback=false;
@@ -2175,10 +2235,9 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
     pacing_callback=true;
     while(can_present){
         double time=now();if(time>=end)break;
-        // Towns and world travel have short waits within a 30 Hz native
-        // tick. Battles already schedule several outputs in a 15 Hz tick.
-        const bool short_scene_wait=deck_renderer&&display_settings.fps==60&&deck_source_budget.busy&&
-            (presentation_mode==1||presentation_mode==2);
+        // The 15 Hz battle engine can issue several short waits in one tick.
+        // Keep the midpoint inside an observed idle window when load is high.
+        const bool short_scene_wait=deck_fixed_rate()&&deck_source_budget.busy&&presentation_mode==3;
         const double slot=short_scene_wait?presentation_clock.wait_slot(next_output,time,end,output_period()):next_output;
         const bool can_draw=presentation_clock.fits_wait(std::max(time,slot),end);
         if(!can_draw&&short_scene_wait)
@@ -2263,9 +2322,8 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
             if(result==WAIT_TIMEOUT||result==WAIT_FAILED)return result;
             if(result!=WAIT_OBJECT_0+1)return WAIT_FAILED;
             if(timeout!=INFINITE&&!presentation_clock.fits_wait(now(),end))return real_wait(handle,remaining_ms());
-            try{present_during_wait();}catch(const std::exception&e){log(e.what());log("\n");can_present=false;
+            try{if(!present_during_wait())return real_wait(handle,remaining_ms());}catch(const std::exception&e){log(e.what());log("\n");can_present=false;
                 return real_wait(handle,remaining_ms());}
-            advance_output();
         }
     }
     for(;;){double t=now();DWORD slice=(DWORD)std::clamp((next_output-t)*1000.,1.,8.);
@@ -2276,8 +2334,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
         }
         DWORD result=real_wait(handle,slice);if(result!=WAIT_TIMEOUT)return result;
         if(timeout!=INFINITE&&!presentation_clock.fits_wait(now(),end))return real_wait(handle,remaining_ms());
-        if(now()>=next_output){try{present_during_wait();}catch(const std::exception&e){log(e.what());log("\n");can_present=false;return real_wait(handle,remaining_ms());}
-            advance_output();}
+        if(now()>=next_output){try{if(!present_during_wait())return real_wait(handle,remaining_ms());}catch(const std::exception&e){log(e.what());log("\n");can_present=false;return real_wait(handle,remaining_ms());}}
     }
 }
 // FFVIII's in-game Exit recreates its GL context while retaining the process.
@@ -2286,12 +2343,12 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
 static void forget_deleted_context(){
     retro_panel_draw::forget();
     fps_counter::forget();
-    atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_world={};world_state::state={};world_state::tracking=false;
+    atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
     deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
-    deck_cadence={};deck_black={};deck_output={};
+    deck_cadence={};deck_black={};deck_output={};deck_needs_native_swap=false;
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;
@@ -2357,7 +2414,11 @@ static DWORD WINAPI initialize(void* module){
     if(update_slots::load_newer(static_cast<HMODULE>(module),update_version::channel,update_version::build))return 0;
 #endif
     for(int i=0;i<200&&!engine;i++){engine=GetModuleHandleA("FFVIII_EFIGS.dll");if(!engine)Sleep(50);}
-    FILE*f=fopen("FF8_geometry.log","w");if(f){fputs("FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);fclose(f);}
+    FILE*f=fopen("FF8_geometry.log","w");if(f){
+        fputs(deck_renderer?"FF8 Reborn Steam Deck - Original / 30 FPS, F8 opens live settings\n":
+            "FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);
+        fclose(f);
+    }
 #ifdef GEO_NATIVE_CAPTURE
     log("FF8 Reborn ");log(update_version::channel);log(" ");log(update_version::tag);log("\n");
 #endif

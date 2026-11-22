@@ -8,7 +8,7 @@ static void expect(const char* name,bool result){
     ++accepted_cases;
 }
 int main(){
-    display_settings.fps=60;
+    display_settings.fps=30;
     constexpr GLbitfield C=GL_COLOR_BUFFER_BIT,D=GL_DEPTH_BUFFER_BIT,S=GL_STENCIL_BUFFER_BIT;
     Frame f;Target t;t.texture=37;t.depth=t.stencil=true;t.w=640;t.h=480;
     f.depth_texture_for_target[37]=91;

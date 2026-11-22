@@ -44,7 +44,7 @@ struct ReplaySeedPlan {
         // turn. Only a draw into this attachment or a sampler of its live
         // contents can observe its seed before that clear. Outgoing faces
         // execute *after* their anchor, so a clear at the anchor is safe.
-        if(deck_renderer&&key&&display_settings.fps==60){
+        if(deck_fixed_rate()&&key){
             constexpr GLbitfield bits[]={GL_COLOR_BUFFER_BIT,GL_DEPTH_BUFFER_BIT,GL_STENCIL_BUFFER_BIT};
             const auto it=frame.depth_texture_for_target.find(key);
             const GLuint depth=it==frame.depth_texture_for_target.end()?0:it->second;

@@ -126,8 +126,9 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     const wchar_t* counter_sizes[]={L"Off",L"Small",L"Medium",L"Large"};
     const wchar_t* screens[]={L"Use filter profile",L"Trinitron grille",L"RCA slot mask",L"RCA dot mask"};
     std::wstring strength=std::to_wstring(s.phosphor_strength)+L" %",sharpness=std::to_wstring(s.phosphor_sharpness)+L" %";
+    const std::wstring fps=display_settings.fps?std::to_wstring(display_settings.fps):L"Original";
     const wchar_t* value[]={s.mode==0?L"Off":s.mode==1?L"Pixelated":L"CRT",display_settings.atlas?L"Reborn":L"Original",
-        display_settings.wide?L"Widescreen":L"Original (4:3)",display_settings.fps==0?L"Original":display_settings.fps==60?L"60":L"120",
+        display_settings.wide?L"Widescreen":L"Original (4:3)",fps.c_str(),
         display_settings.field_sides?L"On":L"Off",counter_sizes[display_settings.fps_counter],screens[s.tv_screen],strength.c_str(),sharpness.c_str()};
     for(int i=FilterType;i<=Restore;i++){
         if(i==Restore&&!restore_visible)continue;

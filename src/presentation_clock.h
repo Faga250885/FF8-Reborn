@@ -79,6 +79,31 @@ struct PresentationClock {
 };
 static PresentationClock presentation_clock;
 
+// A long tick followed by a short one can still deliver the full native rate.
+// Reserve the rendering thread when the average slips, or immediately on a
+// major stall. The scheduler can still present during actual idle waits.
+struct DeckSourceBudget {
+    double relative_period=1;
+    bool busy=false;
+    unsigned outputs_at_tick=0;
+
+    bool can_draw_battle(unsigned rendered,double elapsed,double cost) const {
+        constexpr double tick=1./15.;
+        // A source swap can arrive before its screen deadline and emit
+        // nothing. Count actual output for the entire tick so that both
+        // slots can be serviced later without creating unbounded work.
+        return rendered-outputs_at_tick<2&&elapsed>=0&&elapsed+2*cost<tick&&
+            cost<=tick*.18&&relative_period+cost/tick<=1.30;
+    }
+
+    void observe(double interval,double nominal){
+        const double ratio=interval/nominal;
+        relative_period+=.25*(std::clamp(ratio,0.,2.)-relative_period);
+        busy=ratio>=1.5||relative_period>(busy?1.06:1.12);
+    }
+};
+static DeckSourceBudget deck_source_budget;
+
 // A blocked extra swap can cost more than any subsequent game wait. In that
 // case the wait gate cannot get a fresh measurement from another extra swap.
 struct DeckWaitRecovery {
@@ -99,7 +124,7 @@ struct DeckWaitRecovery {
     }
 
     bool needs_sample(const PresentationClock& clock,double time) const {
-        return (missed_window>0||(!probe_budget&&clock.replay_cost>=1./60.))&&time>=retry_at;
+        return (missed_window>0||(!probe_budget&&clock.replay_cost>=1./30.))&&time>=retry_at;
     }
 
     void source(PresentationClock& clock,double time,double elapsed,double backup){

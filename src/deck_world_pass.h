@@ -1,4 +1,4 @@
-// At Original FPS the engine already owns the correct shaders, textures,
+// At the native world-map rate the engine already owns the shaders, textures,
 // depth and draw order. Change its world projection for each native draw.
 // A validated replay establishes the canvas and HUD layout on scene entry.
 #include "deck_world_state.h"
@@ -45,7 +45,7 @@ struct WorldPositions {
 };
 static bool direct_world_frame(){
     auto& pass=deck_world;
-    if(!pass.view||inside||!enabled||!loaded||display_settings.fps||!display_settings.wide||
+    if(!pass.view||inside||!enabled||!loaded||!native_rate_for_mode(2)||!display_settings.wide||
        GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return false;
     if(!pass.checked){
         pass.checked=true;

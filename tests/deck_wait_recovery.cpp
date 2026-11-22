@@ -58,4 +58,19 @@ int main(){
     assert(clock.fits_wait(slot,4.019)&&!clock.fits_wait(due,4.019));
     assert(clock.wait_slot(due,4.012,4.016,tick)==due);
     assert(clock.wait_slot(due,4.013,4.024,tick)==due);
+    const double battle_tick=1./30.,battle_due=4.+battle_tick;
+    const double early=clock.wait_slot(battle_due,4.030,4.0355,battle_tick);
+    assert(early<battle_due&&early>=clock.last_submission+.85*battle_tick);
+    assert(clock.fits_wait(early,4.0355)&&!clock.fits_wait(battle_due,4.0355));
+
+    DeckSourceBudget source;
+    source.relative_period=1.13;
+    source.outputs_at_tick=100;
+    assert(source.can_draw_battle(100,.015,.006)); // Source swap arrived early.
+    assert(source.can_draw_battle(101,.040,.006)); // Second slot in this tick.
+    assert(!source.can_draw_battle(102,.040,.006));
+    assert(!source.can_draw_battle(101,.062,.006)); // Preserve the next game tick.
+    assert(!source.can_draw_battle(101,.020,.015)); // Expensive replay.
+    source.relative_period=1.27;
+    assert(!source.can_draw_battle(101,.020,.006)); // Insufficient source budget.
 }

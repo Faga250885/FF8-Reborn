@@ -4,6 +4,13 @@ namespace field_blur {
 static bool preferred=true;
 static Surface levels[13];
 static Surface isolated_edge;
+static bool tile(const Op& op,int width,int height){
+    const State& s=op.state;
+    return op.target&&s.scissor_on&&s.scissor[2]>=width-2&&
+           s.viewport[2]==width&&s.viewport[3]==height&&
+           std::abs(s.scissor[3]-height*448/480)<=2&&
+           std::abs(s.projection[0]-2.f/640)<.00001f&&op.vertices.size()>=36&&s.texture[0].id;
+}
 static void prepare(Frame& frame){
     if(frame.layout()!=1||frame.vertex_count<144||frame.w<=0||frame.h<=0)return;
     WideView view(frame,true);
@@ -12,11 +19,7 @@ static void prepare(Frame& frame){
     // and movies also run as mode 1, but normally submit one textured quad.
     bool tiles=false;
     for(const auto&op:frame.ops){
-        const State&s=op.state;
-        if(op.target&&s.scissor_on&&s.scissor[2]>=view.scene_width-2&&
-           s.viewport[2]==view.scene_width&&s.viewport[3]==view.scene_height&&
-           std::abs(s.scissor[3]-view.scene_height*448/480)<=2&&
-           std::abs(s.projection[0]-2.f/640)<.00001f&&op.vertices.size()>=36&&s.texture[0].id){
+        if(tile(op,view.scene_width,view.scene_height)){
             tiles=true;break;
         }
     }

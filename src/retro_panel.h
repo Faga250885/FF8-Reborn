@@ -195,7 +195,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     if(row>=Map&&row<=Sides){
         const int top=120;
         int value=row==Map?!display_settings.atlas:row==Aspect?!display_settings.wide:row==Sides?!display_settings.field_sides:
-            deck_renderer?(display_settings.fps?0:60):
+            deck_renderer?(display_settings.fps?0:30):
             (display_settings.fps==0?(step>0?60:top):display_settings.fps==60?(step>0?top:0):(step>0?0:60));
         if(!persist(path,s,active_profile,-1,false,row,value))return;
         if(row==Map)display_settings.atlas=value!=0;

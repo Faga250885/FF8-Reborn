@@ -154,7 +154,7 @@ static int16_t* terrain_points(uint32_t address,size_t size,ReadableRegion& writ
 static void __cdecl foot_projected(void* cpu){
     uint32_t sp,instance_slot,args[4]{},instance=0,player=0;
     memcpy(&sp,(BYTE*)cpu+0x2c,4);memcpy(&instance_slot,(BYTE*)cpu+0x30,4);
-    bool capture=enabled&&display_settings.fps&&sp<=UINT32_MAX-20&&fetch(sp+4,args,sizeof(args))&&
+    bool capture=enabled&&!native_rate_for_mode(2)&&sp<=UINT32_MAX-20&&fetch(sp+4,args,sizeof(args))&&
         fetch(instance_slot,&instance,4)&&instance&&fetch(0x25030d8,&player,4)&&instance==player&&
         args[3]>0&&args[3]<=1024&&args[1]>=0x24fef48&&args[1]-0x24fef48<=16384&&
         args[2]==0x250315c+(args[1]-0x24fef48)/2;

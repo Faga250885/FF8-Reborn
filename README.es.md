@@ -1,11 +1,11 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.3/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.4/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **La versión de Steam Deck es experimental.** La 1.4.0-deck.3 reduce el trabajo del procesador y de la GPU en el modo de 60 FPS. En una Deck física con la versión anterior se midieron caídas en ciudad y al mirar el horizonte. La cadencia de esta revisión y los destellos que se han observado siguen pendientes de verificación en la consola. **Original** sigue siendo la cadencia predeterminada en LCD y OLED.
+> **Steam Deck sigue en fase experimental.** Tanto en LCD como en OLED puedes elegir **Original** o **30 FPS**. La versión 1.4.0-deck.4 busca mantener el juego a 30. Si tenías seleccionados 60 FPS en Deck, la actualización cambia ese ajuste a 30.
 
-FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Permite elegir los FPS originales o apuntar a 60 o 120 FPS, ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
+FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 60 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
 **En desarrollo.** Si encuentras un fallo, [abre un reporte en GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) o añade tus observaciones a una incidencia existente. Puedes escribir en español.
 
@@ -23,32 +23,23 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 
 ## Steam Deck (SteamOS, experimental)
 
-**60 FPS** dibuja posiciones intermedias entre las actualizaciones originales del juego. En una batalla a 15 FPS puede añadir hasta tres imágenes por actualización y mantener los tiempos del combate. En cambios de plano o poses que el mod no pueda relacionar, se puede conservar el cuadro original. El registro del juego indica los cuadros enviados por segundo y los intervalos superiores a 25 ms por separado para ciudades, batallas y mapamundi.
+| Cadencia | Ciudades y mapamundi | Batallas |
+| --- | --- | --- |
+| **Original** (predeterminada) | El juego dibuja a su ritmo habitual, normalmente unos 30 FPS. | El juego muestra el combate a su ritmo habitual, normalmente unos 15 FPS. |
+| **30 FPS** | Usa los cuadros que dibuja el propio juego al mismo ritmo que en Original, también en pantalla ancha. | Interpola el movimiento entre poses compatibles de la animación original de 15 FPS para mostrar una imagen cada 33,3 ms. Los ataques y sus ventanas de entrada siguen el reloj del juego. |
 
-**Cambios de la 1.4.0-deck.3.** El renderizador prepara el movimiento de la cámara y las correspondencias entre polígonos en paralelo a la validación del cuadro. Reutiliza memoria para los vértices y evita copiar superficies que el juego está a punto de borrar. En una reproducción a 1280 × 800, las copias bajaron de 37,68 a 4,10 MB por actualización frente al horizonte de Galbadia y de 53,66 a 26,83 MB en una calle con personajes. Las 70 imágenes de prueba de este cambio coincidieron píxel por píxel. Las mediciones de reproducción se hicieron en Windows.
+Los menús y las cinemáticas conservan su cadencia original. En cambios de plano y cuadros de combate que no se puedan emparejar de forma fiable, puede mantenerse la imagen original. En una escena grabada con seis personajes, el mod evitó 414 de 447 copias de geometría en un cuadro y conservó la imagen completa.
 
-En otra prueba de carga en Windows a 1280 × 800, la mediana de tres recorridos pasó de 48,06 a 59,98 cuadros enviados/s en una batalla exigente, de 59,22 a 59,37 frente al horizonte y de 50,26 a 52,04 en un escenario prerenderizado. Este último siguió por debajo del objetivo bajo carga. Las cifras miden los envíos del mod antes de Gamescope y de la pantalla de la consola.
+En una batalla grabada de 42 segundos a 1280 × 800 en Windows, el renderizador de Deck envió 30,00 cuadros/s. Al subir a 53 ms el trabajo simulado por cada ciclo de combate, envió 29,51 cuadros/s y el percentil 99 del intervalo entre imágenes llegó a 52,39 ms. Queda por comprobar la cadencia sostenida y si persisten los destellos en una Deck física.
 
-**Cambios de la 1.4.0-deck.2.** En ciudades y en el mapamundi, un solo cuadro lento podía hacer que el mod dejara de dibujar cuadros intermedios durante el resto de una escena exigente. Ahora vuelve a medir el tiempo que tiene disponible cuando el juego puede aprovechar una espera. También mantiene el modo de presentación si pierde brevemente el seguimiento de la geometría dentro de una misma escena. En una prueba con seis personajes, preparar y validar un cuadro pasó de 8,38 a 6,69 ms en el mismo PC con Windows. En grabaciones del mapamundi y de batalla, el mod evitó cuatro copias de imágenes a tamaño completo por reconstrucción al comprobar cuándo se utilizan. Se conservan los tiempos originales de las animaciones y los combates.
-
-Si ya tienes la **1.4.0-deck.1** o la **1.4.0-deck.2**, pulsa **Vista + Menú → Check for updates → Download update**. Cuando aparezca **Update ready**, reinicia FFVIII.
-
-**Cambios de la 1.4.0-deck.1.** Si el juego entrega un cuadro negro aislado en mitad de una escena que el mod acaba de comprobar y que sigue iluminada, el renderizador puede mantener en pantalla la última imagen visible. Si el negro continúa en el cuadro siguiente, lo muestra. En pruebas con grabaciones de Ciudad de Deling, el mapamundi y una batalla, la revisión evitó los ocho destellos que introdujimos y conservó los fundidos de prueba. También mantiene el ritmo de presentación cuando falta brevemente información sobre la animación de los personajes en ciudad.
-
-En grabaciones de ciudad, calcular el movimiento de seis personajes pasó de 6,28 a 5,39 ms por actualización. En la calle de Deling pasó de 3,22 a 2,99 ms. Las 45 imágenes intermedias comprobadas en nueve grabaciones coincidieron píxel por píxel con la versión anterior. Estos tiempos corresponden a una etapa del renderizado medida en Windows. Los FPS reales en Deck dependen también del resto del cuadro.
-
-En una prueba de banco se introdujo una pausa de 111 ms. La versión 10 seguía omitiendo cuadros intermedios incluso después de 300 actualizaciones de bajo coste. La 11 volvió a permitirlos tras tres actualizaciones válidas de bajo coste. En Windows, la versión anterior y la nueva produjeron imágenes idénticas en cinco instantes de interpolación de cada una de las nueve escenas grabadas.
-
-**Prueba del horizonte de Galbadia a 1280 × 800 en Windows.** En cinco tandas con la misma vista grabada, la mediana de dibujo pasó de 12,03 ms en la versión panorámica 6 a 2,54 ms en la 7. En 4:3 fue de 1,46 ms. Cinco vistas del mapamundi conservaron la imagen panorámica píxel por píxel. La medición cubre el dibujo de la escena grabada. Los FPS reales en Steam Deck dependen también de la simulación, los tiempos de presentación y el controlador gráfico.
-
-En LCD y OLED puedes elegir **Original** (predeterminado) o **60 FPS**. Con **Original + Widescreen**, el mod comprueba el encuadre al entrar al mapamundi o cuando cambia la vista. Durante el recorrido normal, el juego dibuja la vista panorámica en una sola pasada. El archivo `FF8_geometry.log` de la carpeta del juego registra los FPS y los tiempos de renderizado. En el modo de 60 FPS, busca las entradas `Deck gap` para localizar pausas de al menos 80 ms dentro de una misma escena. Si ves un destello o una ralentización, adjunta el registro e indica qué ocurría en ese momento. [Informar de un problema en Steam Deck](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml).
+Si tienes la versión **1.4.0-deck.1** o posterior, pulsa **View + Menu → Check for updates → Download update**. Cuando aparezca **Update ready**, cierra FFVIII y su lanzador y vuelve a abrir el juego. Si ya tenías seleccionado **Original**, se conserva. Para instalar por primera vez, sigue estos pasos.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.3/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.4/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.3/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.4/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
@@ -81,7 +72,7 @@ En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor d
 
 | Opción del menú | Para qué sirve |
 | --- | --- |
-| Frame rate | Elige **Original**, **60** o **120** en Windows, y **Original** o **60** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
+| Frame rate | Elige **Original**, **60** o **120** en Windows, y **Original** o **30** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
 | FPS counter | Muestra los FPS arriba a la izquierda con tipografía pixelada. Elige **Off** (predeterminado), **Small**, **Medium** o **Large**. Cuenta los cuadros que presenta el juego, incluidos los intermedios, y actualiza la cifra aproximadamente dos veces por segundo. |
 | Aspect ratio | **Widescreen** amplía la cámara de batallas y mapamundi. **Original (4:3)** recupera el encuadre original. |
 | Blurred sidebars | Disponible en todos los escenarios prerenderizados en pantalla ancha. Rellena los márgenes con colores de la escena, incluidos los personajes cerca de los bordes. Deling se muestra como ejemplo. |

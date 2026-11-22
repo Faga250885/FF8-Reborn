@@ -23,25 +23,27 @@ The menu contacts this repository on demand. After the user chooses to download,
 
 ## Troubleshooting a Steam Deck black flash
 
-For a pre-display trace, close FFVIII and create an empty file named `FF8_geometry_output_probe.enabled` next to `FFVIII.exe`. In the 60 FPS mode, the renderer samples small regions of the completed backbuffer before presentation. Reproduce the flash, close FFVIII and look for `Deck dark output` in `FF8_geometry.log`. Each entry identifies the scene, tick and drawing pass. Gamescope and the physical display process the image after this point. Remove the marker after testing to disable sampling.
+For a pre-display trace of battle interpolation, close FFVIII and create an empty file named `FF8_geometry_output_probe.enabled` next to `FFVIII.exe`. With **30 FPS** selected, the Deck renderer samples small regions of completed battle frames before presentation. Reproduce the flash, close FFVIII and look for `Deck dark output` in `FF8_geometry.log`. Each entry identifies the scene, tick and drawing pass. Gamescope and the physical display process the image after this point. Remove the marker after testing to disable sampling.
 
 ## Steam Deck regression tests
 
 The Deck DLL targets the Zen 2 CPU in both Deck models and disables floating-point contraction to preserve the camera calculations. To run the regression tests, open PowerShell at the repository root and set `$GlewInclude` to the GLEW include directory used for the renderer build.
 
 ```powershell
-zig c++ -target x86-windows-gnu -std=c++17 -O2 tests/deck_wait_recovery.cpp -o dist/deck-wait-test.exe
-./dist/deck-wait-test.exe
-zig c++ -target x86-windows-gnu -std=c++17 -O2 -DGEO_STEAM_DECK "-I$GlewInclude" tests/deck_replay_seed.cpp -o dist/deck-seed-test.exe -lopengl32 -lgdi32 -luser32 -lcomctl32
-./dist/deck-seed-test.exe
-zig c++ -target x86-windows-gnu -std=c++17 -O2 tests/deck_cadence.cpp -o dist/deck-cadence-test.exe
-./dist/deck-cadence-test.exe
-foreach ($test in 'deck_match_preparation','deck_draw_storage') {
-    zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 -DGEO_STEAM_DECK "-I$GlewInclude" "tests/$test.cpp" -o "dist/$test.exe" -lopengl32 -lgdi32 -luser32 -lcomctl32
+$libs = '-lopengl32','-lgdi32','-luser32','-lcomctl32','-lwinhttp','-ladvapi32'
+foreach ($file in Get-ChildItem tests -Filter '*.cpp') {
+    $test = $file.BaseName
+    $defines = @('-DGEO_STEAM_DECK')
+    if ($test -eq 'deck_native_fields') { $defines += '-DGEO_NATIVE_CAPTURE' }
+    zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 @defines "-I$GlewInclude" $file.FullName -o "dist/$test.exe" @libs
     if ($LASTEXITCODE) { throw "$test build failed" }
     & "./dist/$test.exe"
     if ($LASTEXITCODE) { throw "$test failed" }
 }
+zig c++ -target x86-windows-gnu -std=c++17 -O2 "-I$GlewInclude" tests/frame_rate_settings.cpp -o dist/windows-settings.exe @libs
+if ($LASTEXITCODE) { throw 'Windows settings test build failed' }
+./dist/windows-settings.exe
+if ($LASTEXITCODE) { throw 'Windows settings test failed' }
 ```
 
 ## Verify the downloaded installer
