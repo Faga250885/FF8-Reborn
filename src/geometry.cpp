@@ -1849,6 +1849,33 @@ static int game_mode(){
     return value;
 }
 static Surface encounter_native;
+static const Op* final_surface_copy(const Frame& f,WideView::Bounds* footprint=nullptr){
+    if(!f.valid)return nullptr;
+    for(auto it=f.ops.rbegin();it!=f.ops.rend();++it){
+        if(it->target)continue;
+        if(it->clear||it->mode!=GL_TRIANGLES||it->vertices.size()!=6)return nullptr;
+        const auto tex=it->state.texture[0].id;
+        if(!tex||!f.targets.count(tex)||!WideView::uses_texture(it->state))return nullptr;
+        WideView::Bounds bounds;
+        if(!WideView::flat_rect(it->vertices.data(),bounds))return nullptr;
+        for(int i=0;i<16;++i){
+            const float identity=(i%5==0)?1.f:0.f;
+            if(std::abs(it->state.projection[i]-identity)>.0001f||
+               std::abs(it->state.model[i]-identity)>.0001f)return nullptr;
+        }
+        unsigned corners=0;
+        for(const auto& v:it->vertices){
+            const float u=v.uv[0][0],t=v.uv[0][1];
+            if(v.p[3]!=1||std::min(std::abs(u),std::abs(u-1.f))>.005f||
+               std::min(std::abs(t),std::abs(t-1.f))>.005f)return nullptr;
+            corners|=1u<<((u>.5f?1:0)+(t>.5f?2:0));
+        }
+        if(corners!=15)return nullptr;
+        if(footprint)*footprint=bounds;
+        return &*it;
+    }
+    return nullptr;
+}
 #include "card_transition.h"
 // When a scene changes, parity or the next interpolation pair may not be
 // available yet. Scale this swap's actual image, never an old parity sample.
@@ -1862,10 +1889,22 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
     Guard guard(Frame{});
     resize(encounter_native,w,h,false);
     blit(target,encounter_native.fbo,w,h,w,h,GL_COLOR_BUFFER_BIT);
-    const int sw=results?v.result_viewport[2]:std::min(w,int(std::lround(h*4./3)));
-    const int sh=results?v.result_viewport[3]:std::min(h,int(std::lround(w*3./4)));
-    const int sx=results?v.result_viewport[0]:(w-sw)/2;
-    const int sy=results?v.result_viewport[1]:(h-sh)/2;
+    const int native_width=std::min(w,int(std::lround(h*4./3)));
+    const int native_height=std::min(h,int(std::lround(w*3./4)));
+    std::array<int,4> source={(w-native_width)/2,(h-native_height)/2,native_width,native_height};
+    if(results)source=v.result_viewport;
+    else if(field&&!v.menu&&native_width<w&&field_blur::preferred&&display_settings.field_sides){
+        // The engine rounds its 4:3 viewport independently of our fit. On an
+        // 800-line display the left coordinate can differ by one black pixel.
+        WideView::Bounds ndc;
+        const auto* copy=final_surface_copy(f,&ndc);
+        if(copy&&v.menu_composite(*copy)&&ndc.l==-1&&ndc.r==1&&ndc.t==-1&&ndc.b==1){
+            const auto* vp=copy->state.viewport;
+            if(vp[0]>=0&&vp[0]+vp[2]<=w&&vp[1]==0&&vp[3]==h)
+                std::copy_n(vp,4,source.begin());
+        }
+    }
+    const int sx=source[0],sy=source[1],sw=source[2],sh=source[3];
     const int lines=f.layout()==3?432:448;
     const int dh=v.outer_height?v.outer_height:int(std::lround(sh*480./lines));
     const bool native_sides=(transient_3d||(f.travel!=Frame::Travel::none&&f.layout()==2))&&!v.full_map;
@@ -1940,7 +1979,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(display_settings.wide&&resolve_travel_layout(current,previous,transition))
             transition=WideView(current,true);
         if(enabled&&display_settings.wide&&card_transition::entering(current,previous)){
-            const auto* copy=card_transition::final_copy(current);
+            const auto* copy=final_surface_copy(current);
             const auto compact=card_transition::source_rect(current,previous,copy);
             if(compact.w){
                 native_scaled=card_transition::present(current,compact,encounter_native);

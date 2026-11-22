@@ -7,32 +7,6 @@ static bool entering(const Frame& f,const Frame& prior){
     return f.mode==mode||(f.mode==0&&(prior.travel!=Frame::Travel::none||
                                        prior.layout()==6||prior.mode==mode||prior.compact_card_view[2]>0));
 }
-static const Op* final_copy(const Frame& f){
-    if(!f.valid)return nullptr;
-    for(auto it=f.ops.rbegin();it!=f.ops.rend();++it){
-        if(it->target)continue;
-        if(it->clear||it->mode!=GL_TRIANGLES||it->vertices.size()!=6)return nullptr;
-        const auto tex=it->state.texture[0].id;
-        if(!tex||!f.targets.count(tex)||!WideView::uses_texture(it->state))return nullptr;
-        WideView::Bounds bounds;
-        if(!WideView::flat_rect(it->vertices.data(),bounds))return nullptr;
-        for(int i=0;i<16;++i){
-            const float identity=(i%5==0)?1.f:0.f;
-            if(std::abs(it->state.projection[i]-identity)>.0001f||
-               std::abs(it->state.model[i]-identity)>.0001f)return nullptr;
-        }
-        unsigned corners=0;
-        for(const auto& v:it->vertices){
-            const float u=v.uv[0][0],t=v.uv[0][1];
-            if(v.p[3]!=1||std::min(std::abs(u),std::abs(u-1.f))>.005f||
-               std::min(std::abs(t),std::abs(t-1.f))>.005f)return nullptr;
-            corners|=1u<<((u>.5f?1:0)+(t>.5f?2:0));
-        }
-        if(corners!=15)return nullptr;
-        return &*it;
-    }
-    return nullptr;
-}
 static Rect compact(const Frame& f,const Op* copy){
     if(!copy||f.w<=0||f.h<=0)return {};
     const auto* vp=copy->state.viewport;

@@ -13,7 +13,7 @@ int main(){
     assert(number(path,L"Display",L"FPS",fps));
     auto& s=display_settings.retro;
     auto read=[&](){display_settings.load(path);};
-    auto key=[&](UINT k){handle_key(k,false,path,s);};
+    auto key=[&](UINT k){handle_key(k,path,s);};
     Pad pad;
     ULONGLONG tick=0;
     auto tap=[&](WORD held){
@@ -40,7 +40,27 @@ int main(){
         read();
         assert(same_filter(s,before));
     }
+    assert(s.glow==8&&s.lines==320);
+    const std::pair<Row,int RetroSettings::*> sliders[]={
+        {Pixels,&RetroSettings::pixelation},{Scan,&RetroSettings::scanlines},
+        {Mask,&RetroSettings::mask},{Glow,&RetroSettings::glow},{Dither,&RetroSettings::dither},
+        {Edges,&RetroSettings::edge_softness},{MotionBlur,&RetroSettings::motion_blur},
+        {PhosphorStrength,&RetroSettings::phosphor_strength},{PhosphorSharpness,&RetroSettings::phosphor_sharpness}
+    };
+    for(auto [slider,field]:sliders){
+        go(slider);
+        s.*field=8;key(VK_RIGHT);assert(s.*field==10);
+        s.*field=8;tap(XINPUT_GAMEPAD_DPAD_LEFT);assert(s.*field==0);
+        key(VK_LEFT);assert(s.*field==0);
+        s.*field=32;key(VK_LEFT);assert(s.*field==30);
+        s.*field=32;tap(XINPUT_GAMEPAD_DPAD_RIGHT);assert(s.*field==40);
+        tap(XINPUT_GAMEPAD_DPAD_RIGHT|XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(s.*field==50);
+        s.*field=98;key(VK_RIGHT);key(VK_RIGHT);assert(s.*field==100);
+    }
+    go(Lines);key(VK_RIGHT);assert(s.lines==340);
+    tap(XINPUT_GAMEPAD_DPAD_LEFT);assert(s.lines==320);
     key(VK_F8);
+    assert(same_filter(s,profiles[8]));
     // A factory selection saved by deck.6 cached zero in the live section.
     assert(number(path,L"Retro",L"MotionBlur",0));
     read();
@@ -62,7 +82,7 @@ int main(){
     // Both keyboard and D-pad change the profile immediately from a preview.
     go(MotionBlur);
     tap(XINPUT_GAMEPAD_DPAD_RIGHT|XINPUT_GAMEPAD_RIGHT_SHOULDER);
-    handle_key(VK_RIGHT,true,path,s);
+    key(VK_RIGHT);
     assert(dirty&&s.motion_blur==50);
     go(Profile);
     tap(XINPUT_GAMEPAD_DPAD_RIGHT);

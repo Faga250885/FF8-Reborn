@@ -14,14 +14,13 @@ static void pad_input(Pad& pad,int index,WORD held,ULONGLONG tick,const wchar_t*
     pad.previous=held;
     if(!open)owner=-1;
     if(owner>=0&&index!=owner)return;
-    if(toggle){handle_key(VK_F8,false,path,s);owner=open?index:-1;pad.direction=0;return;}
+    if(toggle){handle_key(VK_F8,path,s);owner=open?index:-1;pad.direction=0;return;}
     if(!open||(held&chord))return;
     const WORD arrows=held&(XINPUT_GAMEPAD_DPAD_UP|XINPUT_GAMEPAD_DPAD_DOWN|XINPUT_GAMEPAD_DPAD_LEFT|XINPUT_GAMEPAD_DPAD_RIGHT);
-    if(pressed&XINPUT_GAMEPAD_B)handle_key(VK_ESCAPE,false,path,s);
-    else if(pressed&XINPUT_GAMEPAD_A)handle_key(VK_RETURN,false,path,s);
+    if(pressed&XINPUT_GAMEPAD_B)handle_key(VK_ESCAPE,path,s);
+    else if(pressed&XINPUT_GAMEPAD_A)handle_key(VK_RETURN,path,s);
     else if(arrows&&(!(arrows&(arrows-1)))&&(pad.direction!=arrows||tick>=pad.repeat_at)){
-        handle_key(arrows==1?VK_UP:arrows==2?VK_DOWN:arrows==4?VK_LEFT:VK_RIGHT,
-                   (held&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0,path,s);
+        handle_key(arrows==1?VK_UP:arrows==2?VK_DOWN:arrows==4?VK_LEFT:VK_RIGHT,path,s);
         pad.repeat_at=tick+(arrows==pad.direction?110:420);
     }
     pad.direction=arrows;

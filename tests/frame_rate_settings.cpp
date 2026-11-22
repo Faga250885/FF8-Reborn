@@ -29,11 +29,11 @@ int main(){
 
     assert(retro_panel::number(path,L"Display",L"FPS",0));
     display_settings.load(path);
-    retro_panel::handle_key(VK_F8,false,path,display_settings.retro);
+    retro_panel::handle_key(VK_F8,path,display_settings.retro);
     retro_panel::row=retro_panel::FPS;
     auto step=[&](UINT key,int expected){
         can_present=true;
-        retro_panel::handle_key(key,false,path,display_settings.retro);
+        retro_panel::handle_key(key,path,display_settings.retro);
         assert(!retro_panel::save_failed()&&!can_present);
         assert(display_settings.fps==expected&&!display_settings.automatic_fps);
         assert(stored_fps()==expected);

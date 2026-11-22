@@ -178,7 +178,12 @@ static void save_custom(const wchar_t* path,const RetroSettings& s){
     if(active_profile!=custom)custom_base=active_profile;
     active_profile=custom;custom_exists=true;slots[custom]=s;dirty=false;
 }
-static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s){
+// Factory presets and saved filters can start between two stops.
+static int next_percent(int value,int direction){
+    if(direction>0)return std::min(100,(value/10+1)*10);
+    return std::max(0,(value-1)/10*10);
+}
+static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
     if(key==VK_F8&&!open){
         load_slots(path,s);row=Profile;open=true;capture_pad=true;return;
     }
@@ -232,18 +237,15 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         active_profile=id;s=slots[id];dirty=false;return;
     }
     if(row==TVScreen)s.tv_screen=(s.tv_screen+step+4)%4;
-    else if(row==PhosphorStrength||row==PhosphorSharpness){
-        if(activate)return;
-        int& value=row==PhosphorStrength?s.phosphor_strength:s.phosphor_sharpness;
-        const int next=std::clamp(value+step*(coarse?10:1),0,100);
+    else if(row==FilterType)s.mode=(s.mode+step+3)%3;
+    else{
+        if(activate||(row<=MotionBlur&&!editable(s.mode,row)))return;
+        const auto field=row==PhosphorStrength?&RetroSettings::phosphor_strength:
+                         row==PhosphorSharpness?&RetroSettings::phosphor_sharpness:fields[row-Lines];
+        int& value=s.*field;
+        const int next=row==Lines?std::clamp(value+step*20,120,720):next_percent(value,step);
         if(next==value)return;
         value=next;
-    }else if(row==FilterType)s.mode=(s.mode+step+3)%3;
-    else{
-        if(activate||!editable(s.mode,row))return;
-        const int increment=row==Lines?20:(row==MotionBlur||coarse?10:1);
-        int& v=s.*fields[row-1];int n=std::clamp(v+step*increment,row==Lines?120:0,row==Lines?720:100);
-        if(v==n)return;v=n;
     }
     dirty=!same_filter(s,slots[active_profile]);failed=false;
 }
@@ -272,7 +274,7 @@ static LRESULT CALLBACK window_proc(HWND window,UINT msg,WPARAM wp,LPARAM lp,UIN
         if(repeat && !claimed[wp])return 0;
         claimed[wp]=true;
         if(wp!=VK_SHIFT && (!repeat || wp==VK_LEFT||wp==VK_RIGHT||wp==VK_UP||wp==VK_DOWN))
-            handle_key((UINT)wp,(GetKeyState(VK_SHIFT)&0x8000)!=0,ini.c_str(),*current);
+            handle_key((UINT)wp,ini.c_str(),*current);
         return 0;
     }else if(msg==WM_KEYDOWN && wp<256 && claimed[wp]){
         // The panel can close before the key is physically released.
