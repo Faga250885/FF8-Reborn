@@ -55,6 +55,7 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 #include "retro_settings.h"
 struct DisplaySettings {
     int fps=60;
+    int fps_counter=0;
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
@@ -66,6 +67,7 @@ struct DisplaySettings {
         wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
         atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
         field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
+        fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
         retro.load(path);
     }
 } static display_settings;
@@ -296,6 +298,7 @@ static std::unordered_map<GLuint,std::shared_ptr<TextureCopy>> texture_cache;
 static unsigned texture_copies=0,texture_updates=0;
 struct TextureState {GLint id=0,env=GL_MODULATE;bool enabled=false;float matrix[16];TextureParameters parameters{};std::shared_ptr<TextureCopy> copy;};
 #include "texture_transfer.h"
+#include "fps_counter.h"
 #include "retro_panel_draw.h"
 static std::shared_ptr<TextureCopy> freeze_texture(GLuint id){
     auto found=texture_cache.find(id);if(found!=texture_cache.end())return found->second;
@@ -470,7 +473,37 @@ static void set_state(const State&s,const State* prior,bool restore_view,Sampler
         memcmp(&s.depth_func,&prior->depth_func,offsetof(State,program)-raster_begin)||
         memcmp(&s.depth,&prior->depth,offsetof(State,model)-offsetof(State,depth)):
         memcmp(&s,prior,offsetof(State,model)));
-    if(raster_changed){
+    if(raster_changed&&samplers&&prior){
+        // Terrain often changes one blending or depth setting between adjacent
+        // triangles. Keep the rest of the compatibility state on the driver.
+        auto toggle=[&](GLenum key,bool value,bool before){if(value!=before)cap(key,value);};
+        const auto& p=*prior;
+        toggle(GL_DEPTH_TEST,s.depth,p.depth);toggle(GL_BLEND,s.blend,p.blend);
+        toggle(GL_CULL_FACE,s.cull,p.cull);toggle(GL_ALPHA_TEST,s.alpha,p.alpha);
+        toggle(GL_SCISSOR_TEST,s.scissor_on,p.scissor_on);toggle(GL_COLOR_LOGIC_OP,s.logic_on,p.logic_on);
+        toggle(GL_POLYGON_OFFSET_FILL,s.offset_fill,p.offset_fill);toggle(GL_FRAMEBUFFER_SRGB,s.srgb,p.srgb);
+        if(s.depth_func!=p.depth_func)glDepthFunc(s.depth_func);
+        if(s.depth_mask!=p.depth_mask)glDepthMask(s.depth_mask);
+        if(memcmp(s.depth_range,p.depth_range,sizeof(s.depth_range)))glDepthRange(s.depth_range[0],s.depth_range[1]);
+        if(s.cull_face!=p.cull_face)glCullFace(s.cull_face);
+        if(s.front_face!=p.front_face)glFrontFace(s.front_face);
+        if(s.alpha_func!=p.alpha_func||s.alpha_ref!=p.alpha_ref)glAlphaFunc(s.alpha_func,s.alpha_ref);
+        if(s.shade!=p.shade)glShadeModel(s.shade);
+        if(s.logic!=p.logic)glLogicOp(s.logic);
+        if(s.polygon[0]!=p.polygon[0])glPolygonMode(GL_FRONT,s.polygon[0]);
+        if(s.polygon[1]!=p.polygon[1])glPolygonMode(GL_BACK,s.polygon[1]);
+        if(s.offset_factor!=p.offset_factor||s.offset_units!=p.offset_units)glPolygonOffset(s.offset_factor,s.offset_units);
+        if(s.line_width!=p.line_width)glLineWidth(s.line_width);
+        if(s.point_size!=p.point_size)glPointSize(s.point_size);
+        if(memcmp(s.mask,p.mask,sizeof(s.mask)))glColorMask(s.mask[0],s.mask[1],s.mask[2],s.mask[3]);
+        if(s.src_rgb!=p.src_rgb||s.dst_rgb!=p.dst_rgb||s.src_alpha!=p.src_alpha||s.dst_alpha!=p.dst_alpha)
+            pBlendFuncSeparate(s.src_rgb,s.dst_rgb,s.src_alpha,s.dst_alpha);
+        if(s.eq_rgb!=p.eq_rgb||s.eq_alpha!=p.eq_alpha)pBlendEquationSeparate(s.eq_rgb,s.eq_alpha);
+        if(memcmp(s.blend_color,p.blend_color,sizeof(s.blend_color)))pBlendColor(s.blend_color[0],s.blend_color[1],s.blend_color[2],s.blend_color[3]);
+        if(memcmp(s.clear_color,p.clear_color,sizeof(s.clear_color)))glClearColor(s.clear_color[0],s.clear_color[1],s.clear_color[2],s.clear_color[3]);
+        if(s.clear_depth!=p.clear_depth)glClearDepth(s.clear_depth);
+        if(s.clear_stencil!=p.clear_stencil)glClearStencil(s.clear_stencil);
+    }else if(raster_changed){
     cap(GL_DEPTH_TEST,s.depth);cap(GL_BLEND,s.blend);cap(GL_CULL_FACE,s.cull);cap(GL_ALPHA_TEST,s.alpha);
     cap(GL_SCISSOR_TEST,s.scissor_on);cap(GL_COLOR_LOGIC_OP,s.logic_on);cap(GL_POLYGON_OFFSET_FILL,s.offset_fill);
     cap(GL_FRAMEBUFFER_SRGB,s.srgb);
@@ -803,11 +836,16 @@ struct Guard {
     GLint r,d,program,active,client,matrix;float model[16],projection[16],texture[4][16];
     std::unordered_map<GLuint,std::vector<Uniform>> values;
     std::unordered_map<GLuint,TextureParameters> texture_values;
-    Guard(const Frame&f){
+    std::unordered_map<GLuint,unsigned> vertex_inputs;
+    Guard(const Frame&f,bool inspect_inputs=false){
         glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&r);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&d);glGetIntegerv(GL_CURRENT_PROGRAM,&program);
         glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glGetIntegerv(GL_CLIENT_ACTIVE_TEXTURE,&client);glGetIntegerv(GL_MATRIX_MODE,&matrix);
         glGetFloatv(GL_MODELVIEW_MATRIX,model);glGetFloatv(GL_PROJECTION_MATRIX,projection);
-        for(const auto&op:f.ops)if(op.state.program&&!values.count(op.state.program))values.emplace(op.state.program,uniforms(op.state.program));
+        for(const auto&op:f.ops)if(op.state.program&&!values.count(op.state.program)){
+            unsigned inputs=127;
+            values.emplace(op.state.program,uniforms(op.state.program,inspect_inputs?&inputs:nullptr));
+            if(inspect_inputs)vertex_inputs.emplace(op.state.program,inputs);
+        }
         for(int j=0;j<4;j++){pActiveTexture(GL_TEXTURE0+j);glGetFloatv(GL_TEXTURE_MATRIX,texture[j]);}pActiveTexture(active);
         glPushAttrib(GL_ALL_ATTRIB_BITS);glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);inside=true;
         // A frozen texture redirects every sampler mutation to our own copy.
@@ -859,7 +897,8 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
     if(!display_settings.wide){view.outer_width=0;view.horizontal=1;}
     double began=now();
-    Guard guard(current);
+    const bool terrain_arrays=deck_renderer&&alpha==1&&!display_settings.fps&&current.mode==2&&current.layout()==2;
+    Guard guard(current,terrain_arrays);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
     const ReplaySeedPlan seed_plan(alpha);
     field_prefix.prepare(current,alpha,widescreen&&display_settings.wide);
@@ -986,6 +1025,7 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     }
     size_t span_index=0;
     bool packed_arrays_bound=false;
+    unsigned enabled_inputs=127;
     // Only the renderer can change GL state between these calls. Forget the
     // cache before the game resumes or a custom atlas touches the bindings.
     const bool native_world=deck_renderer&&!display_settings.fps&&current.mode==2&&current.layout()==2&&!view.full_map;
@@ -1028,6 +1068,21 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         struct Rebind {bool active; ~Rebind(){if(active)pBindBuffer(GL_ARRAY_BUFFER,vertex_stream);}} rebind{uploaded&&card};
         // A shader can read gl_VertexID. Keep its original first vertex.
         const bool shared=deck_renderer&&stream&&!packed.empty()&&!card&&!op.state.program;
+        // Guard reflected these linked programs in this replay. Keep first=0
+        // for shaders, and submit only the arrays their executable reads.
+        const unsigned inputs=terrain_arrays&&op.state.program?guard.vertex_inputs.at(op.state.program):127;
+        if(inputs!=enabled_inputs){
+            auto toggle=[&](unsigned bit,GLenum array){
+                if(inputs&bit)glEnableClientState(array);else glDisableClientState(array);
+            };
+            const unsigned changed=inputs^enabled_inputs;
+            if(changed&2)toggle(2,GL_NORMAL_ARRAY);
+            if(changed&4)toggle(4,GL_COLOR_ARRAY);
+            for(int unit=0;unit<4;++unit)if(changed&(8u<<unit)){
+                pClientActiveTexture(GL_TEXTURE0+unit);toggle(8u<<unit,GL_TEXTURE_COORD_ARRAY);
+            }
+            enabled_inputs=inputs;
+        }
         GLint first=0;
         if(shared){
             first=GLint(spans[span_index-1].offset/sizeof(Vertex));
@@ -1036,9 +1091,9 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         if(!shared||!packed_arrays_bound){
             auto address=[&](size_t offset){return reinterpret_cast<const void*>(base+offset);};
             glVertexPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,p)));
-            glColorPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,c)));
-            glNormalPointer(GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,n)));
-            for(int j=0;j<4;j++){pClientActiveTexture(GL_TEXTURE0+j);
+            if(inputs&4)glColorPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,c)));
+            if(inputs&2)glNormalPointer(GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,n)));
+            for(int j=0;j<4;j++)if(inputs&(8u<<j)){pClientActiveTexture(GL_TEXTURE0+j);
                 glTexCoordPointer(4,GL_FLOAT,sizeof(Vertex),address(offsetof(Vertex,uv)+j*sizeof(vertices[0].uv[0])));}
         }
         packed_arrays_bound=shared;
@@ -1166,13 +1221,18 @@ static void track_display_refresh(HDC handle,double time){
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
-    if(!panel&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
+    const int counter=display_settings.fps_counter;
+    if(!counter)fps_counter::reset_meter();
+    if(!panel&&!counter&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
     RECT rect{};
     if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;return false;}
     w=rect.right;h=rect.bottom;
     RetroSettings filter=enabled?display_settings.retro:RetroSettings{};
     filter.lines=filter.visible_lines(current.raster_rows);
-    if(!retro_display::begin_window(filter,handle,w,h,panel))return false;
+    const int scale=fps_counter::scale(counter,w,h);
+    if(!retro_display::begin_window(filter,handle,w,h,panel||scale,
+        panel||!scale?w:fps_counter::tile_w*scale,panel||!scale?h:fps_counter::tile_h*scale))return false;
+    if(scale&&!retro_display::retiring_front)fps_counter::draw(w,h,scale);
     if(panel&&!retro_display::retiring_front)
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
@@ -1196,6 +1256,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         presentation_clock.submitted(now());
     }
     BOOL result=real_swap(handle);
+    if(result&&display_settings.fps_counter)fps_counter::presented(now());
     if(filtered){
         const double restore_start=filter_seconds?now():0;
         retro_display::end_window(result!=FALSE,outer_restores,retro_w,retro_h);
@@ -1332,6 +1393,28 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
 static bool parity(){
     submit_parity_samples();
     return collect_parity();
+}
+// The native samples and the wide candidate belong to this same game tick.
+// Submit the candidate while the GPU transfers the samples. Only commit it
+// after validation, so a rejected frame leaves the game's drawable intact.
+static bool present_native_world(GLuint native=0,GLuint output=0){
+    submit_parity_samples(native);
+    const GLenum submitted=glGetError();
+    if(submitted||!world_readback.available()||!world_readback.enqueue()){
+        if(!collect_parity(submitted))return false;
+        replay(output,1,true);
+        return true;
+    }
+    replay(test_target.fbo,1,true);
+    if(!collect_parity(GL_NO_ERROR,true))return false;
+    blit(test_target.fbo,output,width,height,width,height,all_buffers());
+    if(glGetError()!=GL_NO_ERROR){
+        // Some pixel formats cannot receive a packed depth/stencil blit.
+        // Present the validated scene directly on that drawable.
+        world_readback.cooldown=600;
+        replay(output,1,true);
+    }
+    return true;
 }
 static void reset_building(){
     building.match_input.reset();
@@ -1513,7 +1596,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
         measure_world=deck_renderer&&candidate&&display_settings.wide&&!display_settings.fps&&mode==2&&
             previous.mode==2&&current.layout()==2&&transition.outer_width&&!atlas_open&&!current.menu_edge&&
-            current.travel==Frame::Travel::none&&dt>0&&dt<.25;
+            current.travel==Frame::Travel::scene&&dt>0&&dt<.25;
         // The atlas is a 2D interface inside world mode. Never match an atlas
         // capture with terrain, or replay a stale pointer during a native wait.
         if(pair && mode==2 && !was_presenting && !atlas_open &&
@@ -1532,7 +1615,9 @@ static BOOL WINAPI swap_hook(HDC handle){
         }
         if(!native_endpoint&&candidate&&(display_settings.fps==0||atlas_open||scene_entry)){
             // One endpoint per game swap. Keep the native wait and swap interval.
-            if((display_settings.wide||(display_settings.atlas&&atlas_open))&&parity()){
+            if(measure_world&&pair){
+                native_endpoint=present_native_world();
+            }else if((display_settings.wide||(display_settings.atlas&&atlas_open))&&parity()){
                 replay(0,1,true);native_endpoint=true;
             }
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
@@ -1638,6 +1723,7 @@ static BOOL WINAPI retro_only_swap(HDC handle){
     int w=0,h=0;
     const bool filtered=begin_retro_frame(handle,w,h);
     const BOOL result=real_swap(handle);
+    if(result&&display_settings.fps_counter)fps_counter::presented(now());
     if(filtered)retro_display::end_window(result!=FALSE,false,w,h);
     return result;
 }
@@ -1784,6 +1870,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
 // their names without GL deletes: a new context may reuse exactly those names.
 static void forget_deleted_context(){
     retro_panel_draw::forget();
+    fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;
     retro_display::forget();
     deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};

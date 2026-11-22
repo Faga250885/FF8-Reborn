@@ -30,6 +30,7 @@ static bool television(const RetroSettings& s){return s.mode==2&&s.phosphors!=Re
 static bool active(const RetroSettings& s){return s.active()||(enabled&&s.tv_screen&&s.phosphor_strength);}
 static Surface source,previous_front;
 static bool valid_front=false,retiring_front=false;
+static int front_window_w=0,front_window_h=0;
 static HDC swap_dc=nullptr;
 static bool exchanges_front=false;
 static int failed_width=0,failed_height=0;
@@ -330,7 +331,9 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
 }
 static void restore_from(const Surface& surface,GLuint target,int w,int h){
     TargetState state(target,false);
-    pBindFramebuffer(GL_READ_FRAMEBUFFER,surface.fbo);copy_color(w,h);
+    pBindFramebuffer(GL_READ_FRAMEBUFFER,surface.fbo);
+    const int cw=std::min(w,surface.w),ch=std::min(h,surface.h);
+    pBlitFramebuffer(0,0,cw,ch,0,h-ch,cw,h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
 }
 static void restore(GLuint target,int w,int h){restore_from(source,target,w,h);}
 static void inspect_swap_method(HDC handle){
@@ -352,11 +355,11 @@ static bool retire_front(HDC handle,int w,int h){
     // The first swap after closing an unfiltered panel (or bypassing the
     // effect) still exchanges the old decorated front into the game's back.
     retiring_front=valid_front&&exchanges_front&&handle==swap_dc&&
-                   previous_front.w==w&&previous_front.h==h;
+                   front_window_w==w&&front_window_h==h;
     if(!retiring_front)valid_front=false;
     return retiring_front;
 }
-static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false){
+static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0){
     retiring_front=false;
     if((!active(settings)&&!overlay)||w<=0||h<=0||w>8192||h>8192||
        (failed_width==w&&failed_height==h))return retire_front(handle,w,h);
@@ -364,21 +367,27 @@ static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bo
     const bool filter=active(settings)&&prepare(television(settings));
     if(!filter&&!overlay)return retire_front(handle,w,h);
     inspect_swap_method(handle);
-    if(exchanges_front && (!valid_front||previous_front.w!=w||previous_front.h!=h)){
-        try{allocate(previous_front,w,h);}
+    const int cw=!filter&&overlay_w>0?std::min(w,overlay_w):w;
+    const int ch=!filter&&overlay_h>0?std::min(h,overlay_h):h;
+    auto save_corner=[&](const Surface& dst){
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,dst.fbo);
+        pBlitFramebuffer(0,h-ch,cw,h,0,0,cw,ch,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+    };
+    if(exchanges_front && (!valid_front||front_window_w!=w||front_window_h!=h)){
+        try{allocate(previous_front,cw,ch);}
         catch(const std::exception&){failed_width=w;failed_height=h;valid_front=false;return false;}
         TargetState state(0,false);glReadBuffer(GL_FRONT);
-        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,previous_front.fbo);copy_color(w,h);
-        valid_front=true;
+        save_corner(previous_front);
+        valid_front=true;front_window_w=w;front_window_h=h;
     }
     if(filter&&apply(settings,0,w,h))return true;
     if(overlay){
         // Opening the editor with the original image still requires an
         // unmodified copy for engines which draw the next frame incrementally.
-        try{allocate(source,w,h);}
+        try{allocate(source,cw,ch);}
         catch(const std::exception&){failed_width=w;failed_height=h;valid_front=false;return false;}
         TargetState state(0,false);
-        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,source.fbo);copy_color(w,h);
+        save_corner(source);
         return true;
     }
     valid_front=false;return false;

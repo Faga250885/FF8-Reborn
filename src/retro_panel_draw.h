@@ -2,13 +2,13 @@
 // A normal presentation of the open panel is one GPU-to-GPU rectangle blit.
 namespace retro_panel_draw {
 static Surface panel;
-static std::array<int,26> last_state{};
+static std::array<int,27> last_state{};
 static bool painted=false;
-constexpr int design_w=404,design_h=717;
+constexpr int design_w=404,design_h=746;
 static int row_top(int id,bool restore_visible){
     int index=retro_panel::visual_index(id);
     if(!restore_visible&&index>retro_panel::visual_index(retro_panel::Restore))--index;
-    return 78+index*29+(index>=4?32:0);
+    return 78+index*29+(index>=5?32:0);
 }
 
 struct Canvas {
@@ -68,13 +68,13 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     if(bypass)c.label(L"Original view",243,18,387,47,0,secondary,true);
     c.label(L"Display settings",17,52,260,76,0,accent);
     c.label(L"Auto-save",246,52,387,76,0,secondary,true);
-    c.box(16,195,388,196,RGB(61,77,80));
-    c.label(L"Screen filter",17,198,388,224,0,accent);
+    c.box(16,224,388,225,RGB(61,77,80));
+    c.label(L"Screen filter",17,227,388,253,0,accent);
     using namespace retro_panel;
     const bool restore_visible=can_restore(s);
     if(dirty||active_profile==custom){
         std::wstring base=std::wstring(L"Based on ")+(base_profile()==8?L"FF8 Reborn":names[base_profile()]);
-        c.label(base.c_str(),122,198,387,224,0,secondary,true);
+        c.label(base.c_str(),122,227,387,253,0,secondary,true);
     }
     const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",
                               L"RGB mask",L"Glow",L"PS1 dithering",L"Edge smoothing"};
@@ -99,14 +99,15 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
             c.label(value,318-(i==1?42:0),top,385,top+28,1,editable?secondary:muted,true);
         }
     }
-    const wchar_t* extra[]={L"Filter type",L"Full-screen map",L"Aspect ratio",L"Frame rate",L"Blurred sidebars",L"TV phosphors",L"Phosphor strength",L"Phosphor sharpness",
+    const wchar_t* extra[]={L"Filter type",L"Full-screen map",L"Aspect ratio",L"Frame rate",L"Blurred sidebars",L"FPS counter",L"TV phosphors",L"Phosphor strength",L"Phosphor sharpness",
                             active_profile==custom?L"Save my changes":custom_exists?L"Save to my custom profile":L"Create a custom copy",
                             L"Restore filter defaults"};
+    const wchar_t* counter_sizes[]={L"Off",L"Small",L"Medium",L"Large"};
     const wchar_t* screens[]={L"Use filter profile",L"Trinitron grille",L"RCA slot mask",L"RCA dot mask"};
     std::wstring strength=std::to_wstring(s.phosphor_strength)+L" %",sharpness=std::to_wstring(s.phosphor_sharpness)+L" %";
     const wchar_t* value[]={s.mode==0?L"Off":s.mode==1?L"Pixelated":L"CRT",display_settings.atlas?L"Reborn":L"Original",
         display_settings.wide?L"Widescreen":L"Original (4:3)",display_settings.fps==0?L"Original":display_settings.fps==60?L"60":L"120",
-        display_settings.field_sides?L"On":L"Off",screens[s.tv_screen],strength.c_str(),sharpness.c_str()};
+        display_settings.field_sides?L"On":L"Off",counter_sizes[display_settings.fps_counter],screens[s.tv_screen],strength.c_str(),sharpness.c_str()};
     for(int i=FilterType;i<RowCount;i++){
         if(i==Restore&&!restore_visible)continue;
         const int top=row_top(i,restore_visible);
@@ -129,13 +130,15 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
 static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,int h,bool bypass=false){
     if(w<24||h<24)return false;
     const int height=design_h-(retro_panel::can_restore(settings)?0:29);
+    const int counter_height=fps_counter::tile_h*fps_counter::scale(display_settings.fps_counter,w,h);
+    if(h-counter_height<24)return false;
     const double scale=std::min({std::clamp(h/900.,.8,3.0),
-                                 double(w)/(design_w+32),double(h)/(design_h+32)});
+                                 double(w)/(design_w+32),double(h-counter_height)/(design_h+32)});
     const int pw=int(std::lround(design_w*scale)),ph=int(std::lround(height*scale));
     const int margin=int(std::lround(16*scale));
     const bool failed=retro_panel::save_failed();
-    const std::array<int,26> state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
-                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness};
+    const std::array<int,27> state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
+                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter};
     if(!painted||last_state!=state){
         Canvas canvas(pw,ph);
         if(!canvas.pixels)return false;
@@ -154,7 +157,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     retro_display::inspect_context();
     retro_display::TargetState state_guard(target,false);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,panel.fbo);
-    pBlitFramebuffer(0,0,pw,ph,margin,h-margin-ph,margin+pw,h-margin,
+    pBlitFramebuffer(0,0,pw,ph,margin,h-counter_height-margin-ph,margin+pw,h-counter_height-margin,
                      GL_COLOR_BUFFER_BIT,GL_NEAREST);
     return true;
 }

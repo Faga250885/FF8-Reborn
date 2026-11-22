@@ -44,8 +44,8 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, RowCount };
-static constexpr Row visual_order[]={Map,Aspect,FPS,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, RowCount };
+static constexpr Row visual_order[]={Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
 static_assert(sizeof(visual_order)/sizeof(visual_order[0])==RowCount,"every setting must be reachable");
 static int visual_index(int id){return int(std::find(visual_order,visual_order+RowCount,id)-visual_order);}
 static constexpr int custom=profile_count;
@@ -120,7 +120,7 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
     bool ok=exists?!(attr&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_READONLY)):GetLastError()==ERROR_FILE_NOT_FOUND;
     if(ok&&exists)ok=CopyFileW(path,temp,FALSE)!=FALSE;
     if(display_row>=0){
-        static const wchar_t* const keys[]={L"Atlas",L"Wide",L"FPS",L"FieldSides"};
+        static const wchar_t* const keys[]={L"Atlas",L"Wide",L"FPS",L"FieldSides",L"FPSCounter"};
         if(ok)ok=number(temp,L"Display",keys[display_row-Map],display_value);
     }else{
         if(ok&&legacy_screen_slot>=0&&legacy_screen_slot!=write_slot)ok=write_filter(temp,section(legacy_screen_slot).c_str(),slots[legacy_screen_slot]);
@@ -173,6 +173,11 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
             commit(path,s,active_profile,true);
             if(!failed)row=Profile;
         }
+        return;
+    }
+    if(row==Counter){
+        const int size=(display_settings.fps_counter+4+step)%4;
+        if(persist(path,s,active_profile,-1,false,row,size))display_settings.fps_counter=size;
         return;
     }
     if(row>=Map&&row<=Sides){
