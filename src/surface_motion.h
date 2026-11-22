@@ -120,9 +120,38 @@ static unsigned surface_reverse_count=0,surface_forward_count=0;
 using ForwardSurface=std::unordered_map<uint64_t,std::array<float,4>>;
 static unsigned registered_before=0,registered_after=0;
 static BoneTracks active_bones;
+static SurfaceGraph previous_battle_surface(){
+    // A fully tracked draw can lose bone coverage on the next tick. Reuse
+    // the immutable adjacency only when the same draws still participate.
+    if(deck_renderer&&previous.match_input){
+        auto cached=std::move(previous.match_input->battle_surface);
+        if(cached&&cached->refs.size()==previous.ops.size()){
+            bool same=true;
+            for(size_t i=0;i<previous.ops.size()&&same;i++){
+                const auto& op=previous.ops[i];
+                const size_t count=!op.indexed_complete&&surface_draw(op)?op.vertices.size():0;
+                same=cached->refs[i].size()==count;
+            }
+            if(same){
+                for(auto& node:cached->nodes){
+                    node.destination={};node.partner=-1;node.predicted=false;node.native=false;
+                }
+                return std::move(*cached);
+            }
+        }
+    }
+    return surface_graph(previous);
+}
 static void classify_native_draws(int mode){
     registered_before=registered_after=0;
-    active_bones=mode==3?link_bones(previous.bones,current.bones):BoneTracks{};
+    if(deck_renderer&&mode==3&&!previous.bones.empty()&&!current.bones.empty()){
+        auto addresses=[](Frame& f)->const BoneLinks& {
+            auto& index=f.match_input->bone_addresses;
+            if(index.empty())index=index_bones(f.bones);
+            return index;
+        };
+        active_bones=link_bones(addresses(previous),addresses(current));
+    }else active_bones=mode==3?link_bones(previous.bones,current.bones):BoneTracks{};
     auto classify=[](Frame&f,const BoneLinks&links){
         unsigned hits=0;std::unordered_map<uint64_t,bool> unique;
         for(auto&op:f.ops){op.indexed_complete=false;
@@ -141,7 +170,7 @@ static void classify_native_draws(int mode){
         for(auto*f:{&previous,&current})for(auto&o:f->ops)o.indexed_complete=false;}
 }
 static ForwardSurface prepare_surface_motion(){
-    auto before=surface_graph(previous),after=surface_graph(current);
+    auto before=previous_battle_surface(),after=surface_graph(current);
     auto vote=[](int&slot,unsigned value){if(slot==-1)slot=(int)value;else if(slot!=(int)value)slot=-2;};
     for(unsigned oi=0;oi<current.ops.size();oi++){
         auto&op=current.ops[oi];const auto&refs=after.refs[oi];if(refs.empty())continue;
@@ -187,5 +216,7 @@ static ForwardSurface prepare_surface_motion(){
     }
     ForwardSurface result;
     for(const auto&entry:before.index){const auto&node=before.nodes[entry.second];if(node.predicted){result.emplace(entry.first,node.destination);surface_forward_count++;}}
+    if(deck_renderer&&current.started&&current.match_input)
+        current.match_input->battle_surface=std::make_shared<SurfaceGraph>(std::move(after));
     return result;
 }

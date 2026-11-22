@@ -71,19 +71,26 @@ public:
     }
 };
 struct BoneTracks{BoneLinks backward,forward;};
-static BoneTracks link_bones(const std::vector<BoneSample>&a,const std::vector<BoneSample>&b){
-    BoneTracks tracks;if(a.empty()||b.empty())return tracks;
-    auto index=[](const auto&samples){BoneLinks out;out.reserve(samples.size());
-        for(const auto&p:samples){uint64_t id=(uint64_t(p.group)<<32)|p.address;
-            out.vote(id,{p.x,p.y,(uint16_t)((p.flags&2)?0:p.z)});}
-        return out;};
-    auto old=index(a),cur=index(b);
+static BoneLinks index_bones(const std::vector<BoneSample>& samples){
+    BoneLinks out;out.reserve(samples.size());
+    for(const auto& p:samples){
+        uint64_t id=(uint64_t(p.group)<<32)|p.address;
+        out.vote(id,{p.x,p.y,(uint16_t)((p.flags&2)?0:p.z)});
+    }
+    return out;
+}
+static BoneTracks link_bones(const BoneLinks& old,const BoneLinks& cur){
+    BoneTracks tracks;
     tracks.backward.reserve(cur.size());tracks.forward.reserve(cur.size());
     cur.each([&](uint64_t key,const BonePoint& q){auto f=old.find(key);if(!f)return;
         const auto&p=*f;if(!p.z||!q.z)return;
         if(std::abs(int(p.x)-q.x)>880||std::abs(int(p.y)-q.y)>880||p.z*2.5<q.z||q.z*2.5<p.z)return;
         tracks.backward.vote(q.key(),p);tracks.forward.vote(p.key(),q);});
     return tracks;
+}
+static BoneTracks link_bones(const std::vector<BoneSample>&a,const std::vector<BoneSample>&b){
+    if(a.empty()||b.empty())return {};
+    return link_bones(index_bones(a),index_bones(b));
 }
 
 static const BonePoint*lookup_bone(const BoneLinks&links,const float*p){

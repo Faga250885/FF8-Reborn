@@ -104,6 +104,28 @@ static HANDLE output_timer=nullptr;
 static int width=0,height=0,stencil_bits=0;
 static int saved_interval=1;static bool interval_changed=false;
 static BOOL (WINAPI *set_interval)(int);
+// An invalid pose should select a native image, not switch the driver's
+// presentation mode twice. Allow up to two invalid ticks and their first
+// unpaired successor to pass in the last validated 3D scene.
+struct DeckSwapInterval {
+    int mode=0, w=0, h=0;
+    unsigned grace=0, held=0, changes=0, failures=0;
+    double until=0, retry_after=0;
+    bool within(int scene,int width,int height,double time)const{
+        return scene&&mode==scene&&width==w&&height==h&&grace&&time<until;
+    }
+    bool keep(int scene,int width,int height,bool valid,double time){
+        if(valid&&scene){
+            mode=scene;w=width;h=height;grace=3;until=time+.3;
+        }else if(within(scene,width,height,time)){
+            --grace;++held;return true;
+        }else{
+            mode=0;grace=0;
+        }
+        return valid;
+    }
+};
+static DeckSwapInterval deck_interval;
 static const unsigned MAX_VERTICES=300000,MAX_OPS=12000;
 
 static double now() { LARGE_INTEGER t;QueryPerformanceCounter(&t);return double(t.QuadPart)/frequency.QuadPart; }
@@ -1291,10 +1313,13 @@ static void test_cadence(double time,float alpha){
 #ifndef GEO_AUTOTEST
 static void qa_native_image(int,int);
 #endif
+#include "deck_cadence.h"
 static void track_display_refresh(HDC handle,double time){
     static double next_check=0;
     if(time<next_check)return;
     next_check=time+2.;
+    const double previous_refresh=presentation_clock.refresh_period;
+    const double query_start=deck_renderer?now():0;
     MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);
     HMONITOR nearest=MonitorFromWindow(WindowFromDC(handle),MONITOR_DEFAULTTONEAREST);
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
@@ -1303,6 +1328,13 @@ static void track_display_refresh(HDC handle,double time){
         if(display_settings.automatic_fps)display_settings.fps=mode.dmDisplayFrequency>60?120:60;
     }
     else presentation_clock.refresh_period=0;
+    if(deck_renderer&&display_settings.fps==60){
+        const double finished=now(),duration=finished-query_start;
+        if(duration>=.04||previous_refresh!=presentation_clock.refresh_period){
+            deck_cadence.record({DeckCadence::EventKind::display_query,finished,duration,0,sources,current.mode,
+                presentation_clock.refresh_period>0?int(1./presentation_clock.refresh_period+.5):0,0});
+        }
+    }
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
@@ -1322,7 +1354,6 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
 }
-#include "deck_cadence.h"
 static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,double* filter_seconds=nullptr){double began=now();
     if(stride_trace::enabled&&game_mode()==2)stride_trace::present(began,alpha<0?sources:displayed_source,alpha);
     int retro_w=0,retro_h=0;
@@ -1341,9 +1372,14 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
     if(alpha>=0){
         presentation_clock.submitted(now());
     }
+    const double swap_start=deck_renderer&&display_settings.fps==60?now():0;
     BOOL result=real_swap(handle);
     if(deck_renderer){
-        if(result&&display_settings.fps==60)deck_cadence.present(current.mode,now(),alpha);
+        if(result&&swap_start){
+            const double finished=now();
+            deck_cadence.present(current.mode,finished,alpha,sources,finished-swap_start,
+                presentation_clock.replay_cost,deck_source_budget.busy);
+        }
         else deck_cadence.last_mode=0;
     }
     if(result&&display_settings.fps_counter)fps_counter::presented(now());
@@ -1472,7 +1508,19 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
     current.infirmary_top=current.infirmary_room>=0?infirmary::camera_top(current.infirmary_room,samples):-1;
     field_blur::prepare(current);
     if(!ok){char line[180];snprintf(line,sizeof(line),"parity rejected: mean %.4f bad %u ops %zu vertices %u GL 0x%x\n",error,bad,current.ops.size(),current.vertex_count,error_code);
-        if(parity_fail%30==0)log(line);
+        if(parity_fail%30==0||(deck_renderer&&parity_fail<8)){
+            log(line);
+            if(deck_renderer){
+                unsigned native_lit=0,replay_lit=0;
+                for(size_t i=0;i<parity_plane_bytes;i+=4){
+                    native_lit+=std::max({a[i],a[i+1],a[i+2]})>16;
+                    replay_lit+=std::max({b[i],b[i+1],b[i+2]})>16;
+                }
+                snprintf(line,sizeof(line),"Deck rejected endpoint | mode %d | game tick %u | lit pixels native %u replay %u of %zu\n",
+                         current.mode,sources,native_lit,replay_lit,size_t(parity_plane_bytes/4));
+                log(line);
+            }
+        }
         #ifdef GEO_AUTOTEST
         static unsigned captures[4]={};int mode=game_mode();
         if(mode>=1&&mode<=3&&current.vertex_count>(mode==3?10000:3000)){unsigned n=++captures[mode];if(n==1||n==30)comparison_image(a,b,mode,n);if(n==30)target_comparisons(mode);}
@@ -1533,44 +1581,54 @@ static WorldFrameStats world_frame_stats;
 static unsigned world_original_frames=0;
 static double world_original_intervals=0;
 static void stats(){static double last=0;static unsigned ps=0,po=0;
-    double t=now();if(t-last<5)return;char line[320];snprintf(line,sizeof(line),
+    double t=now();if(t-last<5)return;
+    std::unique_ptr<FILE,decltype(&fclose)> stream(fopen("FF8_geometry.log","a"),fclose);
+    auto write_stats=[&](const char* message){if(stream)fputs(message,stream.get());};
+    char line[320];snprintf(line,sizeof(line),
         "source %.2f/s | geometry presents %.2f/s | moved draws %u | parity pass %u fail %u | waits %u | %s\n",
         (sources-ps)/(t-last),(outputs-po)/(t-last),moving_draws,parity_ok,parity_fail,waits,can_present?"geometry":"native");
-    log(line);ps=sources;po=outputs;last=t;
-    if(deck_renderer)deck_cadence.report();
+    write_stats(line);ps=sources;po=outputs;last=t;
+    if(deck_renderer){
+        deck_cadence.report(write_stats);
+        if(deck_interval.held||deck_interval.changes||deck_interval.failures){
+            snprintf(line,sizeof(line),"Deck swap interval | %u changes | %u transient native frames | %u driver failures\n",
+                     deck_interval.changes,deck_interval.held,deck_interval.failures);write_stats(line);
+            deck_interval.held=deck_interval.changes=deck_interval.failures=0;
+        }
+    }
     if(world_original_frames){
         snprintf(line,sizeof(line),"Deck world Original 4:3 | %.1f FPS | %u travel frames\n",
             world_original_frames/world_original_intervals,world_original_frames);
-        log(line);world_original_frames=0;world_original_intervals=0;
+        write_stats(line);world_original_frames=0;world_original_intervals=0;
     }
     if(world_frame_stats.frames){
         const auto& w=world_frame_stats;
         snprintf(line,sizeof(line),"Deck world native projection: %u of %u travel frames | cached target %u | cached arrays %u\n",
-            w.direct_frames,w.frames,w.cached_targets,w.cached_arrays);log(line);
+            w.direct_frames,w.frames,w.cached_targets,w.cached_arrays);write_stats(line);
         snprintf(line,sizeof(line),"Deck world Original widescreen | %.1f FPS | %.0f commands/frame | capture or projection setup %.2f ms | validation and layout %.2f ms | filter CPU %.2f ms | swap and other %.2f ms | drawable %dx%d\n",
             w.frames/w.intervals,double(w.draws)/w.frames,1000*w.capture/w.frames,1000*w.layout/w.frames,1000*w.filter/w.frames,1000*w.swap/w.frames,width,height);
-        log(line);world_frame_stats={};
+        write_stats(line);world_frame_stats={};
     }
     if(frame_waits){
         snprintf(line,sizeof(line),"frame limiter %u waits | requested %.3f ms | drawing credited %.3f ms per wait\n",
-                 frame_waits,1000*requested_wait/frame_waits,1000*reclaimed_wait/frame_waits);log(line);
+                 frame_waits,1000*requested_wait/frame_waits,1000*reclaimed_wait/frame_waits);write_stats(line);
         frame_waits=0;requested_wait=reclaimed_wait=0;
     }
-      if(registered_after){snprintf(line,sizeof(line),"indexed native battle vertices, prior %u current %u\n",registered_before,registered_after);log(line);}
-    snprintf(line,sizeof(line),"native texture filter passes %u | clock deadline presents %u | sleep deadline presents %u\n",baked_passes,clock_presents,sleep_presents);log(line);
-    snprintf(line,sizeof(line),"texture content snapshots %u | changed versions %u | cached %zu | storage reused %u\n",texture_copies,texture_updates,texture_cache.size(),reused_storage);log(line);
-    snprintf(line,sizeof(line),"matched triangles %u | singular rejects %u | connected triangles held native %u | high resolution scheduler %d\n",matched_candidates,singular_rejects,incoherent_draws,output_timer!=nullptr);log(line);
-    snprintf(line,sizeof(line),"shared points %u | repaired conflicts %u | filled vertices %u | world camera %d confidence %.4f points %u | departing triangles %u\n",coherent_nodes,coherent_conflicts,coherent_filled,camera_motion.valid,camera_motion.confidence,camera_motion.points,outgoing_triangles);log(line);
-    snprintf(line,sizeof(line),"topology anchors %u | partial anchors %u | corrected references %u\n",topology_anchors,topology_partial,topology_corrected);log(line);
-    snprintf(line,sizeof(line),"CPU replay average %.3f ms | SwapBuffers average %.3f ms\n",replay_count?1000*replay_seconds/replay_count:0,presentation_count?1000*presentation_seconds/presentation_count:0);log(line);
-    snprintf(line,sizeof(line),"CPU capture/draw %.3f ms (%u draws) | match/frame %.3f ms | parity/frame %.3f ms (%u frames)\n",capture_count?1000*capture_seconds/capture_count:0,capture_count,matching_count?1000*matching_seconds/matching_count:0,matching_count?1000*parity_seconds/matching_count:0,matching_count);log(line);
+      if(registered_after){snprintf(line,sizeof(line),"indexed native battle vertices, prior %u current %u\n",registered_before,registered_after);write_stats(line);}
+    snprintf(line,sizeof(line),"native texture filter passes %u | clock deadline presents %u | sleep deadline presents %u\n",baked_passes,clock_presents,sleep_presents);write_stats(line);
+    snprintf(line,sizeof(line),"texture content snapshots %u | changed versions %u | cached %zu | storage reused %u\n",texture_copies,texture_updates,texture_cache.size(),reused_storage);write_stats(line);
+    snprintf(line,sizeof(line),"matched triangles %u | singular rejects %u | connected triangles held native %u | high resolution scheduler %d\n",matched_candidates,singular_rejects,incoherent_draws,output_timer!=nullptr);write_stats(line);
+    snprintf(line,sizeof(line),"shared points %u | repaired conflicts %u | filled vertices %u | world camera %d confidence %.4f points %u | departing triangles %u\n",coherent_nodes,coherent_conflicts,coherent_filled,camera_motion.valid,camera_motion.confidence,camera_motion.points,outgoing_triangles);write_stats(line);
+    snprintf(line,sizeof(line),"topology anchors %u | partial anchors %u | corrected references %u\n",topology_anchors,topology_partial,topology_corrected);write_stats(line);
+    snprintf(line,sizeof(line),"CPU replay average %.3f ms | SwapBuffers average %.3f ms\n",replay_count?1000*replay_seconds/replay_count:0,presentation_count?1000*presentation_seconds/presentation_count:0);write_stats(line);
+    snprintf(line,sizeof(line),"CPU capture/draw %.3f ms (%u draws) | match/frame %.3f ms | parity/frame %.3f ms (%u frames)\n",capture_count?1000*capture_seconds/capture_count:0,capture_count,matching_count?1000*matching_seconds/matching_count:0,matching_count?1000*parity_seconds/matching_count:0,matching_count);write_stats(line);
     capture_seconds=matching_seconds=parity_seconds=0;capture_count=matching_count=0;
     if(world_parity_times.count){
         const double factor=1000./world_parity_times.count;
         snprintf(line,sizeof(line),"world parity ms | replay %.3f | native blit %.3f | downsample %.3f | flush %.3f | collect %.3f | frames %u\n",
             world_parity_times.replay*factor,world_parity_times.copy*factor,world_parity_times.samples*factor,
             world_parity_times.flush*factor,world_parity_times.collect*factor,world_parity_times.count);
-        log(line);world_parity_times={};world_readback.report();
+        write_stats(line);world_parity_times={};world_readback.report(write_stats);
     }
     replay_seconds=presentation_seconds=0;replay_count=presentation_count=0;
 }
@@ -1594,9 +1652,9 @@ static int game_mode(){
 static Surface encounter_native;
 // When a scene changes, parity or the next interpolation pair may not be
 // available yet. Scale this swap's actual image, never an old parity sample.
-static bool present_native_layout(const Frame& f,const WideView& v,GLuint target=0){
+static bool present_native_layout(const Frame& f,const WideView& v,GLuint target=0,bool transient_3d=false){
     const bool field=f.layout()==1;
-    if(!v.menu&&!v.outer_width&&!f.menu_edge&&f.travel==Frame::Travel::none)return false;
+    if(!transient_3d&&!v.menu&&!v.outer_width&&!f.menu_edge&&f.travel==Frame::Travel::none)return false;
     if(!v.menu&&!gameplay_layout(f.layout()))return false;
     const int w=f.w,h=f.h;if(w<=0||h<=0)return false;
     Guard guard(Frame{});
@@ -1606,16 +1664,16 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
     const int sx=(w-sw)/2,sy=(h-sh)/2;
     const int lines=f.layout()==3?432:448;
     const int dh=v.outer_height?v.outer_height:int(std::lround(sh*480./lines));
-    const bool world_native=f.travel!=Frame::Travel::none&&f.layout()==2&&!v.full_map;
+    const bool native_sides=(transient_3d||(f.travel!=Frame::Travel::none&&f.layout()==2))&&!v.full_map;
     const int natural_width=std::min(w,int(std::lround(sw*480./lines)));
-    const int dw=world_native?natural_width:(v.outer_width?v.outer_width:(field?natural_width:w));
+    const int dw=native_sides?natural_width:(v.outer_width?v.outer_width:(field?natural_width:w));
     const int dx=(w-dw)/2,dy=v.menu?v.menu_y:(h-dh)/2;
     glDisable(GL_SCISSOR_TEST);glColorMask(1,1,1,1);
     pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);glDrawBuffer(target?GL_COLOR_ATTACHMENT0:GL_BACK);
     glClearColor(0,0,0,1);real_clear(GL_COLOR_BUFFER_BIT);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,encounter_native.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
     pBlitFramebuffer(sx,sy,sx+sw,sy+sh,dx,dy,dx+dw,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
-    if(world_native&&display_settings.field_sides)field_blur::draw_margins(f,target,dw);
+    if(native_sides&&display_settings.field_sides)field_blur::draw_margins(f,target,dw);
     else if(field&&display_settings.field_sides){
         if(field_blur::preferred)field_blur::draw_margins(f,target,dw);
         else draw_field_sides(f,target,v);
@@ -1650,7 +1708,9 @@ static BOOL WINAPI swap_hook(HDC handle){
     const double pair_work_start=deck_renderer?matching_seconds+parity_seconds:0;
     previous_origin=origin;previous_period=period;prepared_previous=false;
     float displayed_alpha=-1;bool output_due=true,native_endpoint=false,published=false,native_scaled=false;
+    double source_replay_start=0,source_backup_time=0;
     bool measure_world=false;
+    int deck_scene=0;
     try {
         int mode=game_mode();
         if(deck_renderer)deck_cadence.source(display_settings.fps==60?mode:0,t);
@@ -1674,6 +1734,8 @@ static BOOL WINAPI swap_hook(HDC handle){
             else if(transition.battle&&transition.outer_width)current.raster_rows=216;
         }
         bool pair=previous.valid&&previous.started&&previous.w==width&&previous.h==height&&previous.mode==mode&&previous.layout()==current.layout()&&previous.travel==current.travel;
+        if(deck_renderer&&(display_settings.fps!=60||previous.mode!=mode||previous.w!=width||previous.h!=height))
+            deck_wait_recovery={};
         if(candidate&&(current.menu_edge||current.travel!=Frame::Travel::none)){
             candidate=transition.menu?transition.menu_composite(current.ops.back()):transition.outer_width!=0;
         }
@@ -1699,6 +1761,8 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
+        if(deck_renderer&&enabled&&display_settings.fps==60&&(mode==2||mode==3)&&
+           current.layout()==mode&&!current.menu_edge&&!atlas_open)deck_scene=mode;
         measure_world=deck_renderer&&candidate&&display_settings.wide&&!display_settings.fps&&mode==2&&
             previous.mode==2&&current.layout()==2&&transition.outer_width&&!atlas_open&&!current.menu_edge&&
             current.travel==Frame::Travel::scene&&dt>0&&dt<.25;
@@ -1736,11 +1800,10 @@ static BOOL WINAPI swap_hook(HDC handle){
                     present_during_wait(true);advance_output();
                 }
             }
-            // Field scroll and actor matching change intermediate poses only.
-            // Submit the current endpoint first so the GPU can validate it
-            // while the CPU matches the pair. Battle depth can change during
-            // matching and must still be validated afterwards.
-            const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&mode==1))&&
+            // At alpha=1 battle replay uses captured vertices. Its depth
+            // corrections and departing faces apply only to intermediate
+            // poses. Queue validation of this endpoint before CPU matching.
+            const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&(mode==1||mode==3)))&&
                 world_readback.available();
             bool queued_world=false;
             GLenum submit_error=GL_NO_ERROR;
@@ -1802,7 +1865,11 @@ static BOOL WINAPI swap_hook(HDC handle){
             presentation_mode=mode;
             if(!was_presenting)next_output=t;
             output_due=now()>=next_output;
-            if(output_due){resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());saved=true;
+            if(output_due){
+                if(deck_renderer&&display_settings.fps==60&&prepared_previous&&mode>=1&&mode<=3&&
+                   deck_source_budget.busy&&deck_wait_recovery.needs_sample(presentation_clock,t))source_replay_start=now();
+                resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());saved=true;
+                if(source_replay_start)source_backup_time=now()-source_replay_start;
                 displayed_alpha=replay_presentation(0);}
         }
     }catch(const std::exception&e){
@@ -1811,20 +1878,48 @@ static BOOL WINAPI swap_hook(HDC handle){
         can_present=false;char line[220];snprintf(line,sizeof(line),"replay fallback: %s\n",e.what());log(line);
     }
     matching_checkpoint=nullptr;if(!can_present){prepared_previous=false;checkpoint_outgoing.clear();}
+    if(deck_renderer&&!can_present)deck_wait_recovery.clear_samples();
+    const bool transient_3d=deck_interval.within(deck_scene,current.w,current.h,t);
     if(published&&enabled&&display_settings.wide&&!native_endpoint&&!can_present&&
-       (current.layout()==6||current.menu_edge||current.layout()==1||current.travel!=Frame::Travel::none)){
-        try{native_scaled=present_native_layout(current,WideView(current,true));}
+       (current.layout()==6||current.menu_edge||current.layout()==1||current.travel!=Frame::Travel::none||transient_3d)){
+        try{
+            WideView fallback(current,true);
+            if(transient_3d&&!fallback.outer_width&&previous.mode==deck_scene&&
+               previous.w==current.w&&previous.h==current.h)fallback=WideView(previous,true);
+            native_scaled=present_native_layout(current,fallback,0,transient_3d);
+        }
         catch(const std::exception& e){log(e.what());log("\n");}
     }
+    const bool unpaced=deck_renderer?deck_interval.keep(deck_scene,current.w,current.h,can_present,t):can_present;
     if((uintptr_t)set_interval>3&&(uintptr_t)set_interval!=UINTPTR_MAX){
-        if(can_present&&!interval_changed){set_interval(0);interval_changed=true;}
-        if(!can_present&&interval_changed){set_interval(saved_interval);interval_changed=false;}}
+        if(unpaced==interval_changed){
+            if(deck_renderer)deck_interval.retry_after=0;
+        }else if(!deck_renderer||t>=deck_interval.retry_after){
+            if(deck_renderer&&saved_interval==0)interval_changed=unpaced;
+            else{
+                const int requested=unpaced?0:saved_interval;
+                const double sync_start=deck_renderer?now():0;
+                const BOOL applied=set_interval(requested);
+                if(deck_renderer){
+                    const double finished=now();
+                    if(applied){++deck_interval.changes;interval_changed=unpaced;deck_interval.retry_after=0;}
+                    else{++deck_interval.failures;deck_interval.retry_after=finished+1.;}
+                    deck_cadence.record({DeckCadence::EventKind::swap_interval,finished,finished-sync_start,
+                        0,sources,current.mode,requested,0,applied!=FALSE});
+                }else interval_changed=unpaced;
+            }
+        }
+    }
     present_reason=7;qa_stage(11);BOOL result=TRUE;
     const double layout_seconds=deck_renderer?now()-t:0;
     double filter_seconds=0;
     const bool time_filter=deck_renderer&&!display_settings.fps&&display_settings.wide;
     if(!can_present||output_due){
         result=timed_swap(handle,can_present?displayed_alpha:-1.f,native_scaled,time_filter?&filter_seconds:nullptr);
+        if(source_replay_start&&can_present&&result){
+            const double finished=now();
+            deck_wait_recovery.source(presentation_clock,finished,finished-source_replay_start,source_backup_time);
+        }
         if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
         if(can_present){outputs++;advance_output();}
     }
@@ -1896,10 +1991,13 @@ static void present_during_wait(bool force_previous){
         resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());
         if(window)window->saved=true;
     }
-    try{float alpha=replay_presentation(0,force_previous);timed_swap(dc,alpha,true);outputs++;}
+    BOOL swapped=FALSE;
+    try{float alpha=replay_presentation(0,force_previous);swapped=timed_swap(dc,alpha,true);outputs++;}
     catch(...){blit(backup.fbo,0,width,height,width,height,all_buffers());throw;}
     blit(backup.fbo,0,width,height,width,height,all_buffers());
-    presentation_clock.measured_replay(now()-started);
+    const double finished=now(),elapsed=finished-started;
+    presentation_clock.measured_replay(elapsed);
+    if(deck_renderer&&display_settings.fps==60&&swapped)deck_wait_recovery.extra(finished,elapsed);
 }
 static void pump_due(){
     if(inside||!enabled||!loaded||!can_present||GetCurrentThreadId()!=thread)return;
@@ -2048,6 +2146,7 @@ static void forget_deleted_context(){
     retro_display::forget();
     deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
+    if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
     deck_cadence={};
     world_readback={};
     vertex_policy={};
@@ -2067,10 +2166,10 @@ static void forget_deleted_context(){
     native_pose::pending.clear();native_pose::calls=0;native_pose::accepted=0;native_pose::overflow=false;
     ReleaseSRWLockExclusive(&native_pose::lock);
 #endif
-    camera_motion={};presentation_clock={};prepared_previous=false;matching_checkpoint=nullptr;
+    camera_motion={};presentation_clock={};deck_wait_recovery={};prepared_previous=false;matching_checkpoint=nullptr;
     presentation_mode=-1;capture_target=0;test_capture_requested=false;
     origin=next_output=last_swap=previous_origin=0;period=previous_period=1./30.;
-    width=height=0;interval_changed=false;set_interval=nullptr;
+    width=height=0;interval_changed=false;set_interval=nullptr;deck_interval={};
     log("render context deleted; discarded old scene and GPU caches, ready to reinitialize\n");
 }
 static BOOL WINAPI delete_context_hook(HGLRC rc){
@@ -2112,7 +2211,7 @@ static DWORD WINAPI initialize(void*){
     char path[MAX_PATH];GetModuleFileNameA(NULL,path,MAX_PATH);char*leaf=strrchr(path,'\\');if(!leaf||_stricmp(leaf+1,"FFVIII.exe"))return 0;
     for(int i=0;i<200&&!engine;i++){engine=GetModuleHandleA("FFVIII_EFIGS.dll");if(!engine)Sleep(50);}
     FILE*f=fopen("FF8_geometry.log","w");if(f){fputs("FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);fclose(f);}
-    if(deck_renderer)log("FF8 Reborn Steam Deck preview 10\n");
+    if(deck_renderer)log("FF8 Reborn Steam Deck preview 11\n");
     if(!engine)return 0;
     SteamLicense license=steam_license();
     for(int retry=0;license==SteamLicense::waiting&&retry<240;++retry){

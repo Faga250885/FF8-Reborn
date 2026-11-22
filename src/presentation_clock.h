@@ -69,6 +69,43 @@ struct PresentationClock {
 };
 static PresentationClock presentation_clock;
 
+// A blocked extra swap can cost more than any subsequent game wait. In that
+// case the wait gate cannot get a fresh measurement from another extra swap.
+struct DeckWaitRecovery {
+    int cheap_sources=0;
+    double worst_source=0, probe_budget=0, retry_at=0, retry_delay=.5;
+
+    void clear_samples(){cheap_sources=0;worst_source=0;}
+
+    bool needs_sample(const PresentationClock& clock,double time) const {
+        return clock.replay_cost>=1./60.&&!probe_budget&&time>=retry_at;
+    }
+
+    void source(PresentationClock& clock,double time,double elapsed,double backup){
+        if(!needs_sample(clock,time))return;
+        // The validated source replay includes backup, draw and swap. Allow
+        // another measured transfer for the restore and a 25% safety margin.
+        const double budget=1.25*(elapsed+backup);
+        if(!(elapsed>0&&backup>=0&&budget<clock.replay_cost*.5)){clear_samples();return;}
+        worst_source=std::max(worst_source,budget);
+        if(++cheap_sources==3){
+            clock.replay_cost=probe_budget=std::max(.0001,worst_source);
+            clear_samples();
+        }
+    }
+
+    void extra(double time,double elapsed){
+        clear_samples();
+        if(!probe_budget)return;
+        if(elapsed>std::max(2*probe_budget,probe_budget+.002)){
+            retry_at=time+retry_delay;
+            retry_delay=std::min(8.,2*retry_delay);
+        }else{retry_at=0;retry_delay=.5;}
+        probe_budget=0;
+    }
+};
+static DeckWaitRecovery deck_wait_recovery;
+
 // FFVIII sets an idle delay for the current source frame. Only reclaim the
 // portion beyond its deadline that the compositor has already spent drawing.
 struct NativeFrameWait {

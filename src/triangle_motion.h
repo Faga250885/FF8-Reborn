@@ -41,6 +41,7 @@ static std::vector<Primitive> primitives(const Frame&frame){
     }return out;
 }
 struct Topology;
+struct SurfaceGraph;
 namespace field_scroll {struct TileIndex;}
 struct MatchInput {
     std::vector<Primitive> triangles;
@@ -50,6 +51,8 @@ struct MatchInput {
     std::pmr::monotonic_buffer_resource group_storage;
     std::pmr::unordered_map<uint64_t,std::pmr::vector<unsigned>> groups{&group_storage};
     std::shared_ptr<Topology> field_topology;
+    BoneLinks bone_addresses;
+    std::shared_ptr<SurfaceGraph> battle_surface;
     std::shared_ptr<field_scroll::TileIndex> field_tiles;
 
     explicit MatchInput(const Frame& frame):triangles(primitives(frame)) {
@@ -141,12 +144,14 @@ static void match_frames(int mode=-1){
 #ifdef GEO_PROFILE
     double mark=now();auto mark_stage=[&](const char*name){double t=now();printf("%s %.3f ms\n",name,(t-mark)*1000);mark=t;};
 #endif
-    // A published field/world endpoint becomes the previous endpoint on the
-    // next native tick. Bone/depth processing can change battle vertices.
-    const bool reusable=(mode==1||mode==2)&&previous.started;
+    // The published endpoints retain their original vertices. Battle depth
+    // corrections use separate outgoing batches and replay scratch vertices.
+    const bool reusable=previous.started&&(mode==1||mode==2||(deck_renderer&&mode==3&&previous.mode==3));
     if(!reusable||!previous.match_input)previous.match_input=std::make_shared<MatchInput>(previous);
     current.match_input=std::make_shared<MatchInput>(current);
     const auto& old=previous.match_input->triangles;
+    FieldTopologyJob field_job(current,current.match_input->triangles,deck_renderer&&mode==1&&reusable,
+                               previous.match_input->field_topology.get());
     auto cur=current.match_input->triangles;
     const auto& old_groups=previous.match_input->groups;
     const auto& new_groups=current.match_input->groups;
@@ -210,7 +215,7 @@ static void match_frames(int mode=-1){
 #endif
     if(matching_checkpoint)matching_checkpoint();
     classify_native_draws(mode);
-    if(mode!=2)anchor_vertex_topology(old,cur,mode==1&&previous.started);else topology_anchors=topology_corrected=topology_partial=0;
+    if(mode!=2)anchor_vertex_topology(old,cur,mode==1&&previous.started,&field_job);else topology_anchors=topology_corrected=topology_partial=0;
     if(matching_checkpoint)matching_checkpoint();
 #ifdef GEO_PROFILE
     mark_stage("vertex topology");

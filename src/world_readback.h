@@ -89,11 +89,11 @@ struct WorldReadback {
         if(!okay||error!=GL_NO_ERROR){++failures;cooldown=600;return false;}
         return true;
     }
-    void report(){
+    template<class Write=void (*)(const char*)> void report(Write write=log){
         if(!queues&&!maps)return;
         char line[192];snprintf(line,sizeof(line),"world PBO | queue %.3f ms (%u) | map %.3f ms (%u) | errors %u | slow queues disabled %u\n",
             queues?1000*queue_time/queues:0,queues,maps?1000*map_time/maps:0,maps,failures,backoffs);
-        log(line);queue_time=map_time=0;queues=maps=failures=backoffs=0;
+        write(line);queue_time=map_time=0;queues=maps=failures=backoffs=0;
     }
 };
 static WorldReadback world_readback;
