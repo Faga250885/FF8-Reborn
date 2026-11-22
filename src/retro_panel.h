@@ -52,10 +52,22 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
-static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
-static_assert(sizeof(visual_order)/sizeof(visual_order[0])==RowCount,"every setting must be reachable");
-static int visual_index(int id){return int(std::find(visual_order,visual_order+RowCount,id)-visual_order);}
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, Motion3D, MotionBackground, CRTPersistence, RowCount };
+struct MotionControl { const wchar_t* label; const wchar_t* key; int DisplaySettings::* setting; };
+static constexpr MotionControl motion_controls[]={
+    {L"Battle character blur",L"MotionBlur3D",&DisplaySettings::motion_3d},
+    {L"Field background blur",L"MotionBlurBackground",&DisplaySettings::motion_background},
+    {L"CRT persistence",L"CRTPersistence",&DisplaySettings::crt_persistence}
+};
+static_assert(sizeof(motion_controls)/sizeof(motion_controls[0])==CRTPersistence-Motion3D+1);
+static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Motion3D,
+#ifdef GEO_STEAM_DECK
+    MotionBackground,
+#endif
+    CRTPersistence,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
+static constexpr int visible_rows=sizeof(visual_order)/sizeof(visual_order[0]);
+static_assert(visible_rows==RowCount-(deck_renderer?0:1),"every available setting must be reachable");
+static int visual_index(int id){return int(std::find(visual_order,visual_order+visible_rows,id)-visual_order);}
 static constexpr int custom=profile_count;
 static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · RGB Monitor",L"PS1 Backgrounds",
     L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Sony Trinitron KV-27FS100",
@@ -129,7 +141,8 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
     if(ok&&exists)ok=CopyFileW(path,temp,FALSE)!=FALSE;
     if(display_row>=0){
         static const wchar_t* const keys[]={L"Atlas",L"Wide",L"FPS",L"FieldSides",L"FPSCounter"};
-        if(ok)ok=number(temp,L"Display",keys[display_row-Map],display_value);
+        const wchar_t* key=display_row>=Motion3D?motion_controls[display_row-Motion3D].key:keys[display_row-Map];
+        if(ok)ok=number(temp,L"Display",key,display_value);
     }else{
         if(ok&&legacy_screen_slot>=0&&legacy_screen_slot!=write_slot)ok=write_filter(temp,section(legacy_screen_slot).c_str(),slots[legacy_screen_slot]);
         if(ok&&migrate_custom)ok=write_filter(temp,section(custom).c_str(),slots[custom]);
@@ -168,7 +181,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     if(key==VK_F8){if(dirty){row=SaveCustom;needs_choice=true;}else {open=false;capture_pad=false;}return;}
     if(key==VK_UP||key==VK_DOWN){
         int step=key==VK_UP?-1:1,index=visual_index(row);
-        do{index=(index+step+RowCount)%RowCount;row=visual_order[index];}
+        do{index=(index+step+visible_rows)%visible_rows;row=visual_order[index];}
         while((row>=Lines&&row<=Edges&&!editable(s.mode,row))||(row==Restore&&!can_restore(s)));
         return;
     }
@@ -179,7 +192,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         if(activate&&update_action&&update_status&&update_actionable(update_status()))update_action();
         return;
     }
-    if(row>=SaveCustom){
+    if(row==SaveCustom||row==Restore){
         if(activate&&row==SaveCustom)commit(path,s,custom,false);
         if(activate&&row==Restore&&can_restore(s)){
             commit(path,s,active_profile,true);
@@ -190,6 +203,13 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
     if(row==Counter){
         const int size=(display_settings.fps_counter+4+step)%4;
         if(persist(path,s,active_profile,-1,false,row,size))display_settings.fps_counter=size;
+        return;
+    }
+    if(row>=Motion3D&&row<=CRTPersistence){
+        if(activate)return;
+        int& setting=display_settings.*motion_controls[row-Motion3D].setting;
+        const int next=std::clamp(setting+step*(coarse?20:5),0,100);
+        if(next!=setting&&persist(path,s,active_profile,-1,false,row,next))setting=next;
         return;
     }
     if(row>=Map&&row<=Sides){

@@ -4,7 +4,7 @@ static constexpr int panel=40, atlasWidth=2*panel, atlasHeight=240;
 static Surface sheets[3];
 
 // Same guest word used by the field transition dispatcher at 4706B0+21C.
-static int room_id(){
+static int field_id(){
     if(!engine)return -1;
     constexpr unsigned address=0x1cd2fc0;
     const auto slot=(const uint32_t*)((BYTE*)engine+0x188edd0)+(address>>12);
@@ -12,6 +12,10 @@ static int room_id(){
     auto word=(const uint16_t*)(uintptr_t)(*slot+(address&4095));
     if(!readable(word,2))return -1;
     uint16_t id;memcpy(&id,word,2);
+    return id;
+}
+static int room_id(){
+    const int id=field_id();
     return id>=179&&id<=181?id-179:-1;
 }
 // Reuse the native parity readback. Only background landmarks vote, so a

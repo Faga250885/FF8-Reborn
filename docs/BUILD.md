@@ -35,15 +35,17 @@ foreach ($file in Get-ChildItem tests -Filter '*.cpp') {
     $test = $file.BaseName
     $defines = @('-DGEO_STEAM_DECK')
     if ($test -eq 'deck_native_fields') { $defines += '-DGEO_NATIVE_CAPTURE' }
-    zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 @defines "-I$GlewInclude" $file.FullName -o "dist/$test.exe" @libs
+    zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 -UNDEBUG @defines "-I$GlewInclude" $file.FullName -o "dist/$test.exe" @libs
     if ($LASTEXITCODE) { throw "$test build failed" }
     & "./dist/$test.exe"
     if ($LASTEXITCODE) { throw "$test failed" }
 }
-zig c++ -target x86-windows-gnu -std=c++17 -O2 "-I$GlewInclude" tests/frame_rate_settings.cpp -o dist/windows-settings.exe @libs
-if ($LASTEXITCODE) { throw 'Windows settings test build failed' }
-./dist/windows-settings.exe
-if ($LASTEXITCODE) { throw 'Windows settings test failed' }
+foreach ($test in 'frame_rate_settings','motion_settings') {
+    zig c++ -target x86-windows-gnu -std=c++17 -O2 -UNDEBUG "-I$GlewInclude" "tests/$test.cpp" -o "dist/windows-$test.exe" @libs
+    if ($LASTEXITCODE) { throw "Windows $test build failed" }
+    & "./dist/windows-$test.exe"
+    if ($LASTEXITCODE) { throw "Windows $test failed" }
+}
 ```
 
 ## Verify the downloaded installer

@@ -63,6 +63,7 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 struct DisplaySettings {
     int fps=deck_renderer?0:60;
     int fps_counter=0;
+    int motion_3d=0,motion_background=0,crt_persistence=0;
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
@@ -86,6 +87,8 @@ void DisplaySettings::load(const wchar_t* path){
     atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
     field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
     fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
+    for(const auto& control:retro_panel::motion_controls)
+        this->*control.setting=std::clamp(int(GetPrivateProfileIntW(L"Display",control.key,0,path)),0,100);
     retro.load(path);
 }
 #ifdef GEO_NATIVE_CAPTURE
@@ -627,7 +630,7 @@ static void set_state(const State&s,const State* prior,bool restore_view,Sampler
 struct Vertex {float p[4],c[4],uv[4][4],n[3];};
 #include "stride_curve.h"
 struct FaceDepthBias { float prior=NAN,current=NAN; };
-struct Op {bool indexed_complete=false;GLbitfield clear=0;GLenum mode=0;GLuint target=0;State state;RasterExtra raster;std::vector<Vertex> vertices,card_before;std::vector<std::array<float,4>> prior_positions,prior_colors;std::vector<StrideKnot> actor_mid;std::vector<BYTE> motion_valid,color_valid,front_face;std::vector<FaceDepthBias> depth_bias;uint64_t key=0;int match=-1;};
+struct Op {bool indexed_complete=false;GLbitfield clear=0;GLenum mode=0;GLuint target=0;State state;RasterExtra raster;std::vector<Vertex> vertices,card_before;std::vector<std::array<float,4>> prior_positions,prior_colors;std::vector<StrideKnot> actor_mid;std::vector<BYTE> motion_valid,color_valid,front_face;std::vector<FaceDepthBias> depth_bias;std::vector<GLuint> shutter_indices;uint64_t key=0;int match=-1;};
 struct Target {Surface seed;GLuint texture=0;int w=0,h=0;bool active=false,depth=false,stencil=false;GLenum format=GL_RGBA8;GLint min_filter=GL_LINEAR,mag_filter=GL_LINEAR,wrap_s=GL_CLAMP_TO_EDGE,wrap_t=GL_CLAMP_TO_EDGE;};
 #include "native_tracks.h"
 struct MatchInput;
@@ -968,10 +971,18 @@ static double world_capture_time=0;
 static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
 static bool direct_world_frame();
 static void direct_world_draw(GLenum,GLsizei,GLenum,const void*);
+namespace field_motion_blur {static bool draw(GLenum,GLsizei,GLenum,const void*);}
+static void draw_native_layer(GLenum mode,GLsizei count,GLenum type,const void* indices){
+    if(deck_renderer&&display_settings.motion_background){
+        try{if(field_motion_blur::draw(mode,count,type,indices))return;}
+        catch(const std::exception&){} // Unsupported array or surface; submit the game draw below.
+    }
+    real_draw(mode,count,type,indices);
+}
 static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*indices){
     if(native_deck_frame()){
         if(enabled&&display_settings.atlas&&draw_native_atlas(mode,count,type,indices))return;
-        real_draw(mode,count,type,indices);return;
+        draw_native_layer(mode,count,type,indices);return;
     }
     if(deck_renderer&&direct_world_frame()){direct_world_draw(mode,count,type,indices);return;}
     double began=loaded?now():0;
@@ -981,7 +992,7 @@ static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*
         capture_seconds+=elapsed;capture_count++;
         if(deck_renderer&&current.mode==2&&display_settings.wide&&native_rate_for_mode(2))world_capture_time+=elapsed;
     }
-    real_draw(mode,count,type,indices);
+    draw_native_layer(mode,count,type,indices);
     service_at(1);
 }
 static void APIENTRY clear_hook(GLbitfield mask){
@@ -1049,6 +1060,7 @@ static void initialize_deck_bindings(){
 }
 #include "infirmary/presentation.h"
 #include "field_blur.h"
+#include "field_motion_blur.h"
 static void recognize_native_field_target(const Op& op){
 #ifndef GEO_AUTOTEST
     // A moving camera, NPCs and masks share the native field target. After
@@ -1073,7 +1085,7 @@ static FieldPrefixCache field_prefix;
 #include "vertex_stream_policy.h"
 static VertexStreamPolicy vertex_policy;
 static GLuint vertex_stream=0;
-static float replay(GLuint target,float alpha,bool widescreen=false){
+static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=false){
     if(current.camera_cut)alpha=1;
     WideView view(current,widescreen);
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
@@ -1311,6 +1323,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false){
             return;
         }
         glDrawArrays(op.mode,first,vertex_count);
+        if(motion&&display_settings.motion_3d&&current.mode==3&&!current.camera_cut&&!current.menu_edge&&
+           current.layout()==3&&!op.shutter_indices.empty()&&vertex_count==GLsizei(op.vertices.size()))
+            actor_shutter::draw(op,vertices,uploaded?vertex_stream:0,base+offsetof(Vertex,p),
+                               display_settings.motion_3d,display_settings.fps);
     };
     visit([&](const Op& op){
         draw_op(op);
@@ -1353,7 +1369,7 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     }
     float alpha=(float)std::clamp((t-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
     if(old){std::swap(current,previous);std::swap(outgoing_draws,checkpoint_outgoing);}
-    try{alpha=replay(target,alpha,true);}
+    try{alpha=replay(target,alpha,true,true);}
     catch(...){if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}throw;}
     if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}
     displayed_source=sources-(old&&sources?1:0);return alpha;
@@ -1418,11 +1434,22 @@ static void track_display_refresh(HDC handle,double time){
 static bool begin_retro_frame(HDC handle,int& w,int& h){
     const bool panel=retro_panel::is_open();
     const int counter=display_settings.fps_counter;
+    auto& history=retro_display::phosphor_history;
+    const int persistence=enabled?display_settings.crt_persistence:0;
+    if(!persistence){history.strength=0;history.previous_time=0;history.pending=false;}
     if(!counter)fps_counter::reset_meter();
-    if(!panel&&!counter&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
+    if(!panel&&!counter&&!persistence&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
     RECT rect{};
-    if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;return false;}
+    if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;history.previous_time=0;return false;}
     w=rect.right;h=rect.bottom;
+    if(persistence){
+        const int mode=current.mode;
+        const bool gameplay=mode>=1&&mode<=3&&current.layout()==mode&&!current.menu_edge&&
+            !current.camera_cut&&current.travel!=Frame::Travel::fade&&(mode!=2||!native_atlas_possible());
+        int scene=gameplay?mode:-1;
+        if(scene==1)scene=5+infirmary::field_id();
+        history.begin(persistence,scene,handle,w,h,now());
+    }
     RetroSettings filter=enabled?display_settings.retro:RetroSettings{};
     filter.lines=filter.visible_lines(current.raster_rows);
     const int scale=fps_counter::scale(counter,w,h);
@@ -2345,6 +2372,7 @@ static void forget_deleted_context(){
     fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
+    field_motion_blur::forget();
     deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();

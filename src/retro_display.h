@@ -6,18 +6,44 @@ struct FilterUniforms{
 };
 struct Pipeline {
     GLuint program=0;
-    GLint size=-1, grid=-1, strengths=-1, tube=-1, screen=-1;
+    GLint size=-1, grid=-1, strengths=-1, tube=-1, screen=-1, response=-1;
     bool inspected=false,attempted=false, modern=false, srgb=false;
     PFNGLBINDSAMPLERPROC bind_sampler=nullptr;
     FilterUniforms last{};
     bool configured=false;
 };
-enum class Stage { full, cells, screen, tv_rows, tv_screen };
+enum class Stage { full, cells, screen, tv_rows, tv_screen, persistence, field_background };
 static Pipeline pipeline,television_pipeline,cell_pipeline,screen_pipeline,tv_rows_pipeline,tv_screen_pipeline;
+static Pipeline persistence_pipeline;
+static Pipeline field_background_pipeline;
+// Positive/negative samples stay within the source color layer. Coverage and
+// its independently rendered depth mask retain their original silhouette.
+static constexpr char field_background_fragment[]=R"GLSL(
+uniform sampler2D sourceImage;
+uniform vec2 size;
+uniform vec2 grid;
+void main(){
+    vec2 uv=gl_FragCoord.xy/size;
+    vec2 edge=.5/size;
+    vec4 center=texture2D(sourceImage,uv);
+    vec3 sum=3.*center.rgb;
+    float total=3.;
+    for(int i=-2;i<=2;++i){
+        if(i==0)continue;
+        vec4 tap=texture2D(sourceImage,clamp(uv+float(i)*grid,edge,1.-edge));
+        float w=(3.-abs(float(i)))*max(0.,1.-8.*abs(tap.a-center.a));
+        sum+=w*tap.rgb;total+=w;
+    }
+    gl_FragColor=vec4(sum/total,center.a);
+}
+)GLSL";
+#include "crt_persistence.h"
 static Surface signal_surface;
 static int failed_signal_w=0,failed_signal_h=0;
 static Pipeline& select_pipeline(bool tv,Stage stage){
     switch(stage){
+        case Stage::field_background:return field_background_pipeline;
+        case Stage::persistence:return persistence_pipeline;
         case Stage::cells:return cell_pipeline;
         case Stage::screen:return screen_pipeline;
         case Stage::tv_rows:return tv_rows_pipeline;
@@ -77,7 +103,8 @@ static bool prepare(bool tv=false,Stage stage=Stage::full){
     }
     inspect_context();
     const char* vertex="#version 120\nvoid main(){gl_Position=gl_Vertex;}\n";
-    const char* fragment=tv?television_fragment:R"GLSL(
+    const char* fragment=stage==Stage::field_background?field_background_fragment:
+        stage==Stage::persistence?persistence_fragment:tv?television_fragment:R"GLSL(
 uniform sampler2D sourceImage;
 uniform vec2 size;
 uniform vec2 grid;
@@ -189,10 +216,12 @@ void main(){
     effect.size=pGetUniformLocation(program,"size");effect.grid=pGetUniformLocation(program,"grid");
     effect.strengths=pGetUniformLocation(program,"strengths");effect.tube=pGetUniformLocation(program,"tube");
     effect.screen=pGetUniformLocation(program,"tvSettings");effect.program=program;
-    if(stage==Stage::tv_screen){
+    if(stage==Stage::persistence)effect.response=pGetUniformLocation(program,"response");
+    if(stage==Stage::tv_screen||stage==Stage::persistence){
         GLint previous;glGetIntegerv(GL_CURRENT_PROGRAM,&previous);
         const GLint unit=1;
-        pUseProgram(program);pUniform1iv(pGetUniformLocation(program,"rowImage"),1,&unit);pUseProgram(previous);
+        const char* second=stage==Stage::persistence?"historyImage":"rowImage";
+        pUseProgram(program);pUniform1iv(pGetUniformLocation(program,second),1,&unit);pUseProgram(previous);
     }
     return true;
 }
@@ -245,31 +274,7 @@ static void copy_color(int w,int h){
 static void fullscreen_triangle(){
     glBegin(GL_TRIANGLES);glVertex2f(-1,-1);glVertex2f(3,-1);glVertex2f(-1,3);glEnd();
 }
-static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
-    if(!active(settings)||w<=0||h<=0||w>8192||h>8192||
-       (failed_width==w&&failed_height==h)||!prepare(television(settings)))return false;
-    try{allocate(source,w,h);}
-    catch(const std::exception&){
-        failed_width=w;failed_height=h;log("Retro filter unavailable at this drawable size\n");return false;
-    }
-    TargetState state(target,true);
-    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,source.fbo);copy_color(w,h);
-    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
-    GLint program,active,texture,sampler=0;
-    glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
-    pActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);
-    if(pipeline.bind_sampler){
-        glGetIntegerv(GL_SAMPLER_BINDING,&sampler);pipeline.bind_sampler(0,0);
-    }
-    for(GLenum flag:{GL_BLEND,GL_COLOR_LOGIC_OP,GL_ALPHA_TEST,GL_DEPTH_TEST,GL_STENCIL_TEST,
-        GL_CULL_FACE,GL_POLYGON_STIPPLE,GL_POLYGON_SMOOTH,GL_DITHER,
-        GL_SAMPLE_ALPHA_TO_COVERAGE,GL_SAMPLE_ALPHA_TO_ONE,GL_SAMPLE_COVERAGE})
-        glDisable(flag);
-    for(int i=0;i<6;i++)glDisable(GL_CLIP_PLANE0+i);
-    if(pipeline.modern)glDisable(GL_RASTERIZER_DISCARD);
-    glViewport(0,0,w,h);glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_FALSE);
-    glBindTexture(GL_TEXTURE_2D,source.color);
+static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h){
     const GLfloat rows=GLfloat(std::min(h,settings.lines));
     const bool crt=settings.mode==2,tv=television(settings);
     const GLfloat phase=3.14159265f*rows/h;
@@ -324,6 +329,67 @@ static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
             pActiveTexture(GL_TEXTURE0);
         }
     }else draw(Stage::full);
+}
+static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
+    const bool filter=active(settings)&&prepare(television(settings));
+    auto& history=phosphor_history;
+    const bool persistence=history.strength&&prepare(false,Stage::persistence);
+    if((!filter&&!persistence)||w<=0||h<=0||w>8192||h>8192||
+       (failed_width==w&&failed_height==h))return false;
+    try{allocate(source,w,h);}
+    catch(const std::exception&){
+        failed_width=w;failed_height=h;log("Retro filter unavailable at this drawable size\n");return false;
+    }
+    TargetState state(target,true);
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,source.fbo);copy_color(w,h);
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
+    history.pending=persistence;
+    const auto& prior=exchanges_front?previous_front:history.raw;
+    bool blend=persistence&&history.carry>0&&prior.w==w&&prior.h==h&&prior.color;
+    if(blend&&filter){
+        if(history.failed_signal_w==w&&history.failed_signal_h==h)blend=false;
+        else try{allocate(history.signal,w,h);}
+        catch(const std::exception&){
+            history.failed_signal_w=w;history.failed_signal_h=h;blend=false;
+            log("CRT persistence buffer unavailable at this size; using the selected filter\n");
+        }
+    }
+    if(!filter&&!blend)return true; // First frame seeds history without changing the picture.
+    GLint program,active,texture,sampler=0;
+    glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
+    pActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);
+    if(pipeline.bind_sampler){
+        glGetIntegerv(GL_SAMPLER_BINDING,&sampler);pipeline.bind_sampler(0,0);
+    }
+    for(GLenum flag:{GL_BLEND,GL_COLOR_LOGIC_OP,GL_ALPHA_TEST,GL_DEPTH_TEST,GL_STENCIL_TEST,
+        GL_CULL_FACE,GL_POLYGON_STIPPLE,GL_POLYGON_SMOOTH,GL_DITHER,
+        GL_SAMPLE_ALPHA_TO_COVERAGE,GL_SAMPLE_ALPHA_TO_ONE,GL_SAMPLE_COVERAGE})
+        glDisable(flag);
+    for(int i=0;i<6;i++)glDisable(GL_CLIP_PLANE0+i);
+    if(pipeline.modern)glDisable(GL_RASTERIZER_DISCARD);
+    glViewport(0,0,w,h);glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_FALSE);
+    glBindTexture(GL_TEXTURE_2D,source.color);
+    if(blend){
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,filter?history.signal.fbo:target);
+        GLint last_texture,last_sampler=0;
+        pActiveTexture(GL_TEXTURE1);glGetIntegerv(GL_TEXTURE_BINDING_2D,&last_texture);
+        if(pipeline.bind_sampler){
+            glGetIntegerv(GL_SAMPLER_BINDING,&last_sampler);pipeline.bind_sampler(1,0);
+        }
+        glBindTexture(GL_TEXTURE_2D,prior.color);
+        pUseProgram(persistence_pipeline.program);
+        const GLfloat extent[]={float(w),float(h)},response[]={history.carry,.01f*history.strength};
+        pUniform2fv(persistence_pipeline.size,1,extent);
+        pUniform2fv(persistence_pipeline.response,1,response);
+        fullscreen_triangle();
+        glBindTexture(GL_TEXTURE_2D,last_texture);
+        if(pipeline.bind_sampler)pipeline.bind_sampler(1,last_sampler);
+        pActiveTexture(GL_TEXTURE0);
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
+        if(filter)glBindTexture(GL_TEXTURE_2D,history.signal.color);
+    }
+    if(filter)draw_filter(settings,target,w,h);
     glBindTexture(GL_TEXTURE_2D,texture);
     if(pipeline.bind_sampler)pipeline.bind_sampler(0,sampler);
     pActiveTexture(active);pUseProgram(program);
@@ -361,10 +427,11 @@ static bool retire_front(HDC handle,int w,int h){
 }
 static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0){
     retiring_front=false;
-    if((!active(settings)&&!overlay)||w<=0||h<=0||w>8192||h>8192||
+    if((!active(settings)&&!phosphor_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
        (failed_width==w&&failed_height==h))return retire_front(handle,w,h);
     inspect_context();
-    const bool filter=active(settings)&&prepare(television(settings));
+    const bool filter=(active(settings)&&prepare(television(settings)))||
+        (phosphor_history.strength&&prepare(false,Stage::persistence));
     if(!filter&&!overlay)return retire_front(handle,w,h);
     inspect_swap_method(handle);
     const int cw=!filter&&overlay_w>0?std::min(w,overlay_w):w;
@@ -402,9 +469,15 @@ static void end_window(bool swapped,bool outer_restores,int w,int h){
     if(swapped&&exchanges_front){
         if(!outer_restores)restore_from(previous_front,0,w,h);
         std::swap(source,previous_front);valid_front=true;
-    }else if(!outer_restores)restore(0,w,h);
+    }else{
+        if(!outer_restores)restore(0,w,h);
+        if(swapped&&phosphor_history.pending)std::swap(source,phosphor_history.raw);
+    }
+    phosphor_history.commit(swapped);
 }
 static void forget(){
+    field_background_pipeline={};
+    persistence_pipeline={};phosphor_history={};
     pipeline={};television_pipeline={};cell_pipeline={};screen_pipeline={};tv_rows_pipeline={};tv_screen_pipeline={};signal_surface={};source={};previous_front={};failed_width=failed_height=0;
     failed_signal_w=failed_signal_h=0;valid_front=retiring_front=false;swap_dc=nullptr;exchanges_front=false;
 }
