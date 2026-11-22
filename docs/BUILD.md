@@ -27,13 +27,21 @@ For a pre-display trace, close FFVIII and create an empty file named `FF8_geomet
 
 ## Steam Deck regression tests
 
-Run these from the repository root in PowerShell. Set `$GlewInclude` to the GLEW include directory used for the renderer build.
+The Deck DLL targets the Zen 2 CPU in both Deck models and disables floating-point contraction to preserve the camera calculations. To run the regression tests, open PowerShell at the repository root and set `$GlewInclude` to the GLEW include directory used for the renderer build.
 
 ```powershell
 zig c++ -target x86-windows-gnu -std=c++17 -O2 tests/deck_wait_recovery.cpp -o dist/deck-wait-test.exe
 ./dist/deck-wait-test.exe
 zig c++ -target x86-windows-gnu -std=c++17 -O2 -DGEO_STEAM_DECK "-I$GlewInclude" tests/deck_replay_seed.cpp -o dist/deck-seed-test.exe -lopengl32 -lgdi32 -luser32 -lcomctl32
 ./dist/deck-seed-test.exe
+zig c++ -target x86-windows-gnu -std=c++17 -O2 tests/deck_cadence.cpp -o dist/deck-cadence-test.exe
+./dist/deck-cadence-test.exe
+foreach ($test in 'deck_match_preparation','deck_draw_storage') {
+    zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 -DGEO_STEAM_DECK "-I$GlewInclude" "tests/$test.cpp" -o "dist/$test.exe" -lopengl32 -lgdi32 -luser32 -lcomctl32
+    if ($LASTEXITCODE) { throw "$test build failed" }
+    & "./dist/$test.exe"
+    if ($LASTEXITCODE) { throw "$test failed" }
+}
 ```
 
 ## Verify the downloaded installer

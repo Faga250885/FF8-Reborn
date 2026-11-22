@@ -78,3 +78,25 @@ struct ReplaySeedPlan {
         return planes;
     }
 };
+
+// FFVIII often begins each postprocess target with a complete clear. The
+// native image about to be erased needs a snapshot only if a replay can
+// observe it before that clear. Departing faces inherit the previous draw's
+// samplers, and can only be inserted after a draw to their own target.
+static GLbitfield discarded_seed_planes(const Frame& recording,const Frame& prior,const Op& clear,const Target& target){
+    const GLbitfield erased=ReplaySeedPlan::overwritten(clear,target);
+    if(!erased||!clear.target||recording.ops.empty())return erased;
+    const auto depth_it=recording.depth_texture_for_target.find(clear.target);
+    const GLuint depth=depth_it==recording.depth_texture_for_target.end()?0:depth_it->second;
+    const auto accesses_target=[&](const Op& op){
+        return !op.clear&&ReplaySeedPlan::accesses_attachment(op,clear.target,target.texture,depth);
+    };
+    if(std::any_of(recording.ops.begin(),recording.ops.end(),accesses_target))return 0;
+    for(const Op& old:prior.ops){
+        if(!accesses_target(old)||!projected_geometry(old))continue;
+        if(std::any_of(recording.ops.begin(),recording.ops.end(),[&](const Op& anchor){
+            return !anchor.clear&&anchor.target==old.target;
+        }))return 0;
+    }
+    return erased;
+}

@@ -74,7 +74,6 @@ struct MatchInput {
 #include "world_actor.h"
 #include "world_visible_actor.h"
 #include "field_scroll.h"
-#include "field_match_preparation.h"
 // Preserve the fluent baseline cost for battle. Only world mode may compensate
 // global camera movement before comparing candidate triangle positions.
 static double primitive_cost(const Primitive&a,const Primitive&b){
@@ -104,7 +103,7 @@ static double bounded_primitive_cost(const Primitive& a,const Primitive& b,doubl
 // identical material keys. Search only near the camera-predicted first corner,
 // then require all three corners (including depth) to agree in both directions.
 static void match_dense_world_group(const std::vector<Primitive>&old,std::vector<Primitive>&cur,
-                                    const std::pmr::vector<unsigned>& a,const std::pmr::vector<unsigned>& b){
+                                    const std::pmr::vector<unsigned>& a,const std::pmr::vector<unsigned>& b,void (*checkpoint)()){
     struct Choice {
         int index=-1;double best=1e20,second=1e20;
         void offer(int i,double cost){if(cost<best){second=best;best=cost;index=i;}else second=std::min(second,cost);}
@@ -117,7 +116,7 @@ static void match_dense_world_group(const std::vector<Primitive>&old,std::vector
     std::vector<Choice> forward(a.size()),backward(b.size());
     for(unsigned i=0;i<a.size();i++){const auto&p=old[a[i]].points[0];if(usable(p))bins[key(cell(p[0]),cell(p[1]))].push_back(i);}
     for(unsigned j=0;j<b.size();j++){
-        if((j&255)==0&&matching_checkpoint)matching_checkpoint();
+        if((j&255)==0&&checkpoint)checkpoint();
         const auto& q=cur[b[j]].points;if(!usable(q[0]))continue;
         const int x=cell(q[0][0]),y=cell(q[0][1]);
         for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){
@@ -141,77 +140,96 @@ static void match_dense_world_group(const std::vector<Primitive>&old,std::vector
         if(forward[i].clear()&&forward[i].index==int(j))cur[b[j]].prior=a[i];
     }
 }
-static void match_frames(int mode=-1,FieldMatchPreparation* early=nullptr){
+// The worker has no GL context. All camera and triangle results here are
+// private until the render thread joins it and publishes the verified pair.
+struct PairCorrespondence {
+    CameraMotion camera;
+    std::vector<Primitive> working;
+    bool use_working=false;
+
+    void resolve(int mode,const Frame& before,const Frame& after,const MatchInput& prior,
+                 MatchInput& input,void (*checkpoint)()){
+        const auto& old=prior.triangles;
+        const auto& old_groups=prior.groups;
+        const auto& new_groups=input.groups;
+        if(mode==2)fit_camera_motion(old,input.triangles,old_groups,new_groups,before,after,camera);
+        // Keep original projected coordinates for the next tick. Other Deck
+        // scenes only write triangle.prior, which is transient match output.
+        use_working=!deck_renderer||camera.valid;
+        if(use_working)working=input.triangles;
+        auto& cur=use_working?working:input.triangles;
+        if(camera.valid)for(auto& tri:cur){
+            const auto& op=after.ops[tri.op];
+            if(!projected_geometry(op))continue;
+            for(unsigned v=0;v<3;v++){
+                float predicted[4];
+                if(camera_predict(op.vertices[tri.start+v].p,predicted,camera))
+                    std::copy_n(predicted,4,tri.points[v].begin());
+            }
+        }
+        if(checkpoint)checkpoint();
+        // Mutual nearest matches with an ambiguity margin; never rely on draw-call
+        // ordering, since FFVIII changes batch boundaries while sorting polygons.
+        std::vector<int> best_a,best_b;
+        std::vector<double> ca,cb,sa,sb,radius_a,radius_b;
+        for(const auto&group:new_groups){auto found=old_groups.find(group.first);if(found==old_groups.end())continue;
+            const auto&a=found->second;const auto&b=group.second;
+            if(uint64_t(a.size())*b.size()>65536){
+                if(camera.valid)match_dense_world_group(old,cur,a,b,checkpoint);
+                continue;
+            }
+            if(a.size()==1&&b.size()==1){if(primitive_cost(old[a[0]],cur[b[0]])<8e99)cur[b[0]].prior=a[0];continue;}
+            best_a.assign(a.size(),-1);best_b.assign(b.size(),-1);
+            ca.assign(a.size(),1e100);cb.assign(b.size(),1e100);
+            sa.assign(a.size(),1e100);sb.assign(b.size(),1e100);
+            const bool reuse_bounds=a.size()*b.size()>=64;
+            if(reuse_bounds){
+                radius_a.resize(a.size());radius_b.resize(b.size());
+                for(unsigned i=0;i<a.size();i++)radius_a[i]=primitive_radius(old[a[i]]);
+                for(unsigned j=0;j<b.size();j++)radius_b[j]=primitive_radius(cur[b[j]]);
+            }
+            for(unsigned i=0;i<a.size();i++)for(unsigned j=0;j<b.size();j++){
+                const double cost=reuse_bounds?bounded_primitive_cost(old[a[i]],cur[b[j]],std::max(.25,std::max(radius_a[i],radius_b[j])*.35)):primitive_cost(old[a[i]],cur[b[j]]);
+                if(cost<ca[i]){sa[i]=ca[i];ca[i]=cost;best_a[i]=j;}else sa[i]=std::min(sa[i],cost);
+                if(cost<cb[j]){sb[j]=cb[j];cb[j]=cost;best_b[j]=i;}else sb[j]=std::min(sb[j],cost);}
+            for(unsigned j=0;j<b.size();j++){int i=best_b[j];if(i<0||best_a[i]!=(int)j)continue;
+                if(cb[j]+1e-12>=sb[j]*.8||ca[i]+1e-12>=sa[i]*.8)continue;cur[b[j]].prior=a[i];}
+        }
+    }
+};
+#include "field_match_preparation.h"
+static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
     current.camera_cut=mode==3&&battle_shot_changed(previous.bones,current.bones);
 #ifdef GEO_PROFILE
     double mark=now();auto mark_stage=[&](const char*name){double t=now();printf("%s %.3f ms\n",name,(t-mark)*1000);mark=t;};
 #endif
-    // The published endpoints retain their original vertices. Battle depth
-    // corrections use separate outgoing batches and replay scratch vertices.
     const bool reusable=previous.started&&(mode==1||mode==2||(deck_renderer&&mode==3&&previous.mode==3));
-    if(!reusable||!previous.match_input){
-        auto input=std::make_shared<MatchInput>(previous);
-        input->index_materials();previous.match_input=std::move(input);
-    }
-    auto input=early?early->take():nullptr;
-    auto* early_topology=input?early->points():nullptr;
-    if(!input)input=std::make_shared<MatchInput>(current);
-    const auto& old=previous.match_input->triangles;
-    FieldTopologyJob field_job(current,input->triangles,!early_topology&&deck_renderer&&mode==1&&reusable,
-                               previous.match_input->field_topology.get());
-    if(!early_topology)input->index_materials();
-    current.match_input=std::move(input);
-    // Field matching only annotates each triangle with its prior index.
-    // The topology worker reads the vertex range and material key. World
-    // matching also transforms positions, so it still needs a working copy.
-    const bool field_input=deck_renderer&&mode==1;
-    std::vector<Primitive> working;
-    if(!field_input)working=current.match_input->triangles;
-    auto& cur=field_input?current.match_input->triangles:working;
-    const auto& old_groups=previous.match_input->groups;
-    const auto& new_groups=current.match_input->groups;
-    if(matching_checkpoint)matching_checkpoint();
-#ifdef GEO_PROFILE
-    mark_stage("primitive keys and groups");
-#endif
-    camera_motion=CameraMotion{};if(mode==2)fit_camera_motion(old,cur,old_groups,new_groups);
-    if(camera_motion.valid)for(auto&tri:cur){const auto&op=current.ops[tri.op];if(op.state.program&&zero_model(op.state))
-        for(unsigned v=0;v<3;v++){float predicted[4];if(camera_predict(op.vertices[tri.start+v].p,predicted))for(int k=0;k<4;k++)tri.points[v][k]=predicted[k];}}
+    PairCorrespondence correspondence;
     for(auto&op:current.ops){op.match=-1;op.prior_positions.resize(op.vertices.size());op.motion_valid.assign(op.vertices.size(),0);
         op.prior_colors.resize(op.vertices.size());op.color_valid.assign(op.vertices.size(),0);op.actor_mid.clear();op.front_face.clear();op.depth_bias.clear();}
+    // Joining first also keeps presentation checkpoints from swapping the
+    // Frame objects while the worker is reading their immutable endpoints.
+    auto input=early?early->take(correspondence):nullptr;
+    const bool prepared=bool(input);
+    auto* early_topology=prepared?early->points():nullptr;
+    if(!reusable||!previous.match_input){
+        auto prior=std::make_shared<MatchInput>(previous);
+        prior->index_materials();previous.match_input=std::move(prior);
+    }
+    if(!prepared)input=std::make_shared<MatchInput>(current);
+    FieldTopologyJob field_job(current,input->triangles,!early_topology&&deck_renderer&&mode==1&&reusable,
+                               previous.match_input->field_topology.get());
+    if(!prepared){
+        input->index_materials();
+        correspondence.resolve(mode,previous,current,*previous.match_input,*input,matching_checkpoint);
+    }
+    current.match_input=std::move(input);
+    const auto& old=previous.match_input->triangles;
+    auto& cur=correspondence.use_working?correspondence.working:current.match_input->triangles;
+    camera_motion=correspondence.camera;
     if(matching_checkpoint)matching_checkpoint();
 #ifdef GEO_PROFILE
-    mark_stage("camera");
-#endif
-    // Mutual nearest matches with an ambiguity margin; never rely on draw-call
-    // ordering, since FFVIII changes batch boundaries while sorting polygons.
-    std::vector<int> best_a,best_b;
-    std::vector<double> ca,cb,sa,sb,radius_a,radius_b;
-    for(const auto&group:new_groups){auto found=old_groups.find(group.first);if(found==old_groups.end())continue;
-        const auto&a=found->second;const auto&b=group.second;
-        if(uint64_t(a.size())*b.size()>65536){
-            if(camera_motion.valid)match_dense_world_group(old,cur,a,b);
-            continue;
-        }
-        if(a.size()==1&&b.size()==1){if(primitive_cost(old[a[0]],cur[b[0]])<8e99)cur[b[0]].prior=a[0];continue;}
-        best_a.assign(a.size(),-1);best_b.assign(b.size(),-1);
-        ca.assign(a.size(),1e100);cb.assign(b.size(),1e100);
-        sa.assign(a.size(),1e100);sb.assign(b.size(),1e100);
-        const bool reuse_bounds=a.size()*b.size()>=64;
-        if(reuse_bounds){
-            radius_a.resize(a.size());radius_b.resize(b.size());
-            for(unsigned i=0;i<a.size();i++)radius_a[i]=primitive_radius(old[a[i]]);
-            for(unsigned j=0;j<b.size();j++)radius_b[j]=primitive_radius(cur[b[j]]);
-        }
-        for(unsigned i=0;i<a.size();i++)for(unsigned j=0;j<b.size();j++){
-            const double cost=reuse_bounds?bounded_primitive_cost(old[a[i]],cur[b[j]],std::max(.25,std::max(radius_a[i],radius_b[j])*.35)):primitive_cost(old[a[i]],cur[b[j]]);
-            if(cost<ca[i]){sa[i]=ca[i];ca[i]=cost;best_a[i]=j;}else sa[i]=std::min(sa[i],cost);
-            if(cost<cb[j]){sb[j]=cb[j];cb[j]=cost;best_b[j]=i;}else sb[j]=std::min(sb[j],cost);}
-        for(unsigned j=0;j<b.size();j++){int i=best_b[j];if(i<0||best_a[i]!=(int)j)continue;
-            if(cb[j]+1e-12>=sb[j]*.8||ca[i]+1e-12>=sa[i]*.8)continue;cur[b[j]].prior=a[i];}
-    }
-#ifdef GEO_PROFILE
-    mark_stage("mutual matching");
+    mark_stage("material and camera correspondence");
 #endif
     matched_candidates=0;singular_rejects=0;
     // All triangles in a batch share the projection. The current primitive

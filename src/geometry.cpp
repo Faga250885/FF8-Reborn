@@ -159,6 +159,11 @@ static bool initialize_gl() {
         initialize_deck_bindings();
         int major=0,minor=0;
         const char* version=(const char*)glGetString(GL_VERSION);
+        const char* renderer=(const char*)glGetString(GL_RENDERER);
+        char driver[320];
+        snprintf(driver,sizeof(driver),"Deck OpenGL renderer %.160s | version %.120s\n",
+            renderer?renderer:"unknown",version?version:"unknown");
+        log(driver);
         if(version&&sscanf(version,"%d.%d",&major,&minor)==2&&(major>4||(major==4&&minor>=3))){
             auto proc=wglGetProcAddress("glGetProgramResourceiv");
             if((uintptr_t)proc>3&&(uintptr_t)proc!=UINTPTR_MAX)terrain_resource=(PFNGLGETPROGRAMRESOURCEIVPROC)proc;
@@ -620,6 +625,7 @@ struct MatchInput;
 struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::array<float,2>> stride_velocity;std::vector<Op> ops;std::unordered_map<GLuint,Target> targets;std::unordered_map<GLuint,GLuint> framebuffer_for_target;bool valid=true,started=false;unsigned vertex_count=0;int w=0,h=0,mode=-1,infirmary_room=-1,infirmary_top=-1;
     std::unordered_map<GLuint,GLuint> depth_texture_for_target;
     mutable std::unordered_map<GLuint,std::array<unsigned,3>> seed_clears;
+    std::unordered_map<GLuint,GLbitfield> captured_seed_planes;
     std::shared_ptr<MatchInput> match_input;
     int layout_override=-1,menu_edge=0;
     int raster_rows=240;
@@ -630,6 +636,8 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     StrideFollow stride_follow;float stride_dt=1.f/30;
     bool reactive_sides=false,camera_cut=false;};
 static Frame building,previous,current;static Surface test_target,backup,reference_target,sample_a,sample_b;
+#include "deck_draw_storage.h"
+static DeckDrawStorage draw_storage;
 static unsigned baked_passes=0,clock_presents=0,sleep_presents=0;
 static uint64_t hash(uint64_t,const void*,size_t);
 static std::unordered_map<GLuint,bool> recognized;
@@ -709,7 +717,8 @@ static bool native_deck_frame(){return deck_renderer&&!display_settings.fps&&!di
 struct ReadableRegion { uintptr_t begin=0,end=0; };
 struct CaptureRegions { ReadableRegion indices,arrays[7]; };
 static thread_local CaptureRegions capture_regions;
-static bool capture_start() {
+static GLbitfield discarded_seed_planes(const Frame&,const Frame&,const Op&,const Target&);
+static bool capture_start(Op* clear=nullptr) {
     if(inside)return false;
     if(!display_settings.fps&&!display_settings.wide&&(deck_renderer||!display_settings.atlas))return false;
     const auto active_context=wglGetCurrentContext();if(!active_context)return false;
@@ -729,6 +738,10 @@ static bool capture_start() {
     demand(!fbo||attachment>0,"offscreen color missing");
     capture_target=(GLuint)attachment;
     if(bake_texture_pass(capture_target))return false;
+    if(clear){
+        clear->target=capture_target;
+        clear->state=get_state(&clear->raster,(clear->clear&GL_STENCIL_BUFFER_BIT)!=0);
+    }
     if(building.targets.size()>=32&&!building.targets.count(capture_target)){
         for(auto it=building.targets.begin();it!=building.targets.end();){
             if(!it->second.active){release(it->second.seed);it=building.targets.erase(it);}else ++it;
@@ -766,9 +779,21 @@ static bool capture_start() {
             if(format==GL_RGBA)target.format=GL_RGBA8;if(format==GL_RGB)target.format=GL_RGB8;
         }
         building.framebuffer_for_target[capture_target]=(GLuint)fbo;
-        resize(target.seed,target.w,target.h,target.depth,false,target.format,target.stencil);
         GLbitfield bits=GL_COLOR_BUFFER_BIT|(target.depth?GL_DEPTH_BUFFER_BIT:0)|(target.stencil?GL_STENCIL_BUFFER_BIT:0);
-        blit(fbo,target.seed.fbo,target.w,target.h,target.w,target.h,bits);target.active=true;
+#ifndef GEO_AUTOTEST
+        // Diagnostic snapshot files serialize all attachments, including
+        // the initial contents of planes the stock scene never reads.
+        if(deck_renderer&&display_settings.fps==60&&clear){
+            const auto retained=bits&~discarded_seed_planes(building,current,*clear,target);
+            if(retained!=bits)building.captured_seed_planes[capture_target]=retained;
+            bits=retained;
+        }
+#endif
+        if(bits){
+            resize(target.seed,target.w,target.h,target.depth,false,target.format,target.stencil);
+            blit(fbo,target.seed.fbo,target.w,target.h,target.w,target.h,bits);
+        }
+        target.active=true;
     }else demand(building.framebuffer_for_target.at(capture_target)==(GLuint)fbo,"texture used by multiple draw framebuffers");
     demand(building.ops.size()<MAX_OPS,"too many draw commands");return true;
 }
@@ -853,7 +878,7 @@ static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,
     }
     if(active>=0)pActiveTexture(active);
     visit_draw_indices(type,indices,count,[&](int i,unsigned id){
-        auto&v=op.vertices[i];v.p[3]=1;read_array(pos,id,v.p,false);
+        auto&v=op.vertices[i];v.p[1]=v.p[2]=0;v.p[3]=1;read_array(pos,id,v.p,false);
         memcpy(v.c,constant_color,sizeof(v.c));if(color.enabled){v.c[3]=1;read_array(color,id,v.c,true);}
         memcpy(v.n,constant_normal,sizeof(v.n));if(normal.enabled)read_array(normal,id,v.n,false);
         for(int j=0;j<4;j++){memcpy(v.uv[j],constant_uv[j],sizeof(v.uv[j]));if(uv[j].enabled)read_array(uv[j],id,v.uv[j],false);}
@@ -866,6 +891,7 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
     const bool compact_draw=deck_renderer&&mode==GL_TRIANGLES&&
         (display_settings.fps||(display_settings.wide&&current.mode==2&&capture_target));
     unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,compact_draw);
+    if(deck_renderer&&display_settings.fps==60)draw_storage.take(op,count);
     read_draw_vertices(op,inputs,count,type,indices,deck_renderer&&display_settings.fps?&capture_regions:nullptr);
     bool used_texture[4]={};
     for(int j=0;j<4;j++)used_texture[j]=!op.state.program&&op.state.texture[j].enabled;
@@ -919,7 +945,7 @@ static void APIENTRY draw_hook(GLenum mode,GLsizei count,GLenum type,const void*
 }
 static void APIENTRY clear_hook(GLbitfield mask){
     if(native_deck_frame()||(deck_renderer&&direct_world_frame())){real_clear(mask);return;}
-    try{if(capture_start()){Op op;op.clear=mask;op.target=capture_target;op.state=get_state(&op.raster,(mask&GL_STENCIL_BUFFER_BIT)!=0);building.ops.push_back(std::move(op));}}
+    try{Op op;op.clear=mask;if(capture_start(&op))building.ops.push_back(std::move(op));}
     catch(const std::exception&e){fail_frame(e.what());}real_clear(mask);service_at(2);
 }
 
@@ -1030,7 +1056,11 @@ static float replay(GLuint target,float alpha,bool widescreen=false){
             if(field_prefix.restore(dest,t))continue;
             restore_prefix=false;
         }
-        const GLbitfield seed=seed_plan.required(current,entry.first,t);
+        GLbitfield seed=seed_plan.required(current,entry.first,t);
+        if(deck_renderer){
+            const auto stored=current.captured_seed_planes.find(entry.first);
+            if(stored!=current.captured_seed_planes.end())seed&=stored->second;
+        }
         if(seed)blit(t.seed.fbo,dest,t.w,t.h,t.w,t.h,seed);
     }
     pBindBuffer(GL_ARRAY_BUFFER,0);pBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
@@ -1565,8 +1595,14 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
         ParityReadState::read(sample_a.fbo,a,parity_read_rows());
         if(!deck_renderer)ParityReadState::read(sample_b.fbo,b);
     }
-    double error=0;unsigned bad=0;for(size_t i=0;i<parity_plane_bytes;i++)if(i%4!=3){int d=abs(int(a[i])-int(b[i]));error+=d;bad+=d>8;}
-    error/=160*90*3;GLenum error_code=glGetError();if(submission_error)error_code=submission_error;bool ok=!error_code&&error<0.75&&bad<160*90*3/100;
+    unsigned difference=0,bad=0;
+    for(size_t i=0;i<parity_plane_bytes;i+=4)for(unsigned c=0;c<3;++c){
+        const int d=std::abs(int(a[i+c])-int(b[i+c]));
+        difference+=d;
+        bad+=d>8;
+    }
+    const double error=difference/(160.*90*3);
+    GLenum error_code=glGetError();if(submission_error)error_code=submission_error;bool ok=!error_code&&error<0.75&&bad<160*90*3/100;
     if(deck_renderer){
         if(!error_code)deck_output.collect(b+parity_plane_bytes);
         deck_black.sample(ok,error_code,a,b);
@@ -1624,8 +1660,10 @@ static bool present_native_world(GLuint native=0,GLuint output=0){
     return true;
 }
 static void reset_building(){
+    if(deck_renderer)draw_storage.retire(building,display_settings.fps==60);
     building.match_input.reset();
     building.seed_clears.clear();
+    building.captured_seed_planes.clear();
     building.depth_texture_for_target.clear();
     building.bones.clear();building.stride_velocity.clear();building.stride_follow={};building.ops.clear();building.framebuffer_for_target.clear();building.valid=true;building.started=false;building.vertex_count=0;building.camera_cut=false;
     for(auto it=building.targets.begin();it!=building.targets.end();){
@@ -1898,8 +1936,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             // poses. Queue validation of this endpoint before CPU matching.
             const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&(mode==1||mode==3)))&&
                 world_readback.available();
-            FieldMatchPreparation field_work(current,early_samples&&mode==1,
-                previous.match_input?previous.match_input->field_topology.get():nullptr);
+            MatchPreparation pair_work(previous,current,early_samples&&deck_renderer&&display_settings.fps==60);
             bool queued_world=false;
             GLenum submit_error=GL_NO_ERROR;
             if(early_samples){
@@ -1917,7 +1954,7 @@ static BOOL WINAPI swap_hook(HDC handle){
                 parity_seconds+=now()-began;
             }
             matching_checkpoint=was_presenting&&pair&&presentation_mode==mode?matching_pump:nullptr;
-            double phase=now();if(mode==6)match_menu_frames();else match_frames(mode,&field_work);matching_seconds+=now()-phase;matching_count++;
+            double phase=now();if(mode==6)match_menu_frames();else match_frames(mode,&pair_work);matching_seconds+=now()-phase;matching_count++;
             if(matching_checkpoint)matching_checkpoint();matching_checkpoint=nullptr;
             #ifdef GEO_AUTOTEST
             static unsigned battle_audit=0;if(mode==3&&current.vertex_count>10000&&++battle_audit==30)correspondence_audit();
@@ -2259,7 +2296,7 @@ static void forget_deleted_context(){
     vertex_policy={};
     field_prefix={};vertex_stream=0;
     can_present=false;loaded=false;context=nullptr;dc=nullptr;thread=0;
-    building={};previous={};current={};texture_cache.clear();recognized.clear();spare_textures={};
+    building={};previous={};current={};draw_storage={};texture_cache.clear();recognized.clear();spare_textures={};
     replay_targets.clear();replay_depth.clear();replay_textures.clear();outgoing_draws.clear();checkpoint_outgoing.clear();
     test_target={};backup={};reference_target={};sample_a={};sample_b={};encounter_native={};
     for(auto&s:field_blur::levels)s={};field_blur::isolated_edge={};for(auto&s:infirmary::sheets)s={};

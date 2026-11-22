@@ -5,10 +5,20 @@ struct DeckCadence {
         unsigned intervals=0,long_intervals=0,intermediate=0,source_intervals=0;
         double source_elapsed=0;
         double elapsed=0;
+        unsigned gap_ms[251]{};
+        struct Load {unsigned intervals=0,late=0;double elapsed=0;};
+        Load clear,busy,mixed;
+        unsigned percentile(unsigned percent) const {
+            const unsigned rank=(intervals*percent+99)/100;
+            unsigned count=0;
+            for(unsigned ms=0;ms<=250;++ms){count+=gap_ms[ms];if(count>=rank)return ms;}
+            return 250;
+        }
     };
     Scene scenes[3]{};
     int last_mode=0;
     double last_time=0;
+    bool last_busy=false;
     int last_source_mode=0;
     double last_source_time=0;
     enum class EventKind { gap, swap_interval, display_query, rate_change };
@@ -57,6 +67,11 @@ struct DeckCadence {
             scene.elapsed+=interval;
             scene.long_intervals+=interval>.025;
             scene.intermediate+=alpha>0&&alpha<1;
+            ++scene.gap_ms[unsigned(std::ceil(interval*1000.))];
+            // Attribute intervals only when the sampled load agrees at both
+            // swaps. A mixed interval spans a change in the source budget.
+            auto& load=source_busy!=last_busy?scene.mixed:(source_busy?scene.busy:scene.clear);
+            ++load.intervals;load.late+=interval>.025;load.elapsed+=interval;
         }
         // Use the counter's half-second time scale. Hysteresis keeps a
         // fluctuating rate near a threshold from flooding the event buffer.
@@ -80,6 +95,7 @@ struct DeckCadence {
         }
         last_mode=mode;
         last_time=time;
+        last_busy=source_busy;
     }
     template<class Write=void (*)(const char*)> void report(Write write=log){
         const char* names[]={"field","world","battle"};
@@ -115,6 +131,13 @@ struct DeckCadence {
             snprintf(line,sizeof(line),"Deck 60 %s timing | %.2f game updates/s | %u intermediate swaps of %u\n",
                      names[i],scene.source_elapsed?scene.source_intervals/scene.source_elapsed:0.,
                      scene.intermediate,scene.intervals);
+            write(line);
+            snprintf(line,sizeof(line),"Deck 60 %s gaps under 250 ms | p50 <=%u ms | p95 <=%u ms | p99 <=%u ms\n",
+                     names[i],scene.percentile(50),scene.percentile(95),scene.percentile(99));
+            write(line);
+            const auto& b=scene.busy;const auto& c=scene.clear;const auto& m=scene.mixed;
+            snprintf(line,sizeof(line),"Deck 60 %s gaps over 25 ms/intervals | busy %u/%u (%.2fs) | clear %u/%u (%.2fs) | mixed %u/%u (%.2fs)\n",
+                     names[i],b.late,b.intervals,b.elapsed,c.late,c.intervals,c.elapsed,m.late,m.intervals,m.elapsed);
             write(line);scene={};
         }
     }

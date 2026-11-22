@@ -37,6 +37,21 @@ int main(){
     expect("endpoint excludes departures",ReplaySeedPlan(1).required(f,37,t)==0);
     outgoing.after=0;expect("early departing reader",ReplaySeedPlan(.4f).required(f,37,t)==(C|D|S));
     outgoing.op.state.texture[0].copy=std::make_shared<TextureCopy>();expect("frozen departing reader",ReplaySeedPlan(.4f).required(f,37,t)==0);
-    reset_building();building.seed_clears[5]={1,2,3};reset_building();expect("clear on next capture",building.seed_clears.empty());
+    Frame preceding;
+    auto& actor=preceding.ops.emplace_back();
+    actor.target=5;actor.mode=GL_TRIANGLES;actor.state.program=7;actor.state.texture[0].id=91;
+    f.ops.clear();
+    expect("capture starts with clear",discarded_seed_planes(f,preceding,clear,t)==(C|D|S));
+    f.ops.push_back(other);
+    expect("possible departing reader",discarded_seed_planes(f,preceding,clear,t)==0);
+    actor.target=6;
+    expect("departing reader has no earlier anchor",discarded_seed_planes(f,preceding,clear,t)==(C|D|S));
+    expect("capture preserves masked planes",discarded_seed_planes(f,preceding,small,t)==D);
+    f.ops.back().state.texture[0].id=37;
+    expect("capture preserves live sampler",discarded_seed_planes(f,preceding,clear,t)==0);
+    f.ops.back().state.texture[0].copy=std::make_shared<TextureCopy>();
+    expect("capture isolates frozen sampler",discarded_seed_planes(f,preceding,clear,t)==(C|D|S));
+    reset_building();building.seed_clears[5]={1,2,3};building.captured_seed_planes[5]=C;
+    reset_building();expect("clear on next capture",building.seed_clears.empty()&&building.captured_seed_planes.empty());
     std::printf("%u plane and dependency checks passed\n",accepted_cases);
 }
