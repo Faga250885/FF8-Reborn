@@ -18,6 +18,11 @@ static bool scenery_draw(const Op& op){
 static void resolve_menu_layout(Frame& f,const Frame& prior){
     f.layout_override=-1;f.menu_edge=0;
     f.menu_top=28;f.menu_bottom=448;f.menu_half_width=282;
+    if(f.mode==after_battle_mode){
+        // The header and confirmation panels on the EXP and loot pages run
+        // from x=26 2/3 to 613 1/3, y=32 to 436 in FFVIII's 640x480 canvas.
+        f.menu_top=32;f.menu_bottom=436;f.menu_half_width=294;
+    }
     if(prior.mode==after_battle_mode&&f.mode!=after_battle_mode&&f.mode!=6)return;
     if(f.mode==after_battle_mode||f.mode==6||prior.mode==6)f.menu_edge=5;
     else if(prior.menu_edge>0)f.menu_edge=prior.menu_edge-1;

@@ -16,6 +16,8 @@ FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de S
 - **Rendimiento en Steam Deck.** El modo de 30 FPS usa los cuadros nativos en ciudades y mapamundi e interpola las batallas. Las pruebas de juego en una Deck física confirmaron 30 FPS estables en esas escenas. La versión de Deck sigue siendo experimental y el objetivo de desarrollo es llegar a 60 FPS. Windows también incorpora parte de las optimizaciones de renderizado.
 - **Batallas y transiciones en pantalla ancha.** Esta versión amplía la cobertura de los destellos de pantalla completa, ajusta los resultados de experiencia al alto disponible y corrige cuadros que aparecen encogidos durante la carga de Triple Triad. La interpolación de batalla ahora comprueba si se forman triángulos que unen combatientes distintos al mover la cámara.
 
+En 66 pares de cuadros de batalla grabados, la comprobación detectó triángulos estirados en 21 pares con la versión anterior y en cero tras el cambio. Se conservó el movimiento interpolado del 99,1 % de los vértices que ya lo tenían. Los paneles de experiencia y objetos se midieron en una batalla real a 2560 × 1440.
+
 ## Video del mod en acción
 
 [![Ver FF8 Reborn en el canal de Faga12 en YouTube](https://i.ytimg.com/vi/dBUX5gA7oKM/hqdefault.jpg)](https://www.youtube.com/watch?v=dBUX5gA7oKM)

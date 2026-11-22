@@ -8,6 +8,7 @@ static Frame copy_frame(int w,int h,int sw,int sh){
     f.targets[7].active=true;
     auto& op=f.ops.emplace_back();op.mode=GL_TRIANGLES;
     op.state.texture[0].id=7;
+    op.state.texture[0].enabled=true;
     int vp[]={(w-sw)/2,(h-sh)/2,sw,sh};std::copy_n(vp,4,op.state.viewport);
     for(int i:{0,1,2,2,1,3}){
         Vertex v{};v.p[0]=(i&1)?1:-1;v.p[1]=(i&2)?1:-1;v.p[3]=1;
@@ -23,8 +24,14 @@ static void check_size(int w,int h){
     Frame field;field.w=w;field.h=h;field.mode=1;field.travel=Frame::Travel::scene;
     Frame compact=copy_frame(w,h,sw,sh);
     demand(card_transition::entering(compact,field),"start of card game");
-    const auto src=card_transition::compact(compact,card_transition::final_copy(compact));
+    const auto src=card_transition::source_rect(compact,field,card_transition::final_copy(compact));
     demand(src.w==sw&&src.h==sh,"compact render target");
+    Frame held;held.mode=card_transition::mode;held.w=w;held.h=h;
+    demand(card_transition::source_rect(held,compact,nullptr).w==sw,"hold compact framing across empty swap");
+    held.valid=false;
+    demand(!card_transition::source_rect(held,compact,nullptr).w,"invalid capture must not reuse an old source");
+    held.valid=true;held.ops.emplace_back().clear=GL_COLOR_BUFFER_BIT;
+    demand(!card_transition::source_rect(held,compact,nullptr).w,"window clear ends compact handoff");
     Surface target,backup;resize(target,w,h,false);
     pBindFramebuffer(GL_FRAMEBUFFER,target.fbo);glDisable(GL_SCISSOR_TEST);
     glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
@@ -56,6 +63,9 @@ static void check_size(int w,int h){
     demand(board.layout()==board.mode,"native board takes over");
     compact.ops.back().state.texture[0].id=32;
     demand(!card_transition::final_copy(compact),"card sprite is not the output copy");
+    compact.ops.back().state.texture[0].id=7;
+    for(auto& v:compact.ops.back().vertices)v.uv[0][0]*=.5f;
+    demand(!card_transition::final_copy(compact),"partial atlas should not scale the screen");
     Frame title;title.mode=12;
     demand(!card_transition::entering(title,field),"unrelated modes");
     release(backup);release(target);

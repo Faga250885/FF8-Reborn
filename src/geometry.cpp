@@ -639,6 +639,7 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     std::unordered_map<GLuint,GLbitfield> captured_seed_planes;
     std::shared_ptr<MatchInput> match_input;
     int layout_override=-1,menu_edge=0;
+    std::array<int,4> compact_card_view{};
     int raster_rows=240;
     enum class Travel { none, scene, fade };
     Travel travel=Travel::none;
@@ -1736,6 +1737,7 @@ static bool present_native_world(GLuint native=0,GLuint output=0){
 }
 static void reset_building(){
     building.native_field_target=0;building.field_layout_only=false;
+    building.compact_card_view={};
     if(deck_renderer)draw_storage.retire(building,deck_fixed_rate()&&building.mode==3);
     building.match_input.reset();
     building.seed_clears.clear();
@@ -1939,7 +1941,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             transition=WideView(current,true);
         if(enabled&&display_settings.wide&&card_transition::entering(current,previous)){
             const auto* copy=card_transition::final_copy(current);
-            const auto compact=card_transition::compact(current,copy);
+            const auto compact=card_transition::source_rect(current,previous,copy);
             if(compact.w){
                 native_scaled=card_transition::present(current,compact,encounter_native);
                 native_endpoint=native_scaled;

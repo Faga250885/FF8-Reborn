@@ -18,6 +18,8 @@ static void check_fit(int w,int h,int source_w,int source_h){
     resolve_menu_layout(f,battle);
     WideView view(f,true);
     demand(f.layout()==6&&view.menu,"post-battle results must use menu layout immediately");
+    demand(f.menu_top==32&&f.menu_bottom==436&&f.menu_half_width==294,
+           "EXP and loot must fit their own measured panel borders");
     const auto& vp=view.result_viewport;
     demand(vp[0]==(w-source_w)/2&&vp[1]==(h-source_h)/2&&vp[2]==source_w&&vp[3]==source_h,
            "results composite viewport");
@@ -28,8 +30,8 @@ static void check_fit(int w,int h,int source_w,int source_h){
     Surface target;resize(target,w,h,false,true);
     pBindFramebuffer(GL_FRAMEBUFFER,target.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glDisable(GL_SCISSOR_TEST);glClearColor(1,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
-    const int bottom=vp[1]+int(std::lround((480-f.menu_bottom)*vp[3]/480.));
-    const int top=vp[1]+int(std::lround((480-f.menu_top)*vp[3]/480.));
+    const int bottom=vp[1]+int(std::lround(44.*vp[3]/480.));
+    const int top=vp[1]+int(std::lround(448.*vp[3]/480.));
     glEnable(GL_SCISSOR_TEST);glScissor(vp[0],bottom,vp[2],top-bottom);
     glClearColor(0,1,0,1);glClear(GL_COLOR_BUFFER_BIT);
     demand(present_native_layout(f,view,target.fbo),"present results");
