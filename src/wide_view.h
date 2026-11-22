@@ -354,7 +354,7 @@ struct WideView {
         auto bounds=[&](int i,Bounds& b){
             const auto* q=op.vertices.data()+i;
             if(std::abs(q[0].p[3]-1.f)>.002f||!flat_rect(q,b,step)||
-               b.l< -4||b.r>644||b.t< -4||b.b>484||b.r<=b.l||b.b<=b.t)return false;
+               b.l< -4||b.r>644||b.t< -24||b.b>504||b.r<=b.l||b.b<=b.t)return false;
             auto corner=[&](int j){return (q[j].p[0]==b.r?1:0)+(q[j].p[1]==b.b?2:0);};
             // Two adjoining triangles must share a diagonal. Four corners
             // alone also match overlapping triangles that leave a hole.
@@ -368,8 +368,6 @@ struct WideView {
         auto full=[](const Bounds& b){return b.l<=2&&b.r>=638&&b.t<=26&&b.b>=454;};
         bool edited=false;
         for(int i=0;i<count;i+=step){
-            const auto* p=op.vertices[i].p;
-            if(p[0]>2&&p[0]<638&&p[1]>26&&p[1]<454)continue;
             Bounds b;
             if(!bounds(i,b))continue;
             int end=i+step;
@@ -378,23 +376,40 @@ struct WideView {
             if(cinema_bar)for(int j=i;j<end;j++){const auto* c=op.vertices[j].c;
                 if(c[0]!=0||c[1]!=0||c[2]!=0){cinema_bar=false;break;}}
             if(!full(b)&&!cinema_bar){
-                // Some packets tile the flash across the two halves, or
-                // split it into strips. Only accept an uninterrupted band
-                // of adjacent flat rectangles spanning the active picture.
-                const bool across=b.t<=26&&b.b>=454&&(b.l<=2||b.r>=638);
-                const bool down=b.l<=2&&b.r>=638&&(b.t<=26||b.b>=454);
-                if(!across&&!down)continue;
-                while(end<count&&!full(b)){
+                // Angelo's impact submits four 320 x 240 tiles in reverse
+                // order and clips the last 48 rows. Accept a tiled overlay
+                // only if its non-overlapping rectangles cover the picture.
+                if((b.l>2&&b.r<638)||(b.t>26&&b.b<454))continue;
+                auto visible=[](Bounds r){
+                    r.l=std::max(r.l,0.f);r.r=std::min(r.r,640.f);
+                    r.t=std::max(r.t,24.f);r.b=std::min(r.b,456.f);
+                    return r;
+                };
+                auto area=[](Bounds r){return double(r.r-r.l)*(r.b-r.t);};
+                std::array<Bounds,16> tiles;
+                Bounds extent=visible(b);
+                if(extent.b<=extent.t||extent.r<=extent.l)continue;
+                tiles[0]=extent;int tile_count=1;double covered=area(extent);
+                bool complete=false;
+                while(end<count&&tile_count<int(tiles.size())){
                     Bounds next;
-                    if(!bounds(end,next)||op.vertices[i].p[2]!=op.vertices[end].p[2])break;
-                    if(across&&next.t==b.t&&next.b==b.b&&(b.l==next.r||b.r==next.l)){
-                        b.l=std::min(b.l,next.l);b.r=std::max(b.r,next.r);
-                    }else if(down&&next.l==b.l&&next.r==b.r&&(b.t==next.b||b.b==next.t)){
-                        b.t=std::min(b.t,next.t);b.b=std::max(b.b,next.b);
-                    }else break;
+                    if(op.vertices[i].p[2]!=op.vertices[end].p[2]||!bounds(end,next))break;
+                    const Bounds tile=visible(next);
+                    if(tile.b<=tile.t||tile.r<=tile.l)break;
+                    bool overlap=false;
+                    for(int k=0;k<tile_count;k++){
+                        const auto& a=tiles[k];
+                        if(a.l<tile.r&&tile.l<a.r&&a.t<tile.b&&tile.t<a.b){overlap=true;break;}
+                    }
+                    if(overlap)break;
+                    tiles[tile_count++]=tile;covered+=area(tile);
+                    extent={std::min(extent.l,tile.l),std::max(extent.r,tile.r),
+                            std::min(extent.t,tile.t),std::max(extent.b,tile.b)};
+                    b.l=std::min(b.l,next.l);b.r=std::max(b.r,next.r);
                     end+=step;
+                    if(full(extent)&&std::abs(area(extent)-covered)<.001){complete=true;break;}
                 }
-                if(!full(b))continue;
+                if(!complete)continue;
             }
             if(!edited){result.assign(vertices,vertices+count);edited=true;}
             for(int j=i;j<end;j++){

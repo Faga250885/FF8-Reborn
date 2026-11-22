@@ -73,6 +73,26 @@ int main(){
     auto stripes=packet(GL_QUADS);
     rect(stripes,0,24,640,240);rect(stripes,0,240,640,456);
     assert(changed(view,stripes,out));
+    // Native impact of the Rinoa and Angelo attack in Galbadia. It starts at the lower right
+    // and the active battle viewport clips the bottom row of both tiles.
+    auto angelo=packet(GL_TRIANGLES);
+    rect(angelo,320,264,640,504);rect(angelo,0,264,320,504);
+    rect(angelo,320,24,640,264);rect(angelo,0,24,320,264);
+    assert(changed(view,angelo,out));
+    for(size_t i=0;i<out.size();++i){
+        float x=angelo.vertices[i].p[0];assert(out[i].p[0]==320+(x-320)/view.horizontal);
+    }
+    for(int defect=0;defect<4;defect++){
+        auto incomplete=angelo;
+        if(defect==0)incomplete.vertices.resize(18);
+        if(defect==1)for(size_t j=18;j<24;j++)incomplete.vertices[j].p[0]+=1;
+        if(defect==2)for(size_t j=18;j<24;j++)incomplete.vertices[j].p[2]+=.001f;
+        if(defect==3){
+            auto icon=packet(GL_TRIANGLES);rect(icon,35,44,80,89);
+            incomplete.vertices.insert(incomplete.vertices.begin()+6,icon.vertices.begin(),icon.vertices.end());
+        }
+        assert(!changed(view,incomplete,out));
+    }
     auto cinema=packet(GL_TRIANGLES);cinema.state.blend=true;rect(cinema,0,24,640,60);
     for(auto& v:cinema.vertices)v.c[1]=0;
     assert(changed(view,cinema,out));
