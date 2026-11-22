@@ -142,6 +142,8 @@ static bool initialize_gl() {
     return true;
 }
 
+#include "deck_world_bindings.h"
+#include "deck_programs.h"
 struct Uniform {
     GLint location;GLenum type;std::vector<float> f;std::vector<GLint> i;
 };
@@ -164,6 +166,17 @@ static void read_uniform(GLuint program,GLint location,GLenum type,std::vector<U
 static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,bool terrain=false) {
     if(inputs)*inputs=program?1u:127u;
     std::vector<Uniform> out;if(!program)return out;
+    // Locations and input semantics belong to the link. Values (including
+    // sampler unit selections) still belong to the individual draw.
+    const bool cache=deck_renderer&&terrain&&display_settings.fps&&inputs&&deck_programs::available();
+    if(cache){
+        auto entry=deck_programs::layouts.find(program);
+        if(entry!=deck_programs::layouts.end()){
+            *inputs=entry->second.inputs;out.reserve(entry->second.uniforms.size());
+            for(const auto& spec:entry->second.uniforms)read_uniform(program,spec.first,spec.second,out);
+            return out;
+        }
+    }
     GLint count=0,attrs=0;pGetProgramiv(program,GL_ACTIVE_UNIFORMS,&count);pGetProgramiv(program,GL_ACTIVE_ATTRIBUTES,&attrs);
     demand(count<=128 && attrs<=16,"shader attribute/uniform count unsupported");
     for(GLint j=0;j<attrs;j++) {char name[256];GLsizei len;GLint size;GLenum type;
@@ -194,7 +207,13 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,boo
             const GLint location=pGetUniformLocation(program,key);
             if(location>=0)read_uniform(program,location,type,out);
         }
-    }return out;
+    }
+    if(cache){
+        deck_programs::Layout layout;layout.inputs=*inputs;layout.uniforms.reserve(out.size());
+        for(const auto& u:out)layout.uniforms.emplace_back(u.location,u.type);
+        deck_programs::layouts.emplace(program,std::move(layout));
+    }
+    return out;
 }
 static void apply_uniforms(GLuint program,const std::vector<Uniform>& values,const std::vector<Uniform>* previous=nullptr) {
     if(!previous)pUseProgram(program);
@@ -644,16 +663,21 @@ static GLuint capture_target=0;
 static std::vector<Vertex> scratch;
 static void fail_frame(const char*s){static char last[200]="";if(building.valid&&strcmp(last,s)){char line[256];snprintf(line,sizeof(line),"native fallback: %s\n",s);log(line);snprintf(last,sizeof(last),"%s",s);}building.valid=false;}
 static bool native_deck_frame(){return deck_renderer&&!display_settings.fps&&!display_settings.wide;}
+struct ReadableRegion { uintptr_t begin=0,end=0; };
+struct CaptureRegions { ReadableRegion indices,arrays[7]; };
+static thread_local CaptureRegions capture_regions;
 static bool capture_start() {
     if(inside||!wglGetCurrentContext())return false;
     if(!display_settings.fps&&!display_settings.wide&&(deck_renderer||!display_settings.atlas))return false;
     if(!loaded&&!initialize_gl())return false;
     if(GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return false;
-    GLint fbo=0;glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&fbo);
     if(!building.valid)return false;
     if(!building.started){RECT r{};demand(GetClientRect(WindowFromDC(dc),&r),"no drawable");
         building.w=r.right;building.h=r.bottom;demand(r.right>0&&r.bottom>0&&r.right<=8192&&r.bottom<=8192,"drawable extent unsupported");
+        if(deck_renderer&&display_settings.fps){capture_regions={};world_bindings::begin_frame();}
         building.started=true;}
+    GLint fbo=0;if(deck_renderer&&display_settings.fps)fbo=world_bindings::draw_target();
+    else glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&fbo);
     // FFVIII reattaches multiple particle textures to the same scratch FBO
     // during one attack. Each texture retains its own image when detached.
     GLint attachment=0;
@@ -705,7 +729,6 @@ static bool capture_start() {
     demand(building.ops.size()<MAX_OPS,"too many draw commands");return true;
 }
 // Attributes in an interleaved draw often share one committed region.
-struct ReadableRegion { uintptr_t begin=0, end=0; };
 static bool readable(const void* pointer,size_t bytes,ReadableRegion* known=nullptr) {
     uintptr_t pos=reinterpret_cast<uintptr_t>(pointer);
     const uintptr_t end=pos+bytes;
@@ -742,11 +765,11 @@ static void read_array(const Array&a,unsigned index,float*out,bool color) {
         demand(std::isfinite(out[j]),"nonfinite vertex data");}
 }
 static uint64_t hash(uint64_t h,const void*p,size_t n){auto b=(const BYTE*)p;while(n--){h^=*b++;h*=1099511628211ULL;}return h;}
-static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,const void*indices){
+static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,const void*indices,CaptureRegions* regions=nullptr){
     struct RestoreClient {GLint client;RestoreClient(){glGetIntegerv(GL_CLIENT_ACTIVE_TEXTURE,&client);}~RestoreClient(){pClientActiveTexture(client);}} restore_client;
     GLint element=0;glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&element);
     demand(!element,"index VBO unsupported");size_t bytes=type==GL_UNSIGNED_SHORT?2:type==GL_UNSIGNED_INT?4:type==GL_UNSIGNED_BYTE?1:0;
-    demand(bytes&&readable(indices,size_t(count)*bytes),"index memory invalid");
+    demand(bytes&&readable(indices,size_t(count)*bytes,regions?&regions->indices:nullptr),"index memory invalid");
     std::vector<unsigned> ids(count);unsigned maxid=0;
     for(int i=0;i<count;i++){unsigned v=0;memcpy(&v,(const BYTE*)indices+i*bytes,bytes);ids[i]=v;maxid=std::max(maxid,v);}
     demand(maxid<1000000,"index range too large");
@@ -756,9 +779,9 @@ static void read_draw_vertices(Op& op,unsigned inputs,GLsizei count,GLenum type,
     auto normal=(inputs&2)?array(GL_NORMAL_ARRAY,GL_NORMAL_ARRAY_POINTER,0,GL_NORMAL_ARRAY_TYPE,GL_NORMAL_ARRAY_STRIDE,GL_NORMAL_ARRAY_BUFFER_BINDING):Array{};
     Array uv[4];for(int j=0;j<4;j++)if(inputs&(8u<<j)){pClientActiveTexture(GL_TEXTURE0+j);uv[j]=array(GL_TEXTURE_COORD_ARRAY,GL_TEXTURE_COORD_ARRAY_POINTER,GL_TEXTURE_COORD_ARRAY_SIZE,GL_TEXTURE_COORD_ARRAY_TYPE,GL_TEXTURE_COORD_ARRAY_STRIDE,GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING);}
     pClientActiveTexture(restore_client.client);demand(pos.enabled,"vertex array disabled");
-    ReadableRegion region; // Discard after this draw; the engine may subsequently release these arrays.
-    auto validate=[&](const Array&a){if(a.enabled)demand(readable(a.p,size_t(maxid)*a.stride+a.size*(a.type==GL_FLOAT?4:1),&region),"vertex memory invalid");};
-    validate(pos);validate(color);validate(normal);for(auto&a:uv)validate(a);
+    ReadableRegion local;
+    auto validate=[&](const Array&a,int attribute){if(a.enabled)demand(readable(a.p,size_t(maxid)*a.stride+a.size*(a.type==GL_FLOAT?4:1),regions?&regions->arrays[attribute]:&local),"vertex memory invalid");};
+    validate(pos,0);validate(color,1);validate(normal,2);for(int j=0;j<4;++j)validate(uv[j],3+j);
     float constant_color[4]={1,1,1,1},constant_normal[3]={0,0,1};
     if((inputs&4)&&!color.enabled)glGetFloatv(GL_CURRENT_COLOR,constant_color);
     if((inputs&2)&&!normal.enabled)glGetFloatv(GL_CURRENT_NORMAL,constant_normal);
@@ -782,10 +805,10 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
     if(!capture_start())return;
     demand(count>0&&unsigned(count)<=MAX_VERTICES&&building.vertex_count+count<=MAX_VERTICES,"vertex budget exceeded");
     demand(mode==GL_TRIANGLES||mode==GL_TRIANGLE_STRIP||mode==GL_TRIANGLE_FAN||mode==GL_LINES||mode==GL_POINTS||mode==GL_QUADS,"primitive mode unsupported");
-    const bool terrain_draw=deck_renderer&&display_settings.wide&&!display_settings.fps&&
-        current.mode==2&&capture_target&&mode==GL_TRIANGLES;
-    unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,terrain_draw);
-    read_draw_vertices(op,inputs,count,type,indices);
+    const bool compact_draw=deck_renderer&&mode==GL_TRIANGLES&&
+        (display_settings.fps||(display_settings.wide&&current.mode==2&&capture_target));
+    unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,compact_draw);
+    read_draw_vertices(op,inputs,count,type,indices,deck_renderer&&display_settings.fps?&capture_regions:nullptr);
     bool used_texture[4]={};
     for(int j=0;j<4;j++)used_texture[j]=!op.state.program&&op.state.texture[j].enabled;
     for(auto&u:op.state.uniforms)if(u.type==GL_SAMPLER_2D)used_texture[u.i[0]]=true;
@@ -853,7 +876,8 @@ struct Guard {
         glGetFloatv(GL_MODELVIEW_MATRIX,model);glGetFloatv(GL_PROJECTION_MATRIX,projection);
         for(const auto&op:f.ops)if(op.state.program&&!values.count(op.state.program)){
             unsigned inputs=127;
-            values.emplace(op.state.program,uniforms(op.state.program,inspect_inputs?&inputs:nullptr));
+            values.emplace(op.state.program,uniforms(op.state.program,inspect_inputs?&inputs:nullptr,
+                deck_renderer&&inspect_inputs&&display_settings.fps==60));
             if(inspect_inputs)vertex_inputs.emplace(op.state.program,inputs);
         }
         for(int j=0;j<4;j++){pActiveTexture(GL_TEXTURE0+j);glGetFloatv(GL_TEXTURE_MATRIX,texture[j]);}pActiveTexture(active);
@@ -892,11 +916,11 @@ static bool invert_matrix(const float*m,float*out){
 #include "native_capture.h"
 #endif
 #include "world_map_detail.h"
-#include "deck_world_bindings.h"
 #include "deck_world_pass.h"
 static void initialize_deck_bindings(){
     world_bindings::install();
     world_state::install_buffers();
+    deck_programs::install();
 }
 #include "infirmary/presentation.h"
 #include "field_blur.h"
@@ -913,8 +937,11 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
     if(!display_settings.wide){view.outer_width=0;view.horizontal=1;}
     double began=now();
-    const bool terrain_arrays=deck_renderer&&alpha==1&&!display_settings.fps&&current.mode==2&&current.layout()==2;
-    Guard guard(current,terrain_arrays);
+    // A linked program consumes the same attributes at every interpolation
+    // phase. Reflect the inputs once per replay, including on intermediate poses.
+    const bool deck_gameplay=deck_renderer&&current.layout()==current.mode&&
+        (display_settings.fps==60?gameplay_layout(current.mode):current.mode==2&&alpha==1);
+    Guard guard(current,deck_gameplay);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
     const ReplaySeedPlan seed_plan(alpha);
     field_prefix.prepare(current,alpha,widescreen&&display_settings.wide);
@@ -1044,9 +1071,9 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
     unsigned enabled_inputs=127;
     // Only the renderer can change GL state between these calls. Forget the
     // cache before the game resumes or a custom atlas touches the bindings.
-    const bool native_world=deck_renderer&&!display_settings.fps&&current.mode==2&&current.layout()==2&&!view.full_map;
+    const bool reuse_draw_state=deck_gameplay&&!view.full_map;
     const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
-    SamplerState world_samplers;
+    SamplerState replay_samplers;
     auto draw_op=[&](const Op&op){
         if(!last_draw||op.target!=last_draw->target){
             GLuint dest=op.target?replay_targets.at(op.target).fbo:target;
@@ -1064,18 +1091,18 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
             vertices=prepare(op,vertex_count);
             base=reinterpret_cast<uintptr_t>(vertices);
         }
-        const bool same_world_view=native_world&&view.outer_width&&last_draw&&
+        const bool same_scene_view=reuse_draw_state&&view.outer_width&&last_draw&&
             op.target&&op.target==last_draw->target&&!op.clear&&!last_draw->clear&&
             op.state.scissor_on==last_draw->state.scissor_on&&
             !memcmp(op.state.viewport,last_draw->state.viewport,sizeof(op.state.viewport))&&
             !memcmp(op.state.scissor,last_draw->state.scissor,sizeof(op.state.scissor))&&
             !memcmp(op.state.projection,last_draw->state.projection,sizeof(op.state.projection))&&
             view.world_map_draw(op)==view.world_map_draw(*last_draw);
-        set_state(op.state,last_draw?&last_draw->state:nullptr,view.outer_width&&!same_world_view,native_world?&world_samplers:nullptr);
+        set_state(op.state,last_draw?&last_draw->state:nullptr,view.outer_width&&!same_scene_view,reuse_draw_state?&replay_samplers:nullptr);
         if(!last_draw||memcmp(&op.raster,&last_draw->raster,sizeof(op.raster)))apply_extra(op.raster);
         last_draw=&op;
-        if(!same_world_view)view.apply(op);
-        if(atlas_draw==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;world_samplers.clear();}
+        if(!same_scene_view)view.apply(op);
+        if(atlas_draw==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;replay_samplers.clear();}
         if(op.clear){real_clear(op.clear);return;}
         // Card transitions intentionally switch between client arrays. Use
         // the packed CPU vertices for that draw and rebind the stream after it.
@@ -1086,7 +1113,13 @@ static void replay(GLuint target,float alpha,bool widescreen=false){
         const bool shared=deck_renderer&&stream&&!packed.empty()&&!card&&!op.state.program;
         // Guard reflected these linked programs in this replay. Keep first=0
         // for shaders, and submit only the arrays their executable reads.
-        const unsigned inputs=terrain_arrays&&op.state.program?guard.vertex_inputs.at(op.state.program):127;
+        // Departing geometry can refer to a program absent from the current
+        // frame. Its original full set of arrays remains a valid fallback.
+        unsigned inputs=127;
+        if(deck_gameplay&&op.state.program){
+            auto active=guard.vertex_inputs.find(op.state.program);
+            if(active!=guard.vertex_inputs.end())inputs=active->second;
+        }
         if(inputs!=enabled_inputs){
             auto toggle=[&](unsigned bit,GLenum array){
                 if(inputs&bit)glEnableClientState(array);else glDisableClientState(array);
@@ -1253,6 +1286,7 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
 }
+#include "deck_cadence.h"
 static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,double* filter_seconds=nullptr){double began=now();
     if(stride_trace::enabled&&game_mode()==2)stride_trace::present(began,alpha<0?sources:displayed_source,alpha);
     int retro_w=0,retro_h=0;
@@ -1272,6 +1306,10 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         presentation_clock.submitted(now());
     }
     BOOL result=real_swap(handle);
+    if(deck_renderer){
+        if(result&&display_settings.fps==60)deck_cadence.present(current.mode,now());
+        else deck_cadence.last_mode=0;
+    }
     if(result&&display_settings.fps_counter)fps_counter::presented(now());
     if(filtered){
         const double restore_start=filter_seconds?now():0;
@@ -1463,6 +1501,7 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
         "source %.2f/s | geometry presents %.2f/s | moved draws %u | parity pass %u fail %u | waits %u | %s\n",
         (sources-ps)/(t-last),(outputs-po)/(t-last),moving_draws,parity_ok,parity_fail,waits,can_present?"geometry":"native");
     log(line);ps=sources;po=outputs;last=t;
+    if(deck_renderer)deck_cadence.report();
     if(world_original_frames){
         snprintf(line,sizeof(line),"Deck world Original 4:3 | %.1f FPS | %u travel frames\n",
             world_original_frames/world_original_intervals,world_original_frames);
@@ -1649,12 +1688,25 @@ static BOOL WINAPI swap_hook(HDC handle){
                 replay(0,1,true);native_endpoint=true;
             }
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
-            // Only the non-wide, alpha=1 endpoint is validated. World matching
-            // constructs movement/stride metadata without modifying that image.
-            const bool early_world=mode==2&&pair&&world_readback.available();
+            // A source tick can arrive at the same time as a 60 Hz slot.
+            // Present the already validated pair before queuing the next
+            // endpoint's GPU work; doing it after the readback adds jitter.
+            if(deck_renderer&&display_settings.fps==60&&(mode==1||mode==2)&&!deck_busy_frames&&
+               pair&&was_presenting&&presentation_mode==mode&&!current.menu_edge&&!atlas_open){
+                const double time=now();
+                if(time>=next_output&&time-origin<period*1.5){
+                    present_during_wait(true);advance_output();
+                }
+            }
+            // Field scroll and actor matching change intermediate poses only.
+            // Submit the current endpoint first so the GPU can validate it
+            // while the CPU matches the pair. Battle depth can change during
+            // matching and must still be validated afterwards.
+            const bool early_samples=pair&&(mode==2||(deck_renderer&&display_settings.fps==60&&mode==1))&&
+                world_readback.available();
             bool queued_world=false;
             GLenum submit_error=GL_NO_ERROR;
-            if(early_world){
+            if(early_samples){
                 const double began=now();
                 submit_parity_samples(0,&world_parity_times);
                 submit_error=glGetError();
@@ -1677,8 +1729,8 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(!deck_busy_frames&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
                 present_reason=9;qa_stage(9);present_during_wait(true);advance_output();}
             qa_stage(10);phase=now();
-            const bool valid=early_world?collect_parity(submit_error,queued_world):parity();
-            if(early_world){world_parity_times.collect+=now()-phase;++world_parity_times.count;}
+            const bool valid=early_samples?collect_parity(submit_error,queued_world):parity();
+            if(early_samples){world_parity_times.collect+=now()-phase;++world_parity_times.count;}
             if(valid){
                 parity_ok++;
                 can_present=pair&&(moving_draws>0||matched_candidates>0||(mode==6&&menu_pairs>0)||(was_presenting&&presentation_mode==mode));
@@ -1777,11 +1829,25 @@ static BOOL WINAPI retro_only_swap(HDC handle){
     if(filtered)retro_display::end_window(result!=FALSE,false,w,h);
     return result;
 }
+// The native renderer cannot submit new drawing on this thread until its
+// sleep/wait returns. All intermediate presents in that wait can restore
+// from the same original color, depth and stencil image.
+struct DeckIdleBackup {
+    static inline thread_local DeckIdleBackup* active=nullptr;
+    DeckIdleBackup* parent=active;
+    bool saved=false;
+    DeckIdleBackup(){if(deck_renderer&&display_settings.fps==60)active=this;}
+    ~DeckIdleBackup(){active=parent;}
+};
 static void present_during_wait(bool force_previous){
     // Snapshot and restore the entire native BACK buffer (including depth),
     // so extra swaps never become input to incremental game rendering.
     const double started=now();
-    resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());
+    auto window=DeckIdleBackup::active;
+    if(!window||!window->saved){
+        resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());
+        if(window)window->saved=true;
+    }
     try{float alpha=replay_presentation(0,force_previous);timed_swap(dc,alpha,true);outputs++;}
     catch(...){blit(backup.fbo,0,width,height,width,height,all_buffers());throw;}
     blit(backup.fbo,0,width,height,width,height,all_buffers());
@@ -1819,6 +1885,7 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         requested_wait+=requested;reclaimed_wait+=requested-duration;++frame_waits;
     }
     const double end=start+duration;
+    DeckIdleBackup idle_backup;
     const bool repeated_field=presentation_mode==1&&duration>=output_period()+2*presentation_clock.replay_cost+.0005;
     FieldPrefixCache::Window prefix_window(field_prefix,end,repeated_field);
     pacing_callback=true;
@@ -1888,6 +1955,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
        handle!=*(HANDLE*)((BYTE*)engine+0x1c94680))return real_wait(handle,timeout);
     waits++;present_reason=8;qa_stage(8);double start=now();
     const double end=start+timeout*.001;
+    DeckIdleBackup idle_backup;
     auto remaining_ms=[&]()->DWORD{return timeout==INFINITE?INFINITE:
         (DWORD)std::max(0.,std::ceil((end-now())*1000.));};
     if(output_timer){
@@ -1931,6 +1999,7 @@ static void forget_deleted_context(){
     retro_display::forget();
     deck_busy_frames=0;deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
+    deck_cadence={};
     world_readback={};
     vertex_policy={};
     field_prefix={};vertex_stream=0;

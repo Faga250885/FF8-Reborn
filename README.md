@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.7/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.8/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **Steam Deck is experimental.** Preview 7 reduces the CPU time spent drawing distant terrain with **Original** frame rate and **Widescreen**. The renderer reuses OpenGL state across terrain draws and does fewer memory checks when projecting the landscape. Sustained frame rate at the horizon still needs measurement on a physical Deck.
+> **Steam Deck is experimental.** Preview 8 targets **60 FPS** in battles, world travel and prerendered fields. **Original** remains the default. A player reported a steady 31 FPS at the widescreen world-map horizon with preview 7 in Original mode. Sustained 60 FPS on a physical Deck still needs verification.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 60 or 120 FPS, widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -23,16 +23,18 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Steam Deck (SteamOS, experimental)
 
+**60 FPS** draws intermediate positions between original game updates. In a 15 FPS battle this allows up to three extra images per update, while the game keeps its combat timing. Scene cuts and unsupported poses can hold at the native frame. The game-folder log records successful swaps per second and gaps over 25 ms separately for fields, battles and the world map.
+
 **Galbadia horizon test at 1280 × 800 on Windows.** Median draw time across five runs of the same recorded view was 12.03 ms with preview 6 widescreen, 2.54 ms with preview 7 widescreen and 1.46 ms in 4:3. Five travel views matched the previous widescreen image pixel for pixel. These timings cover drawing the recorded scene. In-game FPS on Steam Deck also depends on simulation, frame pacing and its graphics driver.
 
 The LCD and OLED editions offer **Original** (the default) and **60 FPS**. With **Original + Widescreen**, the mod checks the world-map layout when you enter it or the view changes. During ordinary travel the game then draws the wider view in a single pass. The game-folder file `FF8_geometry.log` records frame rate and rendering times.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.7/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.8/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.7/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.3.2-deck.8/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 

@@ -14,7 +14,7 @@ struct TopologyRef {unsigned op,vertex,node;};
 struct Topology {std::vector<TopologyPoint> points;std::vector<TopologyRef> refs;std::vector<std::pair<unsigned,uint64_t>> faces;std::vector<unsigned> offsets;};
 static Topology topology_points(const Frame&frame,const std::vector<Primitive>&tris){
     Topology result;auto&points=result.points;points.reserve(tris.size());result.refs.reserve(tris.size()*3);
-    std::unordered_map<uint64_t,unsigned> lookup;lookup.reserve(tris.size());
+    PointIndex lookup(tris.size()*3);
     std::vector<uint64_t> states;states.reserve(frame.ops.size());
     for(const auto&op:frame.ops){uint64_t key=hash(1469598103934665603ULL,&op.target,sizeof(op.target));
         key=hash(key,op.state.projection,sizeof(op.state.projection));states.push_back(hash(key,op.state.viewport,sizeof(op.state.viewport)));}
@@ -24,9 +24,8 @@ static Topology topology_points(const Frame&frame,const std::vector<Primitive>&t
         uint64_t state=states[tri.op];
         for(unsigned v=0;v<3;v++){const auto&p=op.vertices[tri.start+v].p;if(p[3]<=0||p[3]>=.1f)continue;
             float xyw[]={p[0]==0?0:p[0],p[1]==0?0:p[1],p[3]};uint64_t key=hash(state,xyw,sizeof(xyw));
-            auto found=lookup.find(key);unsigned n;
-            if(found==lookup.end()){n=(unsigned)points.size();lookup.emplace(key,n);points.emplace_back();memcpy(points.back().position.data(),p,sizeof(p));}
-            else n=found->second;
+            const unsigned n=lookup.node(key,static_cast<unsigned>(points.size()));
+            if(n==points.size()){points.emplace_back();memcpy(points.back().position.data(),p,sizeof(p));}
             uint64_t face=hash(tri.key,&v,sizeof(v));auto&point=points[n];point.sum+=face;point.xors^=face;point.count++;
             result.refs.push_back({tri.op,tri.start+v,n});
             result.faces.emplace_back(n,face);
@@ -46,16 +45,19 @@ static void anchor_vertex_topology(const std::vector<Primitive>&old,const std::v
     const auto& before_topology=reuse_field?*previous.match_input->field_topology:previous_topology;
     auto after_topology=topology_points(current,cur);
     const auto& before=before_topology.points;auto&after=after_topology.points;
-    std::unordered_map<uint64_t,int> a,b;a.reserve(before.size());b.reserve(after.size());
-    for(unsigned i=0;i<before.size();i++){auto result=a.emplace(before[i].signature,(int)i);if(!result.second)result.first->second=-1;}
-    for(unsigned i=0;i<after.size();i++){auto result=b.emplace(after[i].signature,(int)i);if(!result.second)result.first->second=-1;}
-    for(const auto&entry:b){if(entry.second<0)continue;auto found=a.find(entry.first);if(found==a.end()||found->second<0)continue;
-        const auto&source=before[found->second];auto&dest=after[entry.second];
+    PointIndex a(before.size()),b(after.size());
+    for(unsigned i=0;i<before.size();i++){auto& id=a.entry(before[i].signature);id=id?UINT_MAX:i+1;}
+    for(unsigned i=0;i<after.size();i++){auto& id=b.entry(after[i].signature);id=id?UINT_MAX:i+1;}
+    for(auto& dest:after){
+        if(b.entry(dest.signature)==UINT_MAX)continue;
+        const unsigned id=a.entry(dest.signature);
+        if(!id||id==UINT_MAX)continue;
+        const auto&source=before[id-1];
         if(source.count<2||source.count!=dest.count||source.sum!=dest.sum||source.xors!=dest.xors)continue;
         float predicted[4];camera_predict(dest.position.data(),predicted);
         double radius=1,delta=0;for(int k=0;k<2;k++){radius=std::max(radius,std::max(fabs(double(source.position[k])),fabs(double(predicted[k]))));delta=std::max(delta,fabs(double(source.position[k])-predicted[k]));}
         if(delta>std::max(32.,radius*.35)||fabs(std::log(double(source.position[3])/predicted[3]))>.7)continue;
-        topology_anchors++;dest.prior=found->second;
+        topology_anchors++;dest.prior=int(id-1);
     }
 #ifdef GEO_AUTOTEST
     if(partial_topology_enabled){
