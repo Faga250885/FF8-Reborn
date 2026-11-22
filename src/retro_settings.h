@@ -9,7 +9,11 @@ struct RetroSettings {
     int visible_lines(int active_rows)const{
         return ps1_raster?(lines*active_rows+120)/240:lines;
     }
-    static constexpr RetroSettings recommended(){return {2,320,100,20,20,8,70,40};}
+    static constexpr RetroSettings with_blur(RetroSettings filter,int strength){
+        filter.motion_blur=strength;
+        return filter;
+    }
+    static constexpr RetroSettings recommended(){return with_blur({2,320,100,20,20,8,70,40},20);}
 
     bool active() const {
         return (mode==1 || mode==2) &&

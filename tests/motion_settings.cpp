@@ -9,99 +9,131 @@ using namespace retro_panel;
 int main(){
     wchar_t folder[MAX_PATH],path[MAX_PATH];
     assert(GetTempPathW(MAX_PATH,folder)&&GetTempFileNameW(folder,L"f8m",0,path));
-    assert(number(path,L"Display",L"FPS",deck_renderer?30:60));
-    assert(number(path,L"Retro",L"Selected",8));
+    const int fps=deck_renderer?30:60;
+    assert(number(path,L"Display",L"FPS",fps));
     auto& s=display_settings.retro;
-    display_settings.load(path);
-    assert(s.motion_blur==0);
-    assert(number(path,L"Display",L"MotionBlur3D",15));
-    assert(number(path,L"Display",L"MotionBlurBackground",5));
-    assert(number(path,L"Display",L"CRTPersistence",25));
-    display_settings.load(path);
-    assert(s.motion_blur==30);
-
+    auto read=[&](){display_settings.load(path);};
+    auto key=[&](UINT k){handle_key(k,false,path,s);};
     Pad pad;
     ULONGLONG tick=0;
-    auto tap=[&](WORD buttons){
-        pad_input(pad,0,buttons,++tick,path,s);
+    auto tap=[&](WORD held){
+        pad_input(pad,0,held,++tick,path,s);
         pad_input(pad,0,0,++tick,path,s);
     };
-    auto key=[&](UINT k){handle_key(k,false,path,s);};
     auto go=[&](Row id){
         for(int i=0;i<visible_rows&&selected()!=id;++i)tap(XINPUT_GAMEPAD_DPAD_DOWN);
         assert(selected()==id);
     };
+    auto read_int=[&](const wchar_t* group,const wchar_t* name){
+        return int(GetPrivateProfileIntW(group,name,UINT_MAX,path));
+    };
+    constexpr int strengths[]={0,0,30,10,20,30,10,10,20,10,20,40};
+    static_assert(std::size(strengths)==profile_count);
+    read();
+    assert(s.motion_blur==20);
     tap(XINPUT_GAMEPAD_START|XINPUT_GAMEPAD_BACK);
     assert(open&&selected()==Profile&&active_profile==8);
-    assert(visual_index(Profile)<visual_index(MotionBlur));
-    assert(retro_panel_draw::row_top(MotionBlur,true)-retro_panel_draw::row_top(Edges,true)==retro_panel_draw::row_height);
-
-    // Migrated settings belong only to the profile active at upgrade.
+    for(int i=0;i<profile_count;++i){
+        key(VK_RIGHT);
+        assert(s.motion_blur==strengths[active_profile]&&selected()==Profile);
+        RetroSettings before=s;
+        read();
+        assert(same_filter(s,before));
+    }
+    key(VK_F8);
+    // A factory selection saved by deck.6 cached zero in the live section.
+    assert(number(path,L"Retro",L"MotionBlur",0));
+    read();
+    assert(s.motion_blur==20);
+    // deck.5 stored a global blur. Carry it only into the active filter.
+    assert(WritePrivateProfileStringW(L"Retro",L"MotionBlur",nullptr,path));
+    assert(number(path,L"Display",L"MotionBlur3D",15));
+    assert(number(path,L"Display",L"MotionBlurBackground",5));
+    assert(number(path,L"Display",L"CRTPersistence",25));
+    read();
+    assert(s.motion_blur==30);
+    key(VK_F8);
     key(VK_RIGHT);
-    assert(s.motion_blur==0&&active_profile==9);
+    assert(s.motion_blur==10);
     key(VK_LEFT);
     assert(s.motion_blur==30&&active_profile==8);
+    assert(read_int(section(8).c_str(),L"MotionBlur")==30);
+
+    // Both keyboard and D-pad change the profile immediately from a preview.
     go(MotionBlur);
     tap(XINPUT_GAMEPAD_DPAD_RIGHT|XINPUT_GAMEPAD_RIGHT_SHOULDER);
     handle_key(VK_RIGHT,true,path,s);
+    assert(dirty&&s.motion_blur==50);
+    go(Profile);
+    tap(XINPUT_GAMEPAD_DPAD_RIGHT);
+    assert(selected()==Profile&&active_profile==9&&!dirty&&s.motion_blur==10);
+    go(Scan);
+    key(VK_LEFT);
+    assert(dirty);
+    go(Profile);
+    key(VK_LEFT);
+    assert(selected()==Profile&&active_profile==8&&!dirty&&s.motion_blur==30);
+    assert(read_int(section(custom).c_str(),L"Mode")==-1);
+    go(MotionBlur);
+    key(VK_LEFT);
     key(VK_RIGHT);
-    assert(dirty&&s.motion_blur==60);
-    tap(XINPUT_GAMEPAD_B);
-    assert(!open&&s.motion_blur==30);
+    assert(!dirty);
+    key(VK_RIGHT);
+    tap(XINPUT_GAMEPAD_START|XINPUT_GAMEPAD_BACK);
+    assert(!open&&!dirty&&s.motion_blur==30);
+    read();
+    assert(s.motion_blur==30&&read_int(L"Retro",L"Selected")==8);
 
+    // Only an explicit save can create or replace the custom profile.
     key(VK_F8);
     go(MotionBlur);
-    for(int i=0;i<15;i++)key(VK_RIGHT);
+    for(int i=0;i<12;++i)key(VK_RIGHT);
     assert(s.motion_blur==100);
-    for(int i=0;i<14;i++)key(VK_LEFT);
-    assert(s.motion_blur==0);
-    key(VK_RIGHT);
-    key(VK_F8);
-    assert(open&&selected()==SaveCustom);
+    for(int i=0;i<12;++i)key(VK_LEFT);
+    assert(dirty&&s.motion_blur==0);
+    go(SaveCustom);
     assert(SetFileAttributesW(path,FILE_ATTRIBUTE_READONLY));
     tap(XINPUT_GAMEPAD_A);
     assert(save_failed()&&dirty&&active_profile==8);
-    assert(GetPrivateProfileIntW(L"Retro",L"MotionBlur",99,path)==30);
+    assert(read_int(L"Retro",L"MotionBlur")==30);
     assert(SetFileAttributesW(path,FILE_ATTRIBUTE_NORMAL));
     tap(XINPUT_GAMEPAD_A);
-    assert(!save_failed()&&!dirty&&active_profile==custom&&custom_base==8);
+    assert(!dirty&&!save_failed()&&active_profile==custom&&custom_base==8);
     key(VK_F8);
-    display_settings.load(path);
-    assert(s.motion_blur==10&&display_settings.fps==(deck_renderer?30:60));
+    read();
+    assert(s.motion_blur==0&&display_settings.fps==fps);
+
     key(VK_F8);
-    assert(active_profile==custom);
+    go(MotionBlur);
     key(VK_RIGHT);
-    assert(active_profile==0&&s.motion_blur==0);
-    // Blur by itself remains accessible with the spatial filter set to Off.
-    key(VK_DOWN);
-    assert(selected()==MotionBlur);
+    go(Profile);
     key(VK_RIGHT);
-    assert(s.motion_blur==10&&!s.active());
-    key(VK_ESCAPE);
-    assert(s.motion_blur==0);
-    key(VK_F8);
-    key(VK_LEFT);
-    assert(active_profile==custom&&s.motion_blur==10);
+    assert(active_profile==0&&s.motion_blur==0&&selected()==Profile);
+    tap(XINPUT_GAMEPAD_DPAD_LEFT);
+    assert(active_profile==custom&&s.motion_blur==0);
     go(Restore);
-    tap(XINPUT_GAMEPAD_A);
-    assert(!dirty&&s.motion_blur==0&&selected()==Profile);
+    key(VK_RETURN);
+    assert(dirty&&selected()==Profile&&s.motion_blur==20);
+    assert(read_int(section(custom).c_str(),L"MotionBlur")==0);
+    tap(XINPUT_GAMEPAD_B);
+    assert(!open&&s.motion_blur==0);
+
+    key(VK_F8);
+    go(Restore);
+    key(VK_RETURN);
+    go(SaveCustom);
+    key(VK_RETURN);
+    key(VK_F8);
+    read();
+    assert(s.motion_blur==20&&read_int(section(custom).c_str(),L"MotionBlur")==20);
+    // Explicit old factory slot overrides survive even when the saved value is zero.
+    key(VK_F8);
     while(active_profile!=8)key(VK_LEFT);
-    assert(s.motion_blur==30);
-    go(Restore);
-    tap(XINPUT_GAMEPAD_A);
     key(VK_F8);
-    display_settings.load(path);
-    assert(s.motion_blur==0);
-    // Explicit profile values, including zero, win over legacy global values.
-    assert(number(path,L"Retro",L"MotionBlur",103));
-    display_settings.load(path);
-    assert(s.motion_blur==100);
-    assert(number(path,L"Retro",L"MotionBlur",24));
-    display_settings.load(path);
-    assert(s.motion_blur==20);
-    assert(number(path,L"Retro",L"MotionBlur",-25));
-    display_settings.load(path);
+    assert(number(path,section(8).c_str(),L"MotionBlur",0));
+    assert(number(path,L"Retro",L"MotionBlur",0));
+    read();
     assert(s.motion_blur==0);
     assert(DeleteFileW(path));
-    puts("Per-filter motion blur: migration, steps of ten, controller, custom save, cancel, restore and reload OK");
+    puts("Factory motion blur values, upgrade, preview navigation, manual save, discard, restore and restart OK");
 }

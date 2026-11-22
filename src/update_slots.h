@@ -184,9 +184,11 @@ inline void write_atomic(const std::wstring& path,const void* data,DWORD length,
     cleanup.committed=true;
 }
 inline bool stage(HMODULE self,const char* channel,unsigned current_build,unsigned target_build,
-                  const std::string& expected,const std::vector<unsigned char>& payload){
+                  const std::string& expected,const std::vector<unsigned char>& payload,
+                  void (*on_verified)()=nullptr){
     check(target_build>current_build&&valid_hash(expected)&&valid_payload(payload.data(),payload.size(),channel,target_build)&&
         sha256(payload.data(),payload.size())==expected,"The downloaded update did not pass verification.");
+    if(on_verified)on_verified();
     Paths paths(self);
     Handle mutex(CreateMutexW(nullptr,FALSE,L"Local\\FF8RemasteredHorizonteInstaller"));
     const DWORD lock=mutex.valid()?WaitForSingleObject(mutex.value,0):WAIT_FAILED;

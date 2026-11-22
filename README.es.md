@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **Steam Deck sigue en fase experimental.** Un jugador confirmó 30 FPS estables en su Deck con la versión 1.4.0-deck.4. La versión 1.4.0-deck.6 añade un único control de desenfoque de movimiento a los filtros de pantalla. Falta confirmar el rendimiento con el efecto activado en una Deck física.
+> **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. **El próximo objetivo son los 60 FPS.** El desarrollo continuará a medida que haya tiempo disponible. Todavía no hay fecha para ese modo.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 60 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas. El menú y el instalador están en inglés.
 
@@ -32,24 +32,16 @@ Los menús y las cinemáticas conservan su cadencia original. En cambios de plan
 
 En una batalla grabada de 42 segundos a 1280 × 800 en Windows, la versión 1.4.0-deck.4 envió 30,00 cuadros/s. Al subir a 53 ms el trabajo simulado por cada ciclo de combate, envió 29,51 cuadros/s y el percentil 99 del intervalo entre imágenes llegó a 52,39 ms.
 
-### Desenfoque de movimiento en Steam Deck
-
-Pulsa **View + Menu** a la vez (o **F8** en el teclado) y entra en **Screen filter → Motion blur**. Con izquierda o derecha puedes ajustar la intensidad mientras juegas, de **Off** a **100 %** en pasos de **10 puntos**. El mismo control funciona en ciudades, mapamundi y batallas. Cuanto más alta es la intensidad, más visible es la estela al moverse un personaje o al girar la cámara.
-
-El desenfoque viene apagado en todos los perfiles de fábrica. Para conservar una intensidad, guárdala como cualquier otro cambio del filtro. **Create a custom copy** guarda tu primer filtro personalizado. Si estás editando esa copia, elige **Save my changes**. **Restore filter defaults** recupera los ajustes originales del perfil base.
-
-Al actualizar desde **deck.5**, el último filtro que usaste toma el mayor de los tres ajustes de movimiento anteriores, redondeado a la decena más cercana. Por ejemplo, si tenías la persistencia CRT al 25 %, ese filtro empezará con el **desenfoque al 30 %**. También puedes usar el desenfoque con el filtro **Off** para conservar los colores originales del juego.
-
 ### Instalar o actualizar en Steam Deck
 
 Si tienes la versión **1.4.0-deck.1** o posterior, pulsa **View + Menu → Check for updates → Download update**. Cuando aparezca **Update ready**, cierra FFVIII y su lanzador y vuelve a abrir el juego. Si ya tenías seleccionado **Original**, se conserva. Para instalar por primera vez, sigue estos pasos.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck.pyz).
 
 Para usar solo los filtros, abre el panel del mod con **Vista + Menú**. Selecciona **Original** en **Frame rate**, **Original (4:3)** en **Aspect ratio** y **Original** en **Full-screen map**. Después elige el filtro gráfico que prefieras.
 
@@ -78,6 +70,8 @@ FF8 Reborn aún no tiene una GPU mínima medida para 60 o 120 FPS. A 120 FPS, la
 
 En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor del juego está configurado a 60 Hz o menos, y a **120 FPS** si Windows informa más de 60 Hz. Si Windows no informa la frecuencia, usa 60 FPS. Puedes elegir otra cadencia en el menú.
 
+Windows 1.4.1 aprovecha una mejora de Steam Deck que evita repetir ajustes de OpenGL al dibujar el juego. En nueve grabaciones de ciudades, mapamundi y batallas, los 324 cuadros comparados coincidieron en color, profundidad y esténcil. En una batalla a 1080p con una GeForce RTX 5070, el tiempo mediano para volver a dibujar un cuadro con un búfer de vértices bajó de 2,95 a 2,73 ms. La prueba de batalla a 60 FPS mantuvo su objetivo. A 120 FPS, las batallas usan la ruta de renderizado anterior porque dio un ritmo más estable en pruebas repetidas.
+
 ## Opciones
 
 | Opción del menú | Para qué sirve |
@@ -87,7 +81,7 @@ En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor d
 | Aspect ratio | **Widescreen** amplía la cámara de batallas y mapamundi. **Original (4:3)** recupera el encuadre original. |
 | Blurred sidebars | Disponible en todos los escenarios prerenderizados en pantalla ancha. Rellena los márgenes con colores de la escena, incluidos los personajes cerca de los bordes. Deling se muestra como ejemplo. |
 | Full-screen map | Alterna entre el mapa **Original** y el atlas ilustrado **Reborn**. El mapa completo queda centrado y conserva sus proporciones. |
-| Screen filter | Permite elegir un perfil y ajustar resolución, pixelado, líneas de barrido, máscara RGB, resplandor, tramado PS1 y suavizado de bordes. Los controles disponibles dependen del tipo de filtro. |
+| Screen filter | Permite elegir un perfil y ajustar resolución, pixelado, líneas de barrido, máscara RGB, resplandor, tramado PS1, suavizado de bordes y desenfoque de movimiento. Los controles disponibles dependen del tipo de filtro. |
 
 ## Filtros gráficos
 
@@ -105,6 +99,18 @@ Tres perfiles de televisor simulan cómo el haz ilumina los fósforos del tubo. 
 
 También puedes elegir **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1 Backgrounds**, **PS1 · CRT TV**, **PS1 Sharp** u **Off**.
 
+### Desenfoque de movimiento por filtro
+
+En **Screen filter → Motion blur**, usa izquierda o derecha para ajustar la intensidad en vivo de **Off** a **100 %** en pasos de 10. El efecto sigue a los personajes y los giros de cámara en ciudades, mapamundi y batallas. Estos valores dan a cada filtro su aspecto inicial.
+
+| Desenfoque de fábrica | Filtros |
+| --- | --- |
+| Apagado | Off, PS1 Digital |
+| 10 % | PS1 · RGB Monitor, PS1 Sharp, HD Blend, Sony Trinitron KV-27FS100 |
+| 20 % | PS1 Backgrounds, FF8 Reborn (recommended), RCA Precision In-Line |
+| 30 % | Soft CRT, PS1 · CRT TV |
+| 40 % | RCA CT-100 |
+
 ## Menú y atajos
 
 | Acción | Teclado | Mando XInput / Steam Input |
@@ -116,13 +122,15 @@ También puedes elegir **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **
 | Ejecutar la acción seleccionada | Intro | A |
 | Descartar la edición del filtro y cerrar | Esc | B |
 
-Las opciones de pantalla se guardan al cambiarlas. Los filtros tienen sus propios perfiles. Para crear el tuyo, elige un perfil, modifícalo y pulsa **Create a custom copy**. Si ya tienes una copia, **Save to my custom profile** sustituye ese único perfil personal. Al editarlo, usa **Save my changes**. **Restore filter defaults** aparece cuando los valores difieren de los originales del filtro base. El juego recuerda el último perfil elegido.
+Las opciones de pantalla se guardan al cambiarlas. Al editar un filtro, el perfil aparece como **Custom (preview)** y puedes ver el cambio de inmediato. Para descartar la prueba y elegir otro filtro, sitúate en **Profile** y pulsa izquierda o derecha. El cursor permanece en **Profile**. Cerrar el panel también descarta las ediciones pendientes. El juego recuerda el último perfil seleccionado.
+
+Para conservar los cambios, elige **Create a custom copy**, **Save to my custom profile** o **Save my changes**, según tengas ya una copia personal. **Restore filter defaults** te permite probar los valores de fábrica del filtro base antes de decidir si quieres guardarlos.
 
 [Ver el panel dentro del juego](docs/GALERIA.md#frame-rate).
 
 ## Actualizar, desinstalar y resolver problemas
 
-- **Actualizar desde el juego.** Abre el panel con **F8** (teclado) o **Vista + Menú** (mando). Selecciona **Check for updates** con **Intro** o **A**. Cuando haya una versión nueva, pulsa **Download update**. Puedes seguir jugando. Cuando aparezca **Update ready**, cierra FFVIII y vuelve a abrirlo desde Steam para usar la actualización. Se conservan tus preferencias y partidas.
+- **Actualizar desde el juego.** Abre el panel con **F8** o **View + Menu**. Elige **Check for updates** y después **Download update**. La barra muestra el porcentaje recibido cuando GitHub comunica el tamaño. En caso contrario, muestra actividad y la cantidad descargada. A continuación, el panel indica que está verificando y guardando la actualización. Cuando aparezca **Update ready**, cierra el juego y el lanzador y vuelve a abrir FFVIII. La barra estará disponible en las siguientes descargas una vez instalado Windows 1.4.1 o Deck 1.4.0-deck.7.
 - **Primera actualización desde una versión anterior.** Instala una vez la versión 1.4.0 de Windows o la 1.4.0-deck.1 de Steam Deck (o posterior) para añadir la opción al menú. Las siguientes actualizaciones usan automáticamente el canal estable de Windows o el experimental de Steam Deck. En Deck funciona desde el modo Juego. La consulta necesita internet y la descarga necesita permiso de escritura en la carpeta del juego. El instalador también sirve para reparaciones.
 - **Desinstalar.** Cierra FFVIII y el lanzador, selecciona la carpeta del juego en el instalador y pulsa **Uninstall**. Se verifica y restaura la DLL original. La instalación no modifica las partidas.
 - **F8 no responde.** Dale el foco a la ventana del juego y ábrelo desde la cuenta de Steam propietaria. En el mando pulsa ambos botones a la vez. Si tu mando no ofrece XInput, usa una distribución de mando en Steam Input.

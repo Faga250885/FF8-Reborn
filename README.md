@@ -1,9 +1,9 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **Steam Deck is experimental.** A player confirmed stable 30 FPS on their Deck with version 1.4.0-deck.4. Version 1.4.0-deck.6 adds one motion blur setting to screen filters. Its performance still needs confirmation on a physical Deck.
+> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. **60 FPS is the next goal.** Development continues as time allows. There is no release date for that mode.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 FPS on Steam Deck and 60 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -32,24 +32,16 @@ Menus and movies keep their native timing. Scene changes and battle frames that 
 
 In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 submitted 30.00 frames/s. With simulated game work raised to 53 ms per battle update, it submitted 29.51 frames/s and the 99th-percentile interval reached 52.39 ms.
 
-### Motion blur on Steam Deck
-
-Press **View + Menu** together (or **F8** on a keyboard) and open **Screen filter → Motion blur**. Use Left/Right to adjust it live in steps of **10%**, from **Off** to **100%**. The same slider controls motion blur in towns, on the world map and in battles. Higher values leave a more visible trail when characters or the camera move.
-
-Motion blur starts at **Off** in every factory preset. To keep a value, use the same save action you use for other filter edits. **Create a custom copy** saves your first custom filter. When editing that copy, choose **Save my changes**. **Restore filter defaults** returns the base preset to its original settings.
-
-When upgrading from **deck.5**, the filter you last selected inherits the highest of your three old motion settings, rounded to the nearest 10%. For example, if you used 25% CRT persistence, that filter starts at **30% motion blur**. You can also use motion blur with the **Off** filter for the game's original colors.
-
 ### Install or update on Steam Deck
 
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.6/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.7/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
@@ -78,6 +70,8 @@ FF8 Reborn has no measured minimum GPU for 60 or 120 FPS. The 120 FPS target giv
 
 On a fresh Windows install, the game targets **60 FPS** when its monitor runs at 60 Hz or below and **120 FPS** when Windows reports more than 60 Hz. If the refresh rate is unavailable it defaults to 60 FPS. Choose another target in the live menu at any time.
 
+Windows 1.4.1 uses a Steam Deck optimization that skips redundant OpenGL state changes when redrawing gameplay. Across nine recorded field, world-map and battle scenes, all 324 compared images matched in color, depth and stencil. In one 1080p battle on a GeForce RTX 5070, the median time to redraw a frame with a vertex buffer fell from 2.95 ms to 2.73 ms. The 60 FPS battle replay held its target. Battles at 120 FPS use the previous rendering path because it delivered steadier timing in repeated tests.
+
 ## What you can change
 
 | Setting | What it does |
@@ -87,7 +81,7 @@ On a fresh Windows install, the game targets **60 FPS** when its monitor runs at
 | Aspect ratio | **Widescreen** expands the camera in battle and on the world map. **Original (4:3)** restores the original framing. |
 | Blurred sidebars | Available across all prerendered fields in widescreen. Fills the side margins with diffuse colors from the current scene, including characters near the edges. Deling City is shown as an example. |
 | Full-screen map | Choose the **Original** map or the illustrated **Reborn** atlas. The full map is centered and keeps its proportions. |
-| Screen filter | Choose a preset or edit resolution, pixelation, scanlines, RGB mask, glow, PS1 dithering and edge smoothing. Available controls depend on filter type. |
+| Screen filter | Choose a preset or edit resolution, pixelation, scanlines, RGB mask, glow, PS1 dithering, edge smoothing and motion blur. Available controls depend on filter type. |
 
 ## Screen filters
 
@@ -105,6 +99,18 @@ Three TV profiles model how an electron beam lights the tube. **Sony Trinitron K
 
 Other looks include **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1 Backgrounds**, **PS1 · CRT TV**, **PS1 Sharp** and **Off**.
 
+### Motion blur by filter
+
+Under **Screen filter → Motion blur**, use Left/Right to adjust the strength live from **Off** to **100%** in steps of 10. The effect follows moving characters and camera pans in towns, on the world map and in battle. These values tune the look of each preset.
+
+| Factory motion blur | Filter presets |
+| --- | --- |
+| Off | Off, PS1 Digital |
+| 10% | PS1 · RGB Monitor, PS1 Sharp, HD Blend, Sony Trinitron KV-27FS100 |
+| 20% | PS1 Backgrounds, FF8 Reborn (recommended), RCA Precision In-Line |
+| 30% | Soft CRT, PS1 · CRT TV |
+| 40% | RCA CT-100 |
+
 ## Live menu and controls
 
 | Action | Keyboard | XInput controller / Steam Input |
@@ -116,13 +122,15 @@ Other looks include **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1
 | Activate the highlighted action | Enter | A |
 | Discard unsaved filter edits and close | Esc | B |
 
-Display choices save as you adjust them. Filters have their own profiles. To make a personal filter, pick a starting profile, adjust it and choose **Create a custom copy**. If a copy already exists, **Save to my custom profile** replaces that one slot. While editing the saved copy, choose **Save my changes**. **Restore filter defaults** appears when the values differ from the base filter. The last selected filter is remembered.
+Display settings save as you adjust them. Editing a filter shows **Custom (preview)** and previews the change immediately. To discard the preview and try another preset, highlight **Profile** and press Left or Right. The cursor stays on **Profile**. Closing the panel also discards unsaved filter edits. The last selected profile is remembered.
+
+To keep your edits, choose **Create a custom copy**, **Save to my custom profile** or **Save my changes**, depending on whether you already have a saved copy. **Restore filter defaults** previews the base preset's values. You can test that look before deciding whether to save it.
 
 [View the in-game panel](docs/GALLERY.md#frame-rate).
 
 ## Update, uninstall and troubleshoot
 
-- **Update in-game.** Open the panel with **F8** (keyboard) or **View + Menu** (controller). Select **Check for updates** with **Enter** or **A**. When a release is available, select **Download update**. You can keep playing. After the panel shows **Update ready**, close and reopen FFVIII through Steam to use it. Your settings and saves carry over.
+- **Update in-game.** Open the panel with **F8** or **View + Menu**. Choose **Check for updates**, then **Download update**. A progress bar shows the percentage received when GitHub supplies the download size. Otherwise it shows activity and the amount received. The panel then shows verification and saving. When **Update ready** appears, close the game and launcher and reopen FFVIII. Starting with Windows 1.4.1 and Deck 1.4.0-deck.7, the installed version displays this progress during subsequent updates.
 - **First upgrade from an older release.** Install Windows 1.4.0 or Steam Deck 1.4.0-deck.1 (or newer) once to add the menu option. Future updates use the Windows stable channel or the Steam Deck experimental channel automatically. Steam Deck updates work in Gaming Mode. Checking requires internet and downloading requires write access to the game folder. The standalone installer is also available for repairs.
 - **Uninstall:** close the game and launcher, open the installer, select the game folder and click **Uninstall**. The installer verifies and restores the original DLL. Save files are not part of the installation.
 - **F8 does nothing:** give the game window focus and launch through the Steam account that owns the game. On a controller, press both buttons together. For a pad without XInput, use a Steam Input gamepad layout.

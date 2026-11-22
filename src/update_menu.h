@@ -5,6 +5,7 @@ using State=retro_panel::UpdateState;
 static std::atomic<State> state{retro_panel::update_idle};
 static SRWLOCK detail_lock=SRWLOCK_INIT;
 static wchar_t message[128]{};
+static std::atomic<unsigned> received_bytes{0},total_bytes{0};
 static HMODULE renderer=nullptr;
 static update_feed::Release offered;
 
@@ -15,6 +16,10 @@ static void say(State value,const std::wstring& text){
     state.store(value,std::memory_order_release);
 }
 static State status(){return state.load(std::memory_order_acquire);}
+static void download_bytes(unsigned& received,unsigned& total){
+    received=received_bytes.load(std::memory_order_relaxed);
+    total=total_bytes.load(std::memory_order_relaxed);
+}
 static void detail(wchar_t* out,size_t capacity){
     if(!out||!capacity)return;
     AcquireSRWLockShared(&detail_lock);
@@ -30,7 +35,7 @@ struct HttpHandle {
     HttpHandle(const HttpHandle&)=delete;
     HttpHandle& operator=(const HttpHandle&)=delete;
 };
-static std::vector<unsigned char> fetch(const wchar_t* host,const std::wstring& path,size_t limit){
+static std::vector<unsigned char> fetch(const wchar_t* host,const std::wstring& path,size_t limit,bool show_progress=false){
     HttpHandle session(WinHttpOpen(L"FF8-Reborn-Updater/1",WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0));
     if(!session.h||!WinHttpSetTimeouts(session.h,5000,8000,8000,15000))
@@ -52,6 +57,7 @@ static std::vector<unsigned char> fetch(const wchar_t* host,const std::wstring& 
     bool known_size=WinHttpQueryHeaders(request.h,WINHTTP_QUERY_CONTENT_LENGTH|WINHTTP_QUERY_FLAG_NUMBER,
         WINHTTP_HEADER_NAME_BY_INDEX,&length,&size,WINHTTP_NO_HEADER_INDEX)!=FALSE;
     if(known_size&&(!length||length>limit))throw std::runtime_error("Unexpected update size");
+    if(show_progress)total_bytes.store(known_size?length:0,std::memory_order_relaxed);
     std::vector<unsigned char> result;
     if(known_size)result.reserve(length);
     unsigned char buffer[16*1024];
@@ -62,7 +68,9 @@ static std::vector<unsigned char> fetch(const wchar_t* host,const std::wstring& 
             throw std::runtime_error("Download interrupted. Try again.");
         if(!bytes)break;
         if(bytes>limit-result.size())throw std::runtime_error("Unexpected update size");
+        if(known_size&&bytes>length-result.size())throw std::runtime_error("Invalid download length. Try again.");
         result.insert(result.end(),buffer,buffer+bytes);
+        if(show_progress)received_bytes.store(unsigned(result.size()),std::memory_order_relaxed);
     }
     if(result.empty()||(known_size&&result.size()!=length))throw std::runtime_error("Incomplete download. Try again.");
     return result;
@@ -87,8 +95,10 @@ static DWORD WINAPI work(void*){
         }else{
             const std::wstring path=L"/Faga250885/FF8-Reborn/releases/download/"+wide(offered.tag)+
                 L"/FF8-Reborn-"+wide(update_version::channel)+L".dll";
-            const auto bytes=fetch(L"github.com",path,32*1024*1024);
-            update_slots::stage(renderer,update_version::channel,update_version::build,offered.build,offered.sha256,bytes);
+            const auto bytes=fetch(L"github.com",path,32*1024*1024,true);
+            say(retro_panel::update_verifying,L"Checking the downloaded file and its checksum.");
+            update_slots::stage(renderer,update_version::channel,update_version::build,offered.build,offered.sha256,bytes,
+                [](){say(retro_panel::update_saving,L"Preparing the verified update for the next launch.");});
             say(retro_panel::update_ready,L"Reopen FFVIII to use "+wide(offered.tag)+L".");
         }
     }catch(const std::exception& error){
@@ -101,7 +111,11 @@ static DWORD WINAPI work(void*){
 }
 static void action(){
     const State before=status();
-    if(before==retro_panel::update_available)say(retro_panel::update_downloading,L"Downloading "+wide(offered.tag)+L"…");
+    if(before==retro_panel::update_available){
+        received_bytes.store(0,std::memory_order_relaxed);
+        total_bytes.store(0,std::memory_order_relaxed);
+        say(retro_panel::update_downloading,L"Downloading "+wide(offered.tag)+L"…");
+    }
     else if(before==retro_panel::update_idle||before==retro_panel::update_current||before==retro_panel::update_error)
         say(retro_panel::update_checking,L"Checking GitHub for updates…");
     else return;
@@ -115,5 +129,6 @@ static void setup(HMODULE self){
     retro_panel::update_action=action;
     retro_panel::update_status=status;
     retro_panel::update_detail=detail;
+    retro_panel::update_bytes=download_bytes;
 }
 }

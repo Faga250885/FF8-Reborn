@@ -77,7 +77,7 @@ void DisplaySettings::load(const wchar_t* path){
         const bool legacy=value==60||value==90||value==120;
         fps=value==30||legacy?30:0;
         automatic_fps=false;
-        if(legacy)retro_panel::persist(path,retro,0,-1,false,retro_panel::FPS,30);
+        if(legacy)retro_panel::persist(path,retro,0,-1,retro_panel::FPS,30);
     }else{
         automatic_fps=value!=0&&value!=60&&value!=120;
         fps=value==0||value==120?value:60;
@@ -87,6 +87,7 @@ void DisplaySettings::load(const wchar_t* path){
     field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
     fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
     retro.load(path);
+    retro_panel::update_factory_defaults(path,retro);
 }
 #ifdef GEO_NATIVE_CAPTURE
 #include "update_menu.h"
@@ -1081,7 +1082,8 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     double began=now();
     // A linked program consumes the same attributes at every interpolation
     // phase. Reflect the inputs once per replay, including on intermediate poses.
-    const bool deck_gameplay=deck_renderer&&current.layout()==current.mode&&
+    const bool gameplay=current.layout()==current.mode&&current.mode>=1&&current.mode<=3;
+    const bool deck_gameplay=deck_renderer&&gameplay&&
         ((deck_fixed_rate()&&current.mode==3)||(current.mode==2&&alpha==1));
     Guard guard(current,deck_gameplay);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
@@ -1217,7 +1219,11 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     unsigned enabled_inputs=127;
     // Only the renderer can change GL state between these calls. Forget the
     // cache before the game resumes or a custom atlas touches the bindings.
-    const bool reuse_draw_state=deck_gameplay&&!view.full_map;
+    // At 120 Hz in Windows battles the original submission path leaves more
+    // time for the 15 Hz simulation, even when a cached replay alone is cheaper.
+    const bool reuse_draw_state=!view.full_map&&(deck_renderer?deck_gameplay:
+        gameplay&&!current.menu_edge&&current.travel!=Frame::Travel::fade&&
+        (current.mode!=3||display_settings.fps!=120));
     const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
     SamplerState replay_samplers;
     auto draw_op=[&](const Op&op){
@@ -2452,7 +2458,6 @@ static DWORD WINAPI initialize(void* module){
         retro_ini_path.resize(retro_ini_path.find_last_of(L"\\/")+1);
         retro_ini_path+=L"FF8-Horizonte.ini";
         display_settings.load(retro_ini_path.c_str());
-        retro_panel::update_factory_resolution(retro_ini_path.c_str(),display_settings.retro);
     }
     char config[160];snprintf(config,sizeof(config),"Horizonte: FPS=%d Wide=%d Atlas=%d FieldSides=%d\n",display_settings.fps,display_settings.wide,display_settings.atlas,display_settings.field_sides);log(config);
     if(display_settings.retro.active())log(display_settings.retro.mode==2?"Retro CRT filter enabled\n":"Retro pixel filter enabled\n");

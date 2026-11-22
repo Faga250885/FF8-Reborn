@@ -15,10 +15,11 @@ static bool is_open(){return open;}
 static bool save_failed(){return failed;}
 static int selected(){return row;}
 enum UpdateState { update_idle, update_checking, update_current, update_available,
-                   update_downloading, update_ready, update_error };
+                   update_downloading, update_ready, update_error, update_verifying, update_saving };
 static UpdateState (*update_status)()=nullptr;
 static void (*update_action)()=nullptr;
 static void (*update_detail)(wchar_t* text,size_t capacity)=nullptr;
+static void (*update_bytes)(unsigned& received,unsigned& total)=nullptr;
 static bool update_actionable(UpdateState state){
     return state==update_idle||state==update_current||state==update_available||state==update_error;
 }
@@ -27,13 +28,17 @@ static constexpr int RetroSettings::* fields[]={
     &RetroSettings::glow,&RetroSettings::dither,&RetroSettings::edge_softness,&RetroSettings::motion_blur
 };
 static constexpr RetroSettings profiles[]={
-    {},{1,240,100,0,0,0,100,0,true},{2,320,85,35,20,10,20,0},
-    {2,240,100,52,24,4,100,8,true},{1,320,100,0,0,0,20,65},
-    {2,240,100,23,14,8,100,42,true},{1,320,80,0,0,0,30,32},{1,320,32,0,0,0,6,70,false,true},
+    {},{1,240,100,0,0,0,100,0,true},
+    RetroSettings::with_blur({2,320,85,35,20,10,20,0},30),
+    RetroSettings::with_blur({2,240,100,52,24,4,100,8,true},10),
+    RetroSettings::with_blur({1,320,100,0,0,0,20,65},20),
+    RetroSettings::with_blur({2,240,100,23,14,8,100,42,true},30),
+    RetroSettings::with_blur({1,320,80,0,0,0,30,32},10),
+    RetroSettings::with_blur({1,320,32,0,0,0,6,70,false,true},10),
     RetroSettings::recommended(),
-    {2,240,90,68,65,18,12,26,true,false,RetroSettings::aperture_grille},
-    {2,240,85,54,62,25,8,46,true,false,RetroSettings::slot_mask},
-    {2,240,80,44,70,32,6,60,true,false,RetroSettings::dot_triad}
+    RetroSettings::with_blur({2,240,90,68,65,18,12,26,true,false,RetroSettings::aperture_grille},10),
+    RetroSettings::with_blur({2,240,85,54,62,25,8,46,true,false,RetroSettings::slot_mask},20),
+    RetroSettings::with_blur({2,240,80,44,70,32,6,60,true,false,RetroSettings::dot_triad},40)
 };
 static constexpr int profile_count=sizeof(profiles)/sizeof(profiles[0]);
 enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
@@ -62,26 +67,36 @@ static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · 
     L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Sony Trinitron KV-27FS100",
     L"RCA Precision In-Line",L"RCA CT-100",L"Custom"};
 static int active_profile=8,custom_base=8;
-static bool custom_exists=false,migrate_custom=false,needs_choice=false;
+static bool custom_exists=false,migrate_custom=false;
 static int migrated_slot=-1;
 static RetroSettings slots[custom+1];
 static int base_profile(){return active_profile==custom?custom_base:active_profile;}
-static bool can_restore(const RetroSettings& s){
-    const auto& original=profiles[base_profile()];
-    if(s.mode!=original.mode||s.ps1_raster!=original.ps1_raster||s.phosphors!=original.phosphors)return true;
-    if(s.tv_screen!=original.tv_screen||s.phosphor_strength!=original.phosphor_strength||s.phosphor_sharpness!=original.phosphor_sharpness)return true;
-    for(auto field:fields)if(s.*field!=original.*field)return true;
-    return false;
+static bool same_filter(const RetroSettings& a,const RetroSettings& b){
+    if(a.mode!=b.mode||a.ps1_raster!=b.ps1_raster||a.hd_blend!=b.hd_blend||a.phosphors!=b.phosphors)return false;
+    if(a.tv_screen!=b.tv_screen||a.phosphor_strength!=b.phosphor_strength||a.phosphor_sharpness!=b.phosphor_sharpness)return false;
+    for(auto field:fields)if(a.*field!=b.*field)return false;
+    return true;
 }
+static bool can_restore(const RetroSettings& s){return !same_filter(s,profiles[base_profile()]);}
 // Custom has always been stored in slot 9. New factory profiles follow it on disk.
 static int disk_id(int id){return id==custom?9:id>=9?id+1:id;}
 static int menu_id(int id){return id==9?custom:id>9?id-1:id;}
 static std::wstring section(int id){return L"RetroPerfil"+std::to_wstring(disk_id(id));}
-static void update_factory_resolution(const wchar_t* path,RetroSettings& live){
+static int selected_profile(const wchar_t* path,const RetroSettings& live){
     const int id=menu_id(int(GetPrivateProfileIntW(L"Retro",L"Selected",UINT_MAX,path)));
+    return id>=0&&id<=custom?id:std::min(custom,preset(live));
+}
+static void update_factory_defaults(const wchar_t* path,RetroSettings& live){
+    const int id=selected_profile(path,live);
+    if(id==custom)return;
+    const auto slot=section(id);
+    // Browsing a factory filter in deck.6 cached its old default (zero) in
+    // Retro. A separate slot identifies an explicitly saved blur override.
+    if(!live.motion_blur&&GetPrivateProfileIntW(slot.c_str(),L"MotionBlur",UINT_MAX,path)==UINT_MAX)
+        live.motion_blur=profiles[id].motion_blur;
     if(id!=2&&id!=4&&id!=6&&id!=7)return;
     const int former=id==6?360:id==7?480:240;
-    if(live.lines==former&&GetPrivateProfileIntW(section(id).c_str(),L"Mode",UINT_MAX,path)==UINT_MAX)
+    if(live.lines==former&&GetPrivateProfileIntW(slot.c_str(),L"Mode",UINT_MAX,path)==UINT_MAX)
         live.lines=profiles[id].lines;
 }
 static void load_slots(const wchar_t* path,const RetroSettings& live){
@@ -91,11 +106,14 @@ static void load_slots(const wchar_t* path,const RetroSettings& live){
         slots[i]=profiles[i==custom?custom_base:i];
         const auto key=section(i);
         const bool exists=GetPrivateProfileIntW(key.c_str(),L"Mode",UINT_MAX,path)!=UINT_MAX;
-        if(exists)slots[i].load(path,key.c_str(),i==custom?custom_base:i);
+        if(exists){
+            slots[i].load(path,key.c_str(),i==custom?custom_base:i);
+            if(i!=custom&&GetPrivateProfileIntW(key.c_str(),L"MotionBlur",UINT_MAX,path)==UINT_MAX)
+                slots[i].motion_blur=profiles[i].motion_blur;
+        }
         if(i==custom)custom_exists=exists;
     }
-    active_profile=menu_id(int(GetPrivateProfileIntW(L"Retro",L"Selected",UINT_MAX,path)));
-    if(active_profile<0||active_profile>custom)active_profile=std::min(custom,preset(live));
+    active_profile=selected_profile(path,live);
     migrate_custom=active_profile==custom&&!custom_exists;
     if(migrate_custom){slots[custom]=live;custom_exists=true;}
     wchar_t marker[32];
@@ -106,13 +124,11 @@ static void load_slots(const wchar_t* path,const RetroSettings& live){
         auto& slot=slots[active_profile];
         slot.tv_screen=live.tv_screen;slot.phosphor_strength=live.phosphor_strength;slot.phosphor_sharpness=live.phosphor_sharpness;
     }
-    if(!GetPrivateProfileStringW(L"Retro",L"MotionBlur",L"",marker,32,path)&&live.motion_blur){
-        // The old three sliders were global. Carry their highest setting into
-        // the filter selected at upgrade; each other filter keeps its own value.
+    if(slots[active_profile].motion_blur!=live.motion_blur){
         migrated_slot=active_profile;
         slots[active_profile].motion_blur=live.motion_blur;
     }
-    dirty=false;needs_choice=false;failed=false;
+    dirty=false;failed=false;
 }
 static bool number(const wchar_t* file,const wchar_t* group,const wchar_t* key,int value){
     return WritePrivateProfileStringW(group,key,std::to_wstring(value).c_str(),file)!=FALSE;
@@ -127,7 +143,7 @@ static bool write_filter(const wchar_t* file,const wchar_t* group,const RetroSet
     return true;
 }
 // The installer uses the same mutex and writes through a temporary copy.
-static bool save_file(const wchar_t* path,const RetroSettings& value,int selected,int write_slot,bool reset,int display_row,int display_value){
+static bool save_file(const wchar_t* path,const RetroSettings& value,int selected,int write_slot,int display_row,int display_value){
     if(!path)return false;
     const wchar_t* name=wcsrchr(path,L'\\');if(!name)return false;
     wchar_t temp[MAX_PATH]={};const std::wstring folder(path,name+1);
@@ -141,39 +157,36 @@ static bool save_file(const wchar_t* path,const RetroSettings& value,int selecte
     }else{
         if(ok&&migrated_slot>=0&&migrated_slot!=write_slot)ok=write_filter(temp,section(migrated_slot).c_str(),slots[migrated_slot]);
         if(ok&&migrate_custom)ok=write_filter(temp,section(custom).c_str(),slots[custom]);
-        if(ok&&write_slot>=0){
-            const auto key=section(write_slot);
-            ok=reset&&write_slot!=custom?WritePrivateProfileStringW(key.c_str(),nullptr,nullptr,temp)!=FALSE:
-                                          write_filter(temp,key.c_str(),value);
-        }
+        if(ok&&write_slot>=0)ok=write_filter(temp,section(write_slot).c_str(),value);
         if(ok&&write_slot==custom)ok=number(temp,L"Retro",L"CustomBase",disk_id(active_profile==custom?custom_base:active_profile));
         if(ok)ok=write_filter(temp,L"Retro",value)&&number(temp,L"Retro",L"Selected",disk_id(selected));
     }
     if(ok)ok=exists?ReplaceFileW(path,temp,nullptr,0,nullptr,nullptr)!=FALSE:MoveFileExW(temp,path,MOVEFILE_WRITE_THROUGH)!=FALSE;
     if(!ok)DeleteFileW(temp);return ok;
 }
-static bool persist(const wchar_t* path,const RetroSettings& value,int selected,int write_slot=-1,bool reset=false,int display_row=-1,int display_value=0){
+static bool persist(const wchar_t* path,const RetroSettings& value,int selected,int write_slot=-1,int display_row=-1,int display_value=0){
     HANDLE writer=CreateMutexW(nullptr,FALSE,L"Local\\FF8RebornDisplaySettings");
     DWORD wait=writer?WaitForSingleObject(writer,0):WAIT_FAILED;
     bool lock=wait==WAIT_OBJECT_0||wait==WAIT_ABANDONED;
-    failed=!lock||!save_file(path,value,selected,write_slot,reset,display_row,display_value);
+    failed=!lock||!save_file(path,value,selected,write_slot,display_row,display_value);
     if(lock)ReleaseMutex(writer);if(writer)CloseHandle(writer);
     if(!failed&&display_row<0){migrate_custom=false;migrated_slot=-1;}
     return !failed;
 }
-static void commit(const wchar_t* path,RetroSettings& s,int destination,bool reset){
-    RetroSettings value=reset?profiles[destination==custom?custom_base:destination]:s;
-    if(!persist(path,value,destination,destination,reset))return;
-    if(destination==custom){if(active_profile!=custom)custom_base=active_profile;custom_exists=true;}
-    active_profile=destination;s=slots[destination]=value;dirty=needs_choice=false;
+static void save_custom(const wchar_t* path,const RetroSettings& s){
+    if(!persist(path,s,custom,custom))return;
+    if(active_profile!=custom)custom_base=active_profile;
+    active_profile=custom;custom_exists=true;slots[custom]=s;dirty=false;
 }
 static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s){
     if(key==VK_F8&&!open){
         load_slots(path,s);row=Profile;open=true;capture_pad=true;return;
     }
     if(!open)return;
-    if(key==VK_ESCAPE){if(dirty)s=slots[active_profile];dirty=needs_choice=false;failed=false;open=false;capture_pad=false;return;}
-    if(key==VK_F8){if(dirty){row=SaveCustom;needs_choice=true;}else {open=false;capture_pad=false;}return;}
+    if(key==VK_ESCAPE||key==VK_F8){
+        if(dirty)s=slots[active_profile];
+        dirty=false;failed=false;open=false;capture_pad=false;return;
+    }
     if(key==VK_UP||key==VK_DOWN){
         int step=key==VK_UP?-1:1,index=visual_index(row);
         do{index=(index+step+visible_rows)%visible_rows;row=visual_order[index];}
@@ -188,16 +201,16 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         return;
     }
     if(row==SaveCustom||row==Restore){
-        if(activate&&row==SaveCustom)commit(path,s,custom,false);
+        if(activate&&row==SaveCustom)save_custom(path,s);
         if(activate&&row==Restore&&can_restore(s)){
-            commit(path,s,active_profile,true);
-            if(!failed)row=Profile;
+            s=profiles[base_profile()];dirty=!same_filter(s,slots[active_profile]);
+            failed=false;row=Profile;
         }
         return;
     }
     if(row==Counter){
         const int size=(display_settings.fps_counter+4+step)%4;
-        if(persist(path,s,active_profile,-1,false,row,size))display_settings.fps_counter=size;
+        if(persist(path,s,active_profile,-1,row,size))display_settings.fps_counter=size;
         return;
     }
     if(row>=Map&&row<=Sides){
@@ -205,7 +218,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         int value=row==Map?!display_settings.atlas:row==Aspect?!display_settings.wide:row==Sides?!display_settings.field_sides:
             deck_renderer?(display_settings.fps?0:30):
             (display_settings.fps==0?(step>0?60:top):display_settings.fps==60?(step>0?top:0):(step>0?0:60));
-        if(!persist(path,s,active_profile,-1,false,row,value))return;
+        if(!persist(path,s,active_profile,-1,row,value))return;
         if(row==Map)display_settings.atlas=value!=0;
         if(row==Aspect)display_settings.wide=value!=0;
         if(row==FPS){display_settings.fps=value;display_settings.automatic_fps=false;}
@@ -214,10 +227,9 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         return;
     }
     if(row==Profile){
-        if(dirty){row=SaveCustom;needs_choice=true;return;}
         const int count=custom+(custom_exists?1:0),id=(active_profile+step+count)%count;
         if(!persist(path,slots[id],id))return;
-        active_profile=id;s=slots[id];return;
+        active_profile=id;s=slots[id];dirty=false;return;
     }
     if(row==TVScreen)s.tv_screen=(s.tv_screen+step+4)%4;
     else if(row==PhosphorStrength||row==PhosphorSharpness){
@@ -233,7 +245,7 @@ static void handle_key(UINT key,bool coarse,const wchar_t* path,RetroSettings& s
         int& v=s.*fields[row-1];int n=std::clamp(v+step*increment,row==Lines?120:0,row==Lines?720:100);
         if(v==n)return;v=n;
     }
-    dirty=true;failed=false;
+    dirty=!same_filter(s,slots[active_profile]);failed=false;
 }
 static bool panel_key(UINT key){
     return key==VK_F8||(open&&(key==VK_UP||key==VK_DOWN||key==VK_LEFT||key==VK_RIGHT||
@@ -244,7 +256,7 @@ static bool focused(HWND window){
 }
 static LRESULT CALLBACK window_proc(HWND window,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR id,DWORD_PTR) {
     if(msg==WM_NCDESTROY){
-        if(current && dirty)*current=slots[active_profile];open=dirty=needs_choice=false;capture_pad=false;
+        if(current && dirty)*current=slots[active_profile];open=dirty=false;capture_pad=false;
         RemoveWindowSubclass(window,window_proc,id);
         attached=nullptr;current=nullptr;
         std::fill_n(claimed,256,false);

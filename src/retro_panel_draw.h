@@ -4,7 +4,7 @@ namespace retro_panel_draw {
 static Surface panel;
 static std::array<int,29> last_state{};
 static bool painted=false;
-constexpr int update_space=34;
+constexpr int update_space=42;
 constexpr int row_height=29,section_gap=32;
 constexpr int design_w=404,design_h=746+update_space+row_height;
 static int row_top(int id,bool restore_visible){
@@ -68,8 +68,33 @@ struct Canvas {
     }
 };
 
+struct UpdateMeter {
+    int percent=-1, transferred_kib=0, sweep=0;
+    bool operator==(const UpdateMeter& v)const{
+        return percent==v.percent&&transferred_kib==v.transferred_kib&&sweep==v.sweep;
+    }
+};
+static UpdateMeter last_meter;
+static ULONGLONG last_meter_sample=0;
+static UpdateMeter update_meter(retro_panel::UpdateState update,ULONGLONG tick){
+    using namespace retro_panel;
+    UpdateMeter meter;
+    if(update==update_ready){meter.percent=100;return meter;}
+    if(update==update_downloading){
+        unsigned received=0,total=0;
+        if(update_bytes)update_bytes(received,total);
+        if(total){
+            meter.percent=int(std::min<uint64_t>(100,uint64_t(received)*100/total));
+            return meter;
+        }
+        meter.transferred_kib=int(received/1024);
+    }else if(update!=update_verifying&&update!=update_saving)return meter;
+    const int phase=int((tick/150)%24);
+    meter.sweep=phase<=12?phase:24-phase;
+    return meter;
+}
 static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed,
-                   retro_panel::UpdateState update=retro_panel::update_idle){
+                   retro_panel::UpdateState update=retro_panel::update_idle,UpdateMeter meter={}){
     const COLORREF body=RGB(23,31,35),border=RGB(96,119,120),accent=RGB(125,226,200);
     const COLORREF text=RGB(238,243,243),secondary=RGB(181,201,199),muted=RGB(130,146,148);
     c.box(0,0,design_w,design_h,border);c.box(1,1,design_w-1,design_h-1,body);
@@ -90,10 +115,29 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         {L"Downloading update…",L"",L"You can keep playing during the download."},
         {L"Update ready",L"Restart to apply",L"Keep playing. The update takes effect at next launch."},
         {L"Check for updates again",L"Update failed",L"Try again or use the installer from GitHub."},
+        {L"Verifying update…",L"",L"Checking the downloaded file and its checksum."},
+        {L"Saving update…",L"",L"Preparing the verified update for the next launch."},
     };
     const auto& message=update_text[update];
     c.label(message.action,18,update_top,250,update_top+28,1,update_actionable(update)?text:secondary);
-    c.label(message.status,249,update_top,385,update_top+28,0,update==update_error?RGB(255,185,134):accent,true);
+    wchar_t transfer_label[32]{};
+    if(update==update_downloading){
+        if(meter.percent>=0)swprintf(transfer_label,32,L"%d%%",meter.percent);
+        else if(meter.transferred_kib<1024)swprintf(transfer_label,32,L"%d KiB",meter.transferred_kib);
+        else swprintf(transfer_label,32,L"%.1f MiB",meter.transferred_kib/1024.);
+    }
+    c.label(transfer_label[0]?transfer_label:message.status,249,update_top,385,update_top+28,0,update==update_error?RGB(255,185,134):accent,true);
+    if(update==update_downloading||update==update_verifying||update==update_saving||update==update_ready){
+        constexpr int left=18,right=386,span=right-left;
+        const int top=update_top+29;
+        c.box(left,top,right,top+5,RGB(56,73,76));
+        if(meter.percent>=0){
+            if(meter.percent)c.box(left,top,left+span*meter.percent/100,top+5,accent);
+        }else{
+            const int start=left+(span-64)*meter.sweep/12;
+            c.box(start,top,start+64,top+5,accent);
+        }
+    }
     c.label(L"Display settings",17,52+update_space,260,76+update_space,0,accent);
     c.label(L"Auto-save",246,52+update_space,387,76+update_space,0,secondary,true);
     const int filter_top=row_top(Profile,true)-section_gap;
@@ -114,8 +158,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         if(current){c.box(8,top,396,top+28,RGB(43,65,67));c.box(8,top,11,top+28,accent);}
         c.label(labels[i],18,top,226,top+28,1,editable?text:muted);
         if(!i){
-            const int profile=retro_panel::dirty?retro_panel::custom:retro_panel::active_profile;
-            c.label(retro_panel::names[profile],111,top,385,top+28,1,accent,true);
+            c.label(dirty?L"Custom (preview)":names[active_profile],111,top,385,top+28,1,accent,true);
         }else{
             wchar_t value[30];
             if(i==MotionBlur&&values[i]==0)wcscpy(value,L"Off");
@@ -150,11 +193,12 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     }
     std::wstring state=selected==ModUpdate?(detail[0]?detail:message.hint):
         failed?L"Couldn’t save your changes. Try again.":
-        selected==MotionBlur?L"Softens movement across gameplay in 10% steps.":
-        selected==Restore?L"Restore the original settings for this filter.":
+        selected==Profile&&dirty?L"Changing profiles discards your preview.":
+        selected==MotionBlur?L"Adjust this filter’s motion blur in 10% steps.":
+        selected==Restore?L"Preview the original settings for this filter.":
         selected==SaveCustom&&active_profile!=custom&&custom_exists?L"This will replace your saved custom profile.":
-        needs_choice?L"Save your changes or press Esc / B to discard.":
-        active_profile==custom?L"Changes are saved to your custom profile.":
+        dirty?L"Save to Custom to keep this preview.":
+        active_profile==custom?L"Your saved custom filter.":
         L"Use this filter as the starting point for your copy.";
     const bool warning=selected==ModUpdate?update==update_error:failed;
     c.label(state.c_str(),13,footer+4,393,footer+27,0,warning?RGB(255,185,134):secondary);
@@ -173,12 +217,23 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     const bool failed=retro_panel::save_failed();
     const auto update=retro_panel::update_status?retro_panel::update_status():retro_panel::update_idle;
     const decltype(last_state) state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
-                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,retro_panel::needs_choice,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
+                                    settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,settings.phosphors,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
                                     settings.motion_blur};
-    if(!painted||last_state!=state){
+    UpdateMeter meter=last_meter;
+    const bool changed=!painted||last_state!=state;
+    const bool active_update=update==retro_panel::update_downloading||update==retro_panel::update_verifying||
+                             update==retro_panel::update_saving;
+    if(changed||active_update){
+        const auto tick=GetTickCount64();
+        if(changed||tick-last_meter_sample>=150){
+            meter=update_meter(update,tick);
+            last_meter_sample=tick;
+        }
+    }
+    if(changed||!(last_meter==meter)){
         Canvas canvas(pw,ph);
         if(!canvas.pixels)return false;
-        render(canvas,settings,selected,bypass,failed,update);
+        render(canvas,settings,selected,bypass,failed,update,meter);
         GdiFlush();
         for(size_t at=3;at<size_t(pw)*ph*4;at+=4)canvas.pixels[at]=255;
         try{retro_display::allocate(panel,pw,ph);}
@@ -188,7 +243,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
         glBindTexture(GL_TEXTURE_2D,panel.color);
         glTexSubImage2D(GL_TEXTURE_2D,0,0,0,pw,ph,GL_BGRA,GL_UNSIGNED_BYTE,canvas.pixels);
         glBindTexture(GL_TEXTURE_2D,texture);
-        last_state=state;painted=true;
+        last_state=state;last_meter=meter;painted=true;
     }
     retro_display::inspect_context();
     retro_display::TargetState state_guard(target,false);
