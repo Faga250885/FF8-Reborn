@@ -2,10 +2,10 @@
 // Build numbers increase independently on each release channel.
 namespace update_version {
 #ifdef GEO_STEAM_DECK
-constexpr char channel[]="deck", tag[]="v1.4.0-deck.17";
-constexpr unsigned build=1040017;
+constexpr char channel[]="deck", tag[]="v1.4.0-deck.18";
+constexpr unsigned build=1040018;
 #else
-constexpr char channel[]="windows", tag[]="v1.4.11";
-constexpr unsigned build=1041100;
+constexpr char channel[]="windows", tag[]="v1.4.12";
+constexpr unsigned build=1041200;
 #endif
 }

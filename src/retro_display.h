@@ -13,14 +13,17 @@ struct Pipeline {
     FilterUniforms last{};
     bool configured=false;
 };
-enum class Stage { full, cells, screen, tv_rows, tv_screen, motion, notice };
+enum class Stage { full, cells, screen, tv_rows, tv_screen, motion, notice, title_fire };
 static Pipeline pipeline,television_pipeline,cell_pipeline,screen_pipeline,tv_rows_pipeline,tv_screen_pipeline;
 static Pipeline motion_pipeline,notice_pipeline;
+static Pipeline title_fire_pipeline;
+static Surface title_fire_surface;
 #include "motion_blur.h"
 static Surface signal_surface;
 static int failed_signal_w=0,failed_signal_h=0;
 static Pipeline& select_pipeline(bool tv,Stage stage){
     switch(stage){
+        case Stage::title_fire:return title_fire_pipeline;
         case Stage::notice:return notice_pipeline;
         case Stage::motion:return motion_pipeline;
         case Stage::cells:return cell_pipeline;
@@ -84,7 +87,27 @@ static bool prepare(bool tv=false,Stage stage=Stage::full){
     const char* notice_fragment="uniform vec2 size,origin;uniform sampler2D sourceImage;"
         "void main(){vec4 pixel=texture2D(sourceImage,(gl_FragCoord.xy-origin)/size);"
         "if(pixel.a==0.0)discard;gl_FragColor=pixel;}";
-    const char* fragment=stage==Stage::notice?notice_fragment:stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
+    const char* title_fire_fragment=R"GLSL(
+uniform sampler2D sourceImage;
+uniform vec2 size,origin,grid;
+void main(){
+    vec2 p=(gl_FragCoord.xy-origin)*vec2(640.0,480.0)/size;
+    float y=480.0-p.y;
+    float edge=min(p.x,640.0-p.x);
+    // In the 1672x941 painting the centered native viewport starts at x=209.
+    // Match the original at the join. Narrow screens crop the outer tips.
+    float margin=max(origin.x*640.0/size.x,73.0);
+    float x=edge<26.0 ? (edge+margin)*259.94375/(margin+26.0) : 209.0+edge*1.959375;
+    float wing=grid.x*0.5;
+    float u=clamp(x,0.5,wing-0.5)+(p.x<320.0?0.0:wing);
+    float v=clamp(y*(941.0/480.0)-32.0,0.5,grid.y-1.5);
+    vec3 fire=texture2D(sourceImage,vec2(u,v)/grid).rgb;
+    vec3 black=texture2D(sourceImage,vec2(0.5,grid.y-0.5)/grid).rgb;
+    vec3 white=texture2D(sourceImage,vec2(1.5,grid.y-0.5)/grid).rgb;
+    gl_FragColor=vec4(mix(black,white,fire),1.0-smoothstep(32.0,48.0,edge));
+}
+)GLSL";
+    const char* fragment=stage==Stage::title_fire?title_fire_fragment:stage==Stage::notice?notice_fragment:stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
 uniform sampler2D sourceImage;
 uniform vec2 size;
 uniform vec2 grid;
@@ -206,7 +229,7 @@ void main(){
     effect.screen=pGetUniformLocation(program,"tvSettings");effect.program=program;
     effect.output=pGetUniformLocation(program,"outputGeometry");effect.sampling=pGetUniformLocation(program,"sourceSampling");
     if(stage==Stage::motion)effect.response=pGetUniformLocation(program,"response");
-    if(stage==Stage::notice)effect.response=pGetUniformLocation(program,"origin");
+    if(stage==Stage::notice||stage==Stage::title_fire)effect.response=pGetUniformLocation(program,"origin");
     if(stage==Stage::tv_screen||stage==Stage::motion){
         GLint previous;glGetIntegerv(GL_CURRENT_PROGRAM,&previous);
         const GLint unit=1;
@@ -481,6 +504,7 @@ static void end_window(bool swapped,bool outer_restores,int w,int h){
     motion_history.commit(swapped);
 }
 static void forget(){
+    title_fire_pipeline={};title_fire_surface={};
     motion_pipeline={};notice_pipeline={};motion_history={};
     pipeline={};television_pipeline={};cell_pipeline={};screen_pipeline={};tv_rows_pipeline={};tv_screen_pipeline={};signal_surface={};source={};previous_front={};failed_width=failed_height=0;
     failed_signal_w=failed_signal_h=0;valid_front=retiring_front=false;swap_dc=nullptr;exchanges_front=false;

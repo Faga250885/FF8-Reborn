@@ -1897,6 +1897,55 @@ static const Op* final_surface_copy(const Frame& f,WideView::Bounds* footprint=n
     return nullptr;
 }
 #include "card_transition.h"
+// Draw only the margins of the black title. Its logo, letters and menu use
+// the normal proportional blit. The caller owns the OpenGL state guard.
+static void draw_title_fire(GLuint target,const std::array<int,4>& src,
+                            int w,int h,int dx,int dy,int dw,int dh){
+    using namespace retro_display;
+    if(!prepare(false,Stage::title_fire))return;
+    auto& patch=title_fire_surface;
+    TargetState state(target,true);
+    constexpr int width=616,art_rows=568;
+    pActiveTexture(GL_TEXTURE0);
+    if(!patch.w){
+        static const BYTE wings[]={
+#embed "titleart/black-title-wings.rgb"
+        };
+        static_assert(sizeof(wings)==width*art_rows*3);
+        PixelTransferGuard transfer;
+        allocate(patch,width,art_rows+1);
+        glBindTexture(GL_TEXTURE_2D,patch.color);
+        real_tex_subimage(GL_TEXTURE_2D,0,0,0,width,art_rows,GL_RGB,GL_UNSIGNED_BYTE,wings);
+    }
+    // Reserve one row for the native background and the emblem's white
+    // highlight. Both wings follow this frame's fade without a CPU readback.
+    pBindFramebuffer(GL_READ_FRAMEBUFFER,encounter_native.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,patch.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    auto sample=[&](int native_x,int native_y,int column){
+        const auto [sx,sy,sw,sh]=src;
+        int x=sx+sw*native_x/640,y=sy+sh-1-sh*native_y/480;
+        pBlitFramebuffer(x,y,x+1,y+1,column,art_rows,column+1,art_rows+1,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+    };
+    sample(8,150,0);sample(320,70,1);
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
+    GLint sampler=0;
+    if(pipeline.bind_sampler){glGetIntegerv(GL_SAMPLER_BINDING,&sampler);pipeline.bind_sampler(0,0);}
+    glBindTexture(GL_TEXTURE_2D,patch.color);
+    fullscreen_draw_state(0,0,w,h);
+    pUseProgram(title_fire_pipeline.program);
+    const GLfloat extent[]={float(dw),float(dh)},origin[]={float(dx),float(dy)};
+    const GLfloat atlas[]={float(patch.w),float(patch.h)};
+    pUniform2fv(title_fire_pipeline.grid,1,atlas);
+    pUniform2fv(title_fire_pipeline.size,1,extent);pUniform2fv(title_fire_pipeline.response,1,origin);
+    glEnable(GL_BLEND);pBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);glEnable(GL_SCISSOR_TEST);
+    const int inset=int(std::ceil(dw*48./640));
+    const int y=dy+int(std::floor(dh*(480-306)/480.));
+    const int rows=dy+int(std::ceil(dh*(480-16)/480.))-y;
+    glScissor(0,y,dx+inset,rows);fullscreen_triangle();
+    glScissor(dx+dw-inset,y,w-(dx+dw-inset),rows);fullscreen_triangle();
+    if(pipeline.bind_sampler)pipeline.bind_sampler(0,sampler);
+}
 // When a scene changes, parity or the next interpolation pair may not be
 // available yet. Scale this swap's actual image, never an old parity sample.
 static bool present_native_layout(const Frame& f,const WideView& v,GLuint target=0,bool transient_3d=false){
@@ -1947,21 +1996,8 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
         pBlitFramebuffer(sx+1,sy,sx+2,sy+sh,0,dy,dx,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
         pBlitFramebuffer(sx+sw-2,sy,sx+sw-1,sy+sh,dx+dw,dy,w,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
     }
-    if(f.opening==Frame::Opening::black_title&&dx>0){
-        // The red artwork has its own black padding. Extend its outer brush
-        // strokes in their original direction. The first title glyph falls
-        // beyond x=52, and the menu is below the artwork.
-        constexpr double outer=28.,inner=52.,top=16.,bottom=306.;
-        const double scale=dw/640.;
-        const int y0=sy+int(std::lround((480-bottom)*sh/480.));
-        const int y1=sy+int(std::lround((480-top)*sh/480.));
-        const int out0=dy+int(std::lround((480-bottom)*dh/480.));
-        const int out1=dy+int(std::lround((480-top)*dh/480.));
-        const int inset=int(std::lround(inner*scale));
-        const int near_px=int(std::lround(outer*sw/640.)),far_px=int(std::lround(inner*sw/640.));
-        pBlitFramebuffer(sx+near_px,y0,sx+far_px,y1,0,out0,dx+inset,out1,GL_COLOR_BUFFER_BIT,GL_LINEAR);
-        pBlitFramebuffer(sx+sw-far_px,y0,sx+sw-near_px,y1,dx+dw-inset,out0,w,out1,GL_COLOR_BUFFER_BIT,GL_LINEAR);
-    }
+    if(f.opening==Frame::Opening::black_title&&dx>0)
+        draw_title_fire(target,source,w,h,dx,dy,dw,dh);
     if(native_sides&&display_settings.field_sides)field_blur::draw_margins(f,target,dw);
     else if(field&&display_settings.field_sides){
         if(field_blur::preferred)field_blur::draw_margins(f,target,dw);
