@@ -15,16 +15,65 @@ static bool scenery_draw(const Op& op){
     const auto* p=op.vertices.front().p;
     return (p[3]>0&&p[3]<.1f)||(std::abs(p[3]-1.f/3)<.00001f&&std::abs(p[2]-.00155f)<.00001f);
 }
+// Opening screens use the field mode word as well. Recognize their native
+// composition, rather than applying a field crop to movies or real scenery.
+static bool centered_menu_composite(const Op& op,int width,int height){
+    const int* vp=op.state.viewport;
+    return !op.clear&&!op.target&&op.vertices.size()==6&&vp[2]>0&&vp[3]>0&&
+           std::abs(3*vp[2]-4*vp[3])<=4&&std::abs(2*vp[0]+vp[2]-width)<=2&&
+           std::abs(2*vp[1]+vp[3]-height)<=2;
+}
+static Frame::Opening opening_screen(const Frame& f){
+    using Opening=Frame::Opening;
+    if(!f.valid||f.ops.empty()||(f.mode!=0&&f.mode!=1))return Opening::none;
+    if(!centered_menu_composite(f.ops.back(),f.w,f.h))return Opening::none;
+    bool title_image=false,press_prompt=false,prompt_rule=false;
+    bool title_a=false,title_b=false,header=false,info=false;
+    for(const auto& op:f.ops){
+        if(scenery_draw(op))return Opening::none;
+        if(op.clear||!op.target||op.mode!=GL_TRIANGLES||op.vertices.empty()||
+           std::abs(op.state.projection[0]-2.f/640)>.00001f||op.vertices.size()>2048)continue;
+        const auto* p=op.vertices.front().p;
+        if(std::abs(p[3]-1.f)>.002f)continue;
+        if(f.mode==0){
+            // These startup sprites use normalized coordinates. The blinking
+            // prompt and its underline distinguish the logo from an intro movie.
+            if(op.vertices.size()!=6||p[2]!=1.f)continue;
+        }else if(p[2]<0||p[2]>=.004f)continue;
+        float l=1e6f,r=-1e6f,t=1e6f,b=-1e6f;
+        for(const auto& v:op.vertices){l=std::min(l,v.p[0]);r=std::max(r,v.p[0]);t=std::min(t,v.p[1]);b=std::max(b,v.p[1]);}
+        auto is=[&](float x,float y,float z,float w){return std::abs(l-x)<1&&std::abs(r-y)<1&&std::abs(t-z)<1&&std::abs(b-w)<1;};
+        if(f.mode==0){
+            const bool centered=std::abs(l+r)<.015f;
+            title_image|=centered&&std::abs(l+1)<.001f&&std::abs(t+1)<.001f&&std::abs(b-1)<.001f;
+            press_prompt|=centered&&r>.1f&&r<.94f&&t>-.9f&&b<-.5f&&b-t>.025f&&b-t<.16f;
+            prompt_rule|=centered&&r>.2f&&r<.97f&&t>-.9f&&b<-.5f&&b>t&&b-t<.015f;
+        }
+        if(f.mode==1){
+            title_a|=is(0,426.667f,16,306);title_b|=is(426.667f,640,16,306);
+            header|=is(450,600,28,72);info|=is(50,590,74,126);
+        }
+    }
+    if(title_image&&press_prompt&&prompt_rule)return Opening::white_title;
+    if(title_a&&title_b)return Opening::black_title;
+    if(header&&info)return Opening::save_menu;
+    return Opening::none;
+}
 static void resolve_menu_layout(Frame& f,const Frame& prior){
     f.layout_override=-1;f.menu_edge=0;
     f.menu_top=28;f.menu_bottom=448;f.menu_half_width=282;
+    f.opening=opening_screen(f);
+    if(f.opening==Frame::Opening::white_title){f.menu_top=40;f.menu_bottom=440;}
+    // The Remaster also composites a small footer below the native menu rows.
+    else if(f.opening==Frame::Opening::black_title){f.menu_top=16;f.menu_bottom=458;}
+    else if(f.opening==Frame::Opening::save_menu){f.menu_top=24;f.menu_bottom=458;}
     if(f.mode==after_battle_mode){
         // The header and confirmation panels on the EXP and loot pages run
         // from x=26 2/3 to 613 1/3, y=32 to 436 in FFVIII's 640x480 canvas.
         f.menu_top=32;f.menu_bottom=436;f.menu_half_width=294;
     }
     if(prior.mode==after_battle_mode&&f.mode!=after_battle_mode&&f.mode!=6)return;
-    if(f.mode==after_battle_mode||f.mode==6||prior.mode==6)f.menu_edge=5;
+    if(f.opening!=Frame::Opening::none||f.mode==after_battle_mode||f.mode==6||prior.mode==6)f.menu_edge=5;
     else if(prior.menu_edge>0)f.menu_edge=prior.menu_edge-1;
     else if(f.mode==0&&gameplay_layout(prior.mode))f.menu_edge=5;
     else if(gameplay_layout(f.mode)&&f.mode==prior.mode&&
@@ -63,11 +112,11 @@ static void resolve_menu_layout(Frame& f,const Frame& prior){
     // The mode word can switch before the last field fade or the first
     // actual menu draw. Pure composite frames inherit the preceding layout.
     if(scenery&&gameplay_layout(f.mode))return;
-    if(f.mode==after_battle_mode)f.layout_override=6;
+    if(f.opening!=Frame::Opening::none||f.mode==after_battle_mode)f.layout_override=6;
     else if(scenery&&gameplay_layout(prior.layout()))f.layout_override=prior.layout();
     else if(ui&&!scenery)f.layout_override=6;
     else if(!scenery&&(gameplay_layout(prior.layout())||prior.layout()==6))f.layout_override=prior.layout();
-    if(f.layout()==6&&prior.layout()==6&&
+    if(f.layout()==6&&prior.layout()==6&&f.opening==prior.opening&&
        (f.mode==after_battle_mode)==(prior.mode==after_battle_mode)){
         f.menu_top=std::min(f.menu_top,prior.menu_top);
         f.menu_bottom=std::max(f.menu_bottom,prior.menu_bottom);
@@ -81,10 +130,7 @@ struct WideView {
     bool menu=false;
     std::array<int,4> result_viewport{};
     bool menu_composite(const Op& op)const{
-        const int* vp=op.state.viewport;
-        return !op.clear&&!op.target&&op.vertices.size()==6&&vp[2]>0&&vp[3]>0&&
-               std::abs(3*vp[2]-4*vp[3])<=4&&std::abs(2*vp[0]+vp[2]-drawable_width)<=2&&
-               std::abs(2*vp[1]+vp[3]-drawable_height)<=2;
+        return centered_menu_composite(op,drawable_width,drawable_height);
     }
     float horizontal=1;
     bool battle=false;

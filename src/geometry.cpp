@@ -649,6 +649,8 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     std::unordered_map<GLuint,GLbitfield> captured_seed_planes;
     std::shared_ptr<MatchInput> match_input;
     int layout_override=-1,menu_edge=0;
+    enum class Opening { none, white_title, black_title, save_menu };
+    Opening opening=Opening::none;
     std::array<int,4> compact_card_view{};
     int raster_rows=240;
     enum class Travel { none, scene, fade };
@@ -1911,6 +1913,11 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
     const int native_height=std::min(h,int(std::lround(w*3./4)));
     std::array<int,4> source={(w-native_width)/2,(h-native_height)/2,native_width,native_height};
     if(results)source=v.result_viewport;
+    else if(f.opening!=Frame::Opening::none&&v.menu_composite(f.ops.back())){
+        const auto* vp=f.ops.back().state.viewport;
+        if(vp[0]>=0&&vp[1]>=0&&vp[0]+vp[2]<=w&&vp[1]+vp[3]<=h)
+            std::copy_n(vp,4,source.begin());
+    }
     else if(field&&!v.menu&&native_width<w&&field_blur::preferred&&display_settings.field_sides){
         // The engine rounds its 4:3 viewport independently of our fit. On an
         // 800-line display the left coordinate can differ by one black pixel.
@@ -1934,6 +1941,27 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
     glClearColor(0,0,0,1);real_clear(GL_COLOR_BUFFER_BIT);
     pBindFramebuffer(GL_READ_FRAMEBUFFER,encounter_native.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
     pBlitFramebuffer(sx,sy,sx+sw,sy+sh,dx,dy,dx+dw,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+    if(f.opening==Frame::Opening::white_title&&dx>0){
+        // Continue the actual edge pixels, including fades, without changing
+        // the logo's aspect ratio or the user's chosen display filter.
+        pBlitFramebuffer(sx+1,sy,sx+2,sy+sh,0,dy,dx,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+        pBlitFramebuffer(sx+sw-2,sy,sx+sw-1,sy+sh,dx+dw,dy,w,dy+dh,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+    }
+    if(f.opening==Frame::Opening::black_title&&dx>0){
+        // The red artwork has its own black padding. Extend its outer brush
+        // strokes in their original direction. The first title glyph falls
+        // beyond x=52, and the menu is below the artwork.
+        constexpr double outer=28.,inner=52.,top=16.,bottom=306.;
+        const double scale=dw/640.;
+        const int y0=sy+int(std::lround((480-bottom)*sh/480.));
+        const int y1=sy+int(std::lround((480-top)*sh/480.));
+        const int out0=dy+int(std::lround((480-bottom)*dh/480.));
+        const int out1=dy+int(std::lround((480-top)*dh/480.));
+        const int inset=int(std::lround(inner*scale));
+        const int near_px=int(std::lround(outer*sw/640.)),far_px=int(std::lround(inner*sw/640.));
+        pBlitFramebuffer(sx+near_px,y0,sx+far_px,y1,0,out0,dx+inset,out1,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+        pBlitFramebuffer(sx+sw-far_px,y0,sx+sw-near_px,y1,dx+dw-inset,out0,w,out1,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+    }
     if(native_sides&&display_settings.field_sides)field_blur::draw_margins(f,target,dw);
     else if(field&&display_settings.field_sides){
         if(field_blur::preferred)field_blur::draw_margins(f,target,dw);
@@ -1991,8 +2019,11 @@ static BOOL WINAPI swap_hook(HDC handle){
         }
         publish();published=true;
         if(display_settings.wide&&!(direct_complete&&mode==2))resolve_menu_layout(current,previous);
-        else {current.layout_override=-1;current.menu_edge=0;}
+        else {current.layout_override=-1;current.menu_edge=0;current.opening=Frame::Opening::none;}
         WideView transition(current,display_settings.wide);
+        // Title and memory-card pages are complete 2D compositions, even
+        // when the game reports the same mode as a moving field scene.
+        if(current.opening!=Frame::Opening::none)candidate=false;
         current.travel=Frame::Travel::none;
         if(display_settings.wide&&resolve_travel_layout(current,previous,transition))
             transition=WideView(current,true);
