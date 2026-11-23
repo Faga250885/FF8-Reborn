@@ -1,5 +1,5 @@
 FF8-Reborn-feed-1
 windows
-1040900
-v1.4.9
-ea32c4acad7f9d13bab5a095bfc3b80a5e6d822269ab0a24cdbb91d5208916cd
+1041000
+v1.4.10
+7d1c402c72a8d25d1b8b59f7ac9ac5ab19ce88d1ed6f983ab3abf95ec0c05d25
