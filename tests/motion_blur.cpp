@@ -32,6 +32,7 @@ int main(){
     };
     for(bool exchange:{false,true}){
         filter={};
+        filter.mode=1;filter.pixelation=filter.dither=0; // Motion alone on an enabled filter.
         rd::swap_dc=dc;rd::exchanges_front=exchange;rd::valid_front=false;
         rd::motion_history.reset();
         const auto original=frame(19,0,1);
@@ -61,12 +62,18 @@ int main(){
         frame(16,100,2);
         assert(frame(19,0,2)==original);
         frame(16,100,2);
+        filter.mode=0;filter.tv_enabled=true;filter.tv_screen=RetroSettings::slot_mask;
+        assert(frame(19,100,2)==original);
+        assert(!rd::motion_history.previous_time&&!rd::motion_history.strength&&!rd::motion_history.pending);
+        filter.mode=1;filter.tv_enabled=false;
+        assert(frame(19,100,2)==original); // No old pose on the first new filtered frame.
+        frame(16,100,2);
         assert(frame(19,100,-1)==original); // menu or full-screen map
         assert(frame(19,100,2)==original);  // fresh gameplay history
         for(bool tv:{false,true}){
             filter=RetroSettings::recommended();
             filter.lines=24; // Exercise the Deck's two-pass signal at fixture size.
-            if(tv)filter.phosphors=RetroSettings::aperture_grille;
+            if(tv){filter.phosphors=RetroSettings::aperture_grille;filter.tv_enabled=true;}
             auto reference=frame(19,0,2);
             assert(frame(19,100,2)==reference);
             assert(frame(19,100,2)==reference);
@@ -77,7 +84,7 @@ int main(){
     }
     // Exercise the game's real presentation entry, including its layout and
     // atlas checks. The selected profile is the sole source of the strength.
-    display_settings.retro={};
+    display_settings.retro=RetroSettings::recommended();
     display_settings.retro.motion_blur=80;
     auto routed=[&](bool expected){
         int w=0,h=0;
@@ -90,6 +97,9 @@ int main(){
     for(int mode:{1,2,3}){
         current={};current.mode=mode;native_atlas_view=0;
         routed(true);
+        display_settings.retro.mode=0;routed(false);
+        assert(!rd::motion_history.previous_time&&!rd::motion_history.exposure);
+        display_settings.retro.mode=2;routed(true);
         current.menu_edge=1;routed(false);
         current.menu_edge=0;current.camera_cut=true;routed(false);
         current.camera_cut=false;current.travel=Frame::Travel::fade;routed(false);

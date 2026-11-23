@@ -30,6 +30,12 @@ int main(){
     assert(life.opacity(0,100)==0&&!life.presented(0,100));
     assert(life.opacity(second,101)==1&&life.presented(second,101)&&!life.presented(second,102));
     assert(life.opacity(second,112)==.5f&&life.opacity(second,113)==0);
+    QuickFilterNotice preview;
+    preview.show(8,10000);
+    assert(preview.opacity(12000)==1.f&&preview.opacity(12250)==.5f);
+    preview.show(7,12250);
+    assert(preview.profile==7&&preview.opacity(12250)==1.f&&preview.opacity(14250)==1.f);
+    assert(preview.opacity(14750)==0.f&&preview.profile==-1);
     HWND win=CreateWindowA("STATIC","Update notice",WS_POPUP,0,0,800,550,nullptr,nullptr,GetModuleHandleA(nullptr),nullptr);
     HDC dc=GetDC(win);
     PIXELFORMATDESCRIPTOR fmt{sizeof(fmt),1,PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER,PFD_TYPE_RGBA,32};
@@ -85,6 +91,33 @@ int main(){
         }
         assert(solid[3]==background[3]);
     }
+    // The Off label is an overlay in its own right, with the update and FPS
+    // counter both disabled. Its clock and presentation never play a sound.
+    mod_update::say(update_current,L"");
+    quick_notice.show(0,GetTickCount64());
+    fill(0);
+    assert(begin_retro_frame(dc,w,h,&drawn)&&!drawn&&filter_notice::cached_profile==0);
+    const auto off=filter_notice::place(w,h,0,0);
+    auto off_pixel=pixel(0,off.x+6*off.w/filter_notice::width(0),off.y+off.h/2);
+    assert(off_pixel[2]>off_pixel[0]+40);
+    retro_display::end_window(false,false,w,h);
+    // When both notifications are visible, verify rectangles, rendered pixels
+    // and fresh profile text even when repeatedly cycling during the fade.
+    display_settings.fps_counter=3;
+    mod_update::say(update_available,L"");update_notice::lifetime={};
+    const auto update=update_notice::place(w,h,fps_counter::tile_h*fps_counter::scale(3,w,h));
+    for(int id:{9,0,7}){
+        quick_notice.show(id,GetTickCount64());
+        fill(0);assert(begin_retro_frame(dc,w,h,&drawn)&&drawn==first&&filter_notice::cached_profile==id);
+        const auto next=filter_notice::place(w,h,h-update.y,id);
+        assert(next.w&&next.h&&next.y>=0&&next.x+next.w<=w&&next.y+next.h<update.y);
+        assert(filter_notice::tile.w==filter_notice::width(id));
+        auto filter_pixel=pixel(0,next.x+6*next.w/filter_notice::width(id),next.y+next.h/2);
+        assert(filter_pixel[2]>filter_pixel[0]+40);
+        auto update_pixel=pixel(0,update.x+6*update.w/update_notice::width(),update.y+update.h/2);
+        assert(update_pixel[2]>update_pixel[0]+40);
+        retro_display::end_window(false,false,w,h);
+    }
     assert(glGetError()==GL_NO_ERROR);
-    puts("Update notice passed: first successful swap per build, 10s hold, 2s fade, pixel border, alpha and FPS counter clearance.");
+    puts("Update and quick filter notices passed: timing, per-profile text, Off overlay, stacking, alpha and counter clearance.");
 }

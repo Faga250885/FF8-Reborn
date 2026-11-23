@@ -124,13 +124,25 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 ## Menú de configuración
 
-**Display** reúne las opciones de pantalla y el actualizador. **Screen filter** reúne el perfil activo, sus controles y la opción de guardar una copia personalizada. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
+En **Display** puedes ajustar la pantalla y buscar actualizaciones. En **Screen filter** eliges el perfil de imagen y en **Menu settings** puedes ajustar el tamaño del menú o cambiar los atajos del mando. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
+
+Pulsa **LB / RB** o **Tab** para llevar la manito a la lista de secciones de la derecha. Elige una con **↑ / ↓** y ábrela con **A / Intro**. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.jpg)
 
 [![Menú Display sobre la calle del Hotel Galbadia](images/settings-display.jpg)](images/settings-display.jpg)
 
-[![Menú Screen filter con el perfil recomendado a 265 líneas](images/settings-filter.jpg)](images/settings-filter.jpg)
+[![Menú Screen filter con el perfil recomendado y la simulación de televisor apagada](images/settings-filter.jpg)](images/settings-filter.jpg)
+
+Elige **Off** en **Profile** para apagar todos los efectos del filtro, incluido el desenfoque de movimiento. Con un perfil activo, **TV simulation** permite ajustar el patrón de fósforos, su intensidad y su nitidez. Los perfiles Sony Trinitron y los dos RCA activan esta opción por defecto.
+
+Si cierras el menú después de editar un filtro, puedes guardar tu copia personalizada, descartar los cambios o seguir editando.
+
+[![Menú Menu settings con el tamaño predeterminado](images/settings-menu-size.jpg)](images/settings-menu-size.jpg)
+
+Durante la partida, pulsa **Select + LB** para usar el filtro anterior o **Select + RB** para pasar al siguiente. El nombre del filtro aparece en pantalla. Para cambiar un atajo, entra en **Menu settings**, elige el que quieres cambiar y mantén pulsados uno o dos botones durante un segundo. [Ver el aviso de cambio de filtro](images/settings-quick-filter.jpg)
 
 [![Aviso de actualización con el mismo estilo del menú](images/update-notice.png)](images/update-notice.png)
+
+Cuando la actualización termina de descargarse, verificarse y guardarse, puedes elegir **Close game now** o **Later**. Elige **Later** para seguir jugando y guardar tu partida. La actualización se aplica la próxima vez que abras el juego.
 
 <a name="filters"></a>
 

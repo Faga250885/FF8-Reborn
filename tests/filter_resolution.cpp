@@ -122,13 +122,34 @@ int main(){
             display_settings.retro=manual;check_presented_grid(dc,8,rows);
             count_signal(rows);
         }
-        RetroSettings tv=rgb;tv.mode=0;tv.tv_screen=RetroSettings::aperture_grille;
+        RetroSettings tv=rgb;tv.mode=0;tv.tv_enabled=true;tv.tv_screen=RetroSettings::aperture_grille;
+        tv.motion_blur=90;
+        assert(!rd::apply(tv,out.fbo,w,h)&&read_strip(out)==unfiltered);
+        tv.mode=1;tv.tv_enabled=false;
+        assert(!rd::apply(tv,out.fbo,w,h)&&read_strip(out)==unfiltered);
+        tv.tv_enabled=true;
         assert(rd::apply(tv,out.fbo,w,h));
         const auto grille=read_strip(out);
         lo=255;hi=0;
         for(int i=0;i<144;i++){lo=std::min(lo,int(grille[i*4]));hi=std::max(hi,int(grille[i*4]));}
         assert(hi-lo>10); // The handheld grille must not disappear at the Nyquist limit.
         rd::restore(out.fbo,w,h);
+
+        for(int id:{9,10,11}){
+            auto tube=retro_panel::profiles[id];
+            assert(tube.tv_active()&&rd::television(tube));
+            assert(rd::apply(tube,out.fbo,w,h));
+            const auto original_tv=read_strip(out);
+            rd::restore(out.fbo,w,h);
+            tube.tv_enabled=false;
+            assert(!rd::television(tube)&&rd::apply(tube,out.fbo,w,h));
+            const auto disabled=read_strip(out);
+            rd::restore(out.fbo,w,h);
+            tube.phosphors=RetroSettings::standard;
+            assert(rd::apply(tube,out.fbo,w,h));
+            assert(read_strip(out)==disabled&&disabled!=original_tv);
+            rd::restore(out.fbo,w,h);
+        }
 
         glEnable(GL_SCISSOR_TEST);
         for(int x=1;x<144;x+=3){
@@ -137,7 +158,7 @@ int main(){
         glDisable(GL_SCISSOR_TEST);
         auto signal=RetroSettings::recommended();signal.lines=320;
         for(bool use_tv:{false,true}){
-            if(use_tv)signal.phosphors=RetroSettings::slot_mask;
+            if(use_tv){signal.phosphors=RetroSettings::slot_mask;signal.tv_enabled=true;}
             assert(rd::apply(signal,out.fbo,w,h));
             const auto split=read_strip(out);
             rd::restore(out.fbo,w,h);

@@ -6,6 +6,7 @@ struct RetroSettings {
     Tube phosphors=standard;
     int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70,motion_blur=0;
     bool auto_lines=true;
+    bool tv_enabled=phosphors!=standard;
     static constexpr int hd_profile=7;
     static constexpr int min_lines=120,max_lines=720,line_step=5;
     constexpr int effective_lines(int width,int height,int base_profile)const{
@@ -34,9 +35,15 @@ struct RetroSettings {
     }
     static constexpr RetroSettings recommended(){return with_blur({2,320,100,20,20,8,70,40},20);}
 
+    constexpr bool filter_enabled() const {return mode==1||mode==2;}
+    constexpr bool tv_active() const {return filter_enabled()&&tv_enabled;}
+    constexpr Tube selected_tube() const {
+        if(tv_screen!=standard)return Tube(tv_screen);
+        return phosphors!=standard?phosphors:aperture_grille;
+    }
     bool active() const {
-        return (mode==1 || mode==2) &&
-            (pixelation || dither || edge_softness || (mode==2 && (scanlines || mask || glow)));
+        return filter_enabled() && (pixelation || dither || edge_softness ||
+            (mode==2 && (scanlines || mask || glow)) || (tv_enabled && phosphor_strength));
     }
     void load(const wchar_t* path,const wchar_t* section=L"Retro",int base_profile=-1) {
         wchar_t configured[32]={};
@@ -72,6 +79,8 @@ struct RetroSettings {
         const bool legacy=!wcscmp(section,L"Retro") && !GetPrivateProfileStringW(section,L"TVScreen",L"",configured,32,path);
         const wchar_t* screen_section=legacy?L"Display":section;
         tv_screen=std::clamp(int(GetPrivateProfileIntW(screen_section,L"TVScreen",0,path)),0,3);
+        // Older presets enabled television by selecting a mask or a native tube.
+        tv_enabled=read(L"TVEnabled",phosphors!=standard||tv_screen!=standard,0,1)!=0;
         phosphor_strength=std::clamp(int(GetPrivateProfileIntW(screen_section,L"PhosphorStrength",100,path)),0,100);
         phosphor_sharpness=std::clamp(int(GetPrivateProfileIntW(screen_section,L"PhosphorSharpness",70,path)),0,100);
         if(base_profile<0){

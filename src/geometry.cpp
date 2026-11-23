@@ -60,9 +60,15 @@ API_LIST(DECLARE)
 #undef DECLARE
 static bool loaded=false,inside=false,enabled=true,can_present=false,accessibility_test=false,diagnostic_trace=false;
 #include "retro_settings.h"
+#include "controller_bindings.h"
 struct DisplaySettings {
     int fps=deck_renderer?0:60;
     int fps_counter=0;
+    static constexpr int min_menu_scale=70, max_menu_scale=150, menu_scale_step=10;
+    int menu_scale=100;
+    std::atomic<int> menu_shortcut{controller_bindings::menu};
+    std::atomic<int> previous_filter_shortcut{controller_bindings::previous};
+    std::atomic<int> next_filter_shortcut{controller_bindings::next};
     bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
@@ -86,6 +92,9 @@ void DisplaySettings::load(const wchar_t* path){
     atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
     field_sides=GetPrivateProfileIntW(L"Display",L"FieldSides",1,path)!=0;
     fps_counter=std::clamp(int(GetPrivateProfileIntW(L"Display",L"FPSCounter",0,path)),0,3);
+    const int scale=std::clamp(int(GetPrivateProfileIntW(L"Menu",L"ScalePercent",100,path)),min_menu_scale,max_menu_scale);
+    menu_scale=((scale+menu_scale_step/2)/menu_scale_step)*menu_scale_step;
+    retro_panel::load_shortcuts(path);
     retro.load(path);
     retro_panel::update_factory_defaults(path,retro);
 }
@@ -1434,11 +1443,13 @@ static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nu
     offered=mod_update::available_build();
 #endif
     auto& history=retro_display::motion_history;
-    const int blur=enabled?display_settings.retro.motion_blur:0;
+    const int blur=enabled&&display_settings.retro.filter_enabled()?display_settings.retro.motion_blur:0;
     if(!blur)history.reset();
     if(!counter)fps_counter::reset_meter();
     const float notice_alpha=offered&&!panel?update_notice::lifetime.opacity(offered,now()):0.f;
-    if(!panel&&!counter&&!blur&&notice_alpha<=0&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
+    auto& quick=retro_panel::quick_notice;
+    const float quick_alpha=!panel&&quick.profile>=0?quick.opacity(GetTickCount64()):0.f;
+    if(!panel&&!counter&&!blur&&notice_alpha<=0&&quick_alpha<=0&&(!enabled||!display_settings.retro.active())&&!retro_display::valid_front)return false;
     RECT rect{};
     if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;history.previous_time=0;return false;}
     w=rect.right;h=rect.bottom;
@@ -1453,13 +1464,17 @@ static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nu
     RetroSettings filter=enabled?display_settings.retro:RetroSettings{};
     filter.lines=filter.visible_lines(current.raster_rows,w,h,retro_panel::base_profile());
     const int scale=fps_counter::scale(counter,w,h);
-    const auto notice=notice_alpha>0?update_notice::place(w,h,fps_counter::tile_h*scale):update_notice::Placement{};
-    const int overlay_w=panel?w:std::max(fps_counter::tile_w*scale,notice.x+notice.w);
-    const int overlay_h=panel?h:std::max(fps_counter::tile_h*scale,notice_alpha>0?h-notice.y:0);
-    if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice_alpha>0,overlay_w,overlay_h))return false;
+    const int counter_h=fps_counter::tile_h*scale;
+    const auto notice=notice_alpha>0?update_notice::place(w,h,counter_h):update_notice::Placement{};
+    const int occupied=notice.h?h-notice.y:counter_h;
+    const auto feedback=quick_alpha>0?filter_notice::place(w,h,occupied,quick.profile):update_notice::Placement{};
+    const int overlay_w=panel?w:std::max({fps_counter::tile_w*scale,notice.x+notice.w,feedback.x+feedback.w});
+    const int overlay_h=panel?h:feedback.h?h-feedback.y:occupied;
+    if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice.h||feedback.h,overlay_w,overlay_h))return false;
     if(scale&&!retro_display::retiring_front)fps_counter::draw(w,h,scale);
     if(notice_alpha>0&&!retro_display::retiring_front&&update_notice::draw(0,notice,notice_alpha)&&drawn_notice)
         *drawn_notice=offered;
+    if(feedback.h&&!retro_display::retiring_front)filter_notice::draw(0,feedback,quick.profile,quick_alpha);
     if(panel&&!retro_display::retiring_front)
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
@@ -2436,6 +2451,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
 static void forget_deleted_context(){
     retro_panel_draw::forget();
     update_notice::tile={};
+    filter_notice::tile={};
     fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();

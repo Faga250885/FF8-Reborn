@@ -31,8 +31,7 @@ static Pipeline& select_pipeline(bool tv,Stage stage){
     }
 }
 #include "crt_phosphors.h"
-static bool television(const RetroSettings& s){return s.mode==2&&s.phosphors!=RetroSettings::standard;}
-static bool active(const RetroSettings& s){return s.active()||(enabled&&s.tv_screen&&s.phosphor_strength);}
+static bool television(const RetroSettings& s){return s.tv_active()&&s.mode==2&&s.phosphors!=RetroSettings::standard;}
 static Surface source,previous_front;
 static bool valid_front=false,retiring_front=false;
 static int front_window_w=0,front_window_h=0;
@@ -268,6 +267,9 @@ static void fullscreen_triangle(){
 static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h){
     const GLfloat rows=GLfloat(std::min(h,settings.lines));
     const bool crt=settings.mode==2,tv=television(settings);
+    // A tube preset supplies its own calibrated mask strength when using
+    // the native model. An explicit model also works on ordinary filters.
+    const bool mask_override=settings.tv_active()&&(!tv||settings.tv_screen!=RetroSettings::standard);
     const auto calibration=filter_resolution::calibrate(w,h);
     const GLfloat frequency=rows/h,phase=3.14159265f*frequency;
     // Fade unresolved scanlines before they can alias into wide moving bands.
@@ -279,7 +281,7 @@ static void draw_filter(const RetroSettings& settings,GLuint target,int w,int h)
          crt?settings.scanlines*.01f:0.f,crt?settings.mask*.01f:0.f},
         {crt?settings.glow*.01f:0.f,beam,settings.mode?settings.edge_softness*.01f:0.f,
          tv?GLfloat(settings.phosphors):settings.ps1_raster?1.f:settings.hd_blend?-1.f:0.f},
-        {enabled?GLfloat(settings.tv_screen):0.f,settings.phosphor_strength*.01f,settings.phosphor_sharpness*.01f},
+        {mask_override?GLfloat(settings.selected_tube()):0.f,settings.phosphor_strength*.01f,settings.phosphor_sharpness*.01f},
         {calibration.rgb_pitch,calibration.rgb_contrast,calibration.tv_height},
         {calibration.sample_spread,calibration.dense_signal?1.f:0.f}
     };
@@ -339,7 +341,8 @@ static void fullscreen_draw_state(int x,int y,int w,int h){
     glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_FALSE);
 }
 static bool apply(const RetroSettings& settings,GLuint target,int w,int h){
-    const bool filter=active(settings)&&prepare(television(settings));
+    if(!settings.filter_enabled())return false;
+    const bool filter=settings.active()&&prepare(television(settings));
     auto& history=motion_history;
     const bool motion=history.strength&&prepare(false,Stage::motion);
     if((!filter&&!motion)||w<=0||h<=0||w>8192||h>8192||
@@ -428,10 +431,11 @@ static bool retire_front(HDC handle,int w,int h){
 }
 static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0){
     retiring_front=false;
-    if((!active(settings)&&!motion_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
+    if(!settings.filter_enabled())motion_history.reset();
+    if((!settings.active()&&!motion_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
        (failed_width==w&&failed_height==h))return retire_front(handle,w,h);
     inspect_context();
-    const bool filter=(active(settings)&&prepare(television(settings)))||
+    const bool filter=(settings.active()&&prepare(television(settings)))||
         (motion_history.strength&&prepare(false,Stage::motion));
     if(!filter&&!overlay)return retire_front(handle,w,h);
     inspect_swap_method(handle);

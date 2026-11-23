@@ -124,13 +124,25 @@ The menu uses the native game timing for presentation.
 
 ## Settings menu
 
-**Display** groups screen options and the updater. **Screen filter** groups the active profile, its controls and the action for saving a custom copy. The blue windows and pointing hand follow the FFVI menu design. The 1280 × 800 examples show the street outside the Galbadia Hotel.
+Use **Display** for screen options and updates, **Screen filter** for the picture profile and **Menu settings** to resize the overlay or change controller shortcuts. These 1280 × 800 previews show the street outside the Galbadia Hotel.
+
+Press **LB / RB** or **Tab** to move the hand to the section list on the right. Choose a section with **↑ / ↓** and press **A / Enter** to open it. **B / Esc** returns to the setting you were editing. [View the section selector](images/settings-sections.jpg)
 
 [![Display menu over the Galbadia Hotel scene](images/settings-display.jpg)](images/settings-display.jpg)
 
-[![Screen filter menu showing the recommended preset at 265 lines](images/settings-filter.jpg)](images/settings-filter.jpg)
+[![Screen filter with the recommended profile and TV simulation switched off](images/settings-filter.jpg)](images/settings-filter.jpg)
+
+Choose **Off** under **Profile** to disable all filter effects, including motion blur. With an active profile, **TV simulation** unlocks the phosphor pattern, strength and sharpness. The Sony Trinitron and both RCA profiles enable it by default.
+
+If you close the menu with an edited filter, you can save your custom copy, discard the preview or keep editing.
+
+[![Menu settings showing the default menu size](images/settings-menu-size.jpg)](images/settings-menu-size.jpg)
+
+During gameplay, press **Select + LB** for the previous filter or **Select + RB** for the next. The active filter name appears on screen. To change either shortcut, open **Menu settings**, select the shortcut and hold your preferred button or pair of buttons for one second. [View the filter-change notification](images/settings-quick-filter.jpg)
 
 [![Update notification in the same menu style](images/update-notice.png)](images/update-notice.png)
+
+Once the download has been verified and saved, the updater offers **Close game now** or **Later**. Choose **Later** to keep playing and save your progress. The update takes effect the next time the game starts.
 
 <a name="filters"></a>
 

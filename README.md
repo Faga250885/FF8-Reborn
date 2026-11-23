@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.13/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.14/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
 > **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. **60 FPS is the next goal.** Development continues as time allows. There is no release date for that mode.
@@ -11,7 +11,7 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Recent changes
 
-- **FFVI-style settings menu.** Blue gradient windows, silver frames, pixel lettering and a pointing hand mark the active setting. **Display** holds aspect ratio, frame rate, map, sidebars and updates. **Screen filter** holds the presets and their adjustments. The hand moves through the left column. Press Tab or LB/RB to change sections. The active section is highlighted in blue on the right. Find **Installed version** directly under the update action. Your filter preview stays active while you compare display settings.
+- **FFVI-style settings menu.** Use **Display** for game presentation and updates, **Screen filter** for picture presets and **Menu settings** to resize the menu. Press LB/RB or Tab to move the pointing hand to the section list on the right. A or Enter opens the highlighted section and returns the hand to its first setting. B or Esc takes you back to the previous row.
 - **Automatic filter resolution.** Each preset chooses its signal resolution for the current game window. Use Left or Right to adjust it by 5 lines, or Enter / A to return to Auto. The nine percentage sliders move in 10-point steps.
 - **Blurred sidebars.** Fixed a thin dark line where the left sidebar met the picture in prerendered fields at 1280×800. The mod now aligns the blur with the edge drawn by the game.
 - **In-game updates on Windows and Steam Deck.** FF8 Reborn checks its platform's release channel once when the game starts. When a newer version is available, a matching blue notice appears in the upper left with a short Chocobo call. The call plays once for that version per game session. The notice stays for ten seconds and fades over two. Open **F8** or **Select + Start** to see the installed and available versions. Choose **Download update** when you want to install it.
@@ -49,11 +49,11 @@ In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 sub
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.13/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.14/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.13/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.14/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
@@ -117,7 +117,9 @@ The line shows both the tuning and the actual window size. The game selects by h
 
 At 720p, 800p and 1080p, the standard CRT filter uses a gentler RGB mask, and the television filters keep their phosphor stripes wide enough to resolve. The 1440p tuning keeps the reference look. At 4K, the RGB pattern scales with the image and the filter samples a wider part of each simulated pixel.
 
-To combine **PS1 Digital**, **HD Blend** or any other filter with a TV screen, select **TV phosphors → Trinitron grille** in the live menu. **Phosphor sharpness** sets the focus of the stripes from soft (0%) to crisp (100%). **Phosphor strength** sets their visibility. Find all three controls under **Screen filter**. Choose **Create a custom copy** to save the combination, or **Save my changes** when editing your custom preset. Select **Use filter profile** to return to each preset’s own screen.
+Choose **Screen filter → Profile → Off** to turn off every screen-filter effect, including motion blur and TV simulation. Each profile selects its own rendering method. Inactive controls are dimmed and the cursor skips them.
+
+Turn on **TV simulation** to adjust the three controls below it. **Screen pattern** selects the tube's pattern of colored phosphors, **Pattern strength** sets how visible it is and **Pattern sharpness** sets how soft or crisp it looks. The Sony Trinitron and both RCA factory presets start with TV simulation on. Other factory presets, including **HD Blend**, start with it off. Choose **Create a custom copy** or **Save my changes** to keep your combination.
 
 **Vertical resolution** starts on **Auto**. The table shows the simulated signal height for each preset. PS1 Digital and the classic TV and monitor presets use the PlayStation’s 240-line non-interlaced mode as their reference. PS1 Sharp and HD Blend can resolve more detail on taller screens. [Sony PlayStation hardware manual, chapter 3](https://psx.arthus.net/sdk/Psy-Q/DOCS/Devrefs/Hardware.pdf).
 
@@ -154,33 +156,39 @@ Under **Screen filter → Motion blur**, use Left/Right to adjust the strength l
 
 ## Live menu and controls
 
-Open the menu with **F8** or **Select + Start**. Choose **Display** to change how the game fills the screen, or **Screen filter** to edit its look.
+Open the menu with **F8** or **Select + Start**. Choose **Display** for game presentation, **Screen filter** for picture profiles or **Menu settings** for the size of the settings overlay. Adjust **Menu size** from 70% to 150% in steps of 10%. Press Enter or A on this row to return to 100%. The size changes live and is saved separately from filter profiles.
 
 The in-game cursor uses the 16 × 16 hand from FFVI. The installer uses the desktop pointer and highlights the focused button. The update notice plays one 0.72-second call from FFVII. [FFVI menu sprite sheet](https://www.spriters-resource.com/snes/ff6/asset/54693/) · [FFVII Chocobo recording](https://ffc.rpgclassics.com/low/species/chocobo.shtml).
 
 | Action | Keyboard | XInput controller / Steam Input |
 | --- | --- | --- |
-| Open or close the panel | F8 | Select + Start (View + Menu on Xbox controllers and Steam Deck) |
-| Switch between Display and Screen filter | Tab | LB / RB (L1 / R1) |
+| Open the panel | F8 (fixed) | Hold Select and tap Start (View + Menu on Xbox controllers and Steam Deck) |
+| Previous / next factory filter during gameplay | — | Hold Select and tap LB / RB (L1 / R1) |
+| Focus the section list and highlight the next / previous section | Tab / Shift + Tab | RB / LB (R1 / L1) |
+| Open the highlighted section / return to the previous row | Enter / Esc | A / B |
 | Move through settings | Up / Down | D-pad or left stick up / down |
 | Change a value or switch profile | Left / Right | D-pad or left stick left / right |
 | Activate the highlighted action | Enter | A |
-| Discard unsaved filter edits and close | Esc | B |
+| Close the panel or review unsaved filter changes | Esc | B |
+
+**Select is the default shortcut modifier.** Keep it held while tapping LB or RB to compare looks. Each press changes one preset and briefly shows its name in the upper-left corner. Tap Start while still holding Select to open the menu. A standalone Select tap retains its normal game action on release.
+
+Under **Menu settings**, highlight **Open menu**, **Previous filter** or **Next filter** and press A or Enter. Release the button used to start recording, then hold one or two controller buttons together for one second. Tap B or press Esc to cancel. Press Left on a shortcut row to restore its default. Each action has its own binding. F8 always opens the menu from the keyboard.
 
 Percentage sliders move in 10-point steps with the keyboard or controller. An existing value such as 32% stays as saved until you adjust it. Right moves it to 40% and Left to 30%.
 
-Display settings save as you adjust them. Editing a filter shows **Custom (preview)** and previews the change immediately. To discard the preview and try another preset, highlight **Profile** and press Left or Right. The cursor stays on **Profile**. Closing the panel also discards unsaved filter edits. The last selected profile is remembered.
+Display and menu settings save as you adjust them. Editing a filter shows **Custom (preview)**. Closing the panel with a pending edit lets you save it to **Custom**, discard it or keep editing. Choosing another profile with Left or Right discards the preview. Your last selected profile is remembered.
 
 To keep your edits, choose **Create a custom copy**, **Save to my custom profile** or **Save my changes**, depending on whether you already have a saved copy. **Restore filter defaults** previews the base preset's values. You can test that look before deciding whether to save it.
 
-[View the two menu sections at Steam Deck resolution](docs/GALLERY.md#settings-menu).
+[View the menu and filter controls at Steam Deck resolution](docs/GALLERY.md#settings-menu).
 
 ## Update, uninstall and troubleshoot
 
-- **Update in-game.** Starting with Windows 1.4.2 and Deck 1.4.0-deck.8, the startup check prepares the **Download update** button. You can also select **Check for updates** manually. The progress bar shows the download, verification and saving stages. When **Update ready** appears, close the game and launcher, then reopen FFVIII to use the new version.
+- **Update in-game.** Select **Download update** in **Display**. The progress bar shows the download, verification and saving stages. When **Update ready** appears, **Later** lets you keep playing. After saving your game, choose **Close game now**, then launch FFVIII again from Steam to apply the update. You can return to **Update ready** if you chose Later.
 - **First upgrade from an older release.** Install Windows 1.4.0 or Steam Deck 1.4.0-deck.1 (or newer) once to add the menu option. Future updates use the Windows stable channel or the Steam Deck experimental channel automatically. Steam Deck updates work in Gaming Mode. Checking requires internet and downloading requires write access to the game folder. The standalone installer is also available for repairs.
 - **Uninstall:** close the game and launcher, open the installer, select the game folder and click **Uninstall**. The installer verifies and restores the original DLL. Save files are not part of the installation.
-- **F8 does nothing:** give the game window focus and launch through the Steam account that owns the game. On a controller, press both buttons together. For a pad without XInput, use a Steam Input gamepad layout.
+- **F8 does nothing:** give the game window focus and launch through the Steam account that owns the game. On a controller, hold Select and tap Start or use your saved menu shortcut. For a pad without XInput, use a Steam Input gamepad layout.
 - **Unexpected DLL or incompatible engine:** confirm the edition and game folder. Another mod using `libvgmstream.dll` can conflict. Remove that mod using its own instructions before installing FF8 Reborn.
 - **Reporting a visual issue:** include the location, scene type, frame-rate target, aspect ratio and filter. A screenshot helps with a static defect. A short clip is more useful for movement or flicker. [Open an issue](https://github.com/Faga250885/FF8-Reborn/issues).
 

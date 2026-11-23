@@ -130,6 +130,7 @@ static DWORD WINAPI work(void*){
 static void action(){
     const State before=status();
     if(before==retro_panel::update_available){
+        retro_panel::update_choice_seen=false;
         received_bytes.store(0,std::memory_order_relaxed);
         total_bytes.store(0,std::memory_order_relaxed);
         say(retro_panel::update_downloading,L"Downloading "+wide(offered.tag)+L"…");
@@ -145,10 +146,30 @@ static void action(){
     if(worker)CloseHandle(worker);
     else say(retro_panel::update_error,L"Could not start the update check.");
 }
+// Ask only the game window which owns this panel to close normally. GLFW
+// receives WM_CLOSE through its original window procedure and handles exit.
+static bool close_for_update(){
+    if(status()!=retro_panel::update_ready||!renderer)return false;
+    const HWND window=retro_panel::attached;
+    DWORD owner=0;
+    if(!window||retro_panel::current!=&display_settings.retro||
+       GetWindowThreadProcessId(window,&owner)!=GetCurrentThreadId()||owner!=GetCurrentProcessId())return false;
+    if(!update_slots::pending(renderer,update_version::channel,update_version::build)){
+        say(retro_panel::update_error,L"Staged update unavailable. Check for updates again.");
+        return false;
+    }
+    return PostMessageW(window,WM_CLOSE,0,0)!=FALSE;
+}
 static void on_first_present(){
-    if(startup_checked||!renderer)return;
-    startup_checked=true;
-    if(status()==retro_panel::update_idle)action();
+    if(!renderer)return;
+    if(!startup_checked){
+        startup_checked=true;
+        if(status()==retro_panel::update_idle)action();
+    }
+    // The worker never touches window focus. Offer once on the updater row,
+    // after staging has finished and the menu is ready to accept a choice.
+    if(!retro_panel::update_choice_seen&&status()==retro_panel::update_ready)
+        retro_panel::offer_update_choice();
 }
 static void setup(HMODULE self){
     renderer=self;
@@ -157,5 +178,6 @@ static void setup(HMODULE self){
     retro_panel::update_status=status;
     retro_panel::update_detail=detail;
     retro_panel::update_bytes=download_bytes;
+    retro_panel::close_for_update=close_for_update;
 }
 }
