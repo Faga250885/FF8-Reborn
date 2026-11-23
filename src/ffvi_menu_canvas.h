@@ -34,6 +34,20 @@ struct Canvas {
             std::fill(scan+x0,scan+x1,bgra);
         }
     }
+    void blend_box(int x,int y,int r,int b,COLORREF colour,unsigned opacity){
+        const int x0=std::clamp(px(x),0,width),x1=std::clamp(px(r),0,width);
+        const int y0=std::clamp(px(y),0,height),y1=std::clamp(px(b),0,height);
+        opacity=std::min(opacity,255u);
+        for(int row=y0;row<y1;++row){
+            auto* scan=storage.get()+size_t(height-1-row)*width;
+            for(int col=x0;col<x1;++col){
+                const uint32_t old=scan[col];
+                const auto mix=[&](unsigned previous,unsigned next){return (previous*(255-opacity)+next*opacity+127)/255;};
+                scan[col]=0xff000000u|(mix((old>>16)&255,GetRValue(colour))<<16)|
+                          (mix((old>>8)&255,GetGValue(colour))<<8)|mix(old&255,GetBValue(colour));
+            }
+        }
+    }
     void stepped_box(int x,int y,int w,int h,COLORREF colour){
         box(x+3,y,x+w-3,y+h,colour);
         box(x+1,y+1,x+w-1,y+h-1,colour);

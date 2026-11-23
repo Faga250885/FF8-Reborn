@@ -54,7 +54,8 @@ int main(){
     }
     assert(selected()==Aspect);
     key(VK_UP);assert(choosing_section&&pending_section==Section::Display);
-    key(VK_DOWN);assert(!choosing_section&&selected()==Aspect);
+    key(VK_DOWN);assert(choosing_section&&pending_section==Section::Display);
+    key(VK_RETURN);assert(!choosing_section&&selected()==Aspect);
     key(VK_DOWN);key(VK_UP);assert(selected()==Aspect);
     row=InstalledVersion;
     static int updates=0;
@@ -92,20 +93,21 @@ int main(){
     key(VK_DOWN);assert(selected()==InstalledVersion);
     key(VK_DOWN);assert(selected()==Aspect);
     pad_input(pad,0,XINPUT_GAMEPAD_LEFT_SHOULDER,++tick,path,s);
-    assert(choosing_section&&pending_section==Section::MenuSettings&&section_view()==Section::Display);
+    assert(!choosing_section&&section_view()==Section::MenuSettings&&selected()==MenuSize);
     pad_input(pad,0,XINPUT_GAMEPAD_LEFT_SHOULDER,tick+500,path,s);
-    assert(choosing_section&&pending_section==Section::MenuSettings&&selected()==Aspect);
+    assert(!choosing_section&&section_view()==Section::MenuSettings&&selected()==MenuSize);
     tick+=500;tap(0);
     tap(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER);
-    assert(choosing_section&&pending_section==Section::MenuSettings);
-    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(pending_section==Section::Display);
+    assert(!choosing_section&&section_view()==Section::MenuSettings);
+    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(!choosing_section&&section_view()==Section::Display&&selected()==Aspect);
+    key(VK_UP);assert(choosing_section&&pending_section==Section::Display);
     key(VK_LEFT);assert(pending_section==Section::MenuSettings);
     tap(XINPUT_GAMEPAD_DPAD_RIGHT);assert(pending_section==Section::Display);
     key(VK_TAB);assert(pending_section==Section::ScreenFilter);
     assert(display_settings.wide==initial_wide&&selected()==Aspect&&!dirty);
     tap(XINPUT_GAMEPAD_A);assert(!choosing_section&&section_view()==Section::ScreenFilter&&selected()==Profile);
     tap(XINPUT_GAMEPAD_DPAD_UP);assert(choosing_section&&pending_section==Section::ScreenFilter);
-    tap(XINPUT_GAMEPAD_DPAD_DOWN);
+    tap(XINPUT_GAMEPAD_A);
     assert(selected()==Profile&&active_profile==8&&same_filter(initial,s)&&!dirty);
     go(Glow);key(VK_RIGHT);
     assert(dirty&&s.glow==10);
@@ -126,8 +128,7 @@ int main(){
     go(Aspect);key(VK_RIGHT);
     assert(read_int(L"Display",L"Wide")==!initial_wide&&dirty&&s.glow==10);
     key(VK_LEFT);
-    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(choosing_section&&pending_section==Section::ScreenFilter);
-    tap(XINPUT_GAMEPAD_A);assert(selected()==Profile&&section_view()==Section::ScreenFilter);
+    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(!choosing_section&&selected()==Profile&&section_view()==Section::ScreenFilter);
     tap(XINPUT_GAMEPAD_B);assert(confirm_close&&open&&dirty&&capture_pad);
     assert(close_choice==CloseChoice::KeepEditing&&panel_key('W'));
     key(VK_TAB);tap(XINPUT_GAMEPAD_LEFT_SHOULDER);tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);
@@ -251,7 +252,8 @@ int main(){
     key(VK_DOWN);assert(selected()==SaveCustom);
     key(VK_UP);assert(selected()==Profile);
     key(VK_UP);assert(choosing_section&&pending_section==Section::ScreenFilter);
-    key(VK_DOWN);assert(!choosing_section&&selected()==Profile&&section_view()==Section::ScreenFilter);
+    key(VK_DOWN);assert(choosing_section&&pending_section==Section::ScreenFilter);
+    key(VK_RETURN);assert(!choosing_section&&selected()==Profile&&section_view()==Section::ScreenFilter);
     tap(XINPUT_GAMEPAD_DPAD_LEFT);
     assert(active_profile==custom&&s.motion_blur==0);
     go(Restore);

@@ -107,7 +107,33 @@ int main(){
             }
             const int footer=ui::footer_top(page,example.manual);
             const int side=mw+ui::menu_gap;
-            check_label(L"Close",side+64,ui::main_y+6+3*20,side+ui::side_width-5,ui::main_y+6+3*20+14,ui::ink);
+            check_label(L"Close",side+64,ui::main_y+6+4*20,side+ui::side_width-5,ui::main_y+6+4*20+14,ui::ink);
+            for(int button=3;button<=4;++button){
+                const int x=side+8,y=ui::main_y+6+button*20;
+                int min_x=14,max_x=-1,min_y=14,max_y=-1;
+                for(int by=2;by<12;++by)for(int bx=2;bx<12;++bx){
+                    const auto offset=4*(size_t(panel.h-1-y-by)*panel.w+x+bx);
+                    if(RGB(frame[offset+2],frame[offset+1],frame[offset])==ui::ink){
+                        min_x=std::min(min_x,bx);max_x=std::max(max_x,bx);
+                        min_y=std::min(min_y,by);max_y=std::max(max_y,by);
+                    }
+                }
+                demand(max_x>=0&&std::abs(min_x+max_x+1-14)<=2&&std::abs(min_y+max_y+1-14)<=2,
+                       "controller button letter is not centered");
+            }
+            for(int button=0;button<2;++button){
+                const int x=side+6+button*22,y=ui::main_y+6;
+                int min_x=20,max_x=-1,min_y=14,max_y=-1;
+                for(int by=2;by<12;++by)for(int bx=2;bx<18;++bx){
+                    const auto offset=4*(size_t(panel.h-1-y-by)*panel.w+x+bx);
+                    if(RGB(frame[offset+2],frame[offset+1],frame[offset])==ui::ink){
+                        min_x=std::min(min_x,bx);max_x=std::max(max_x,bx);
+                        min_y=std::min(min_y,by);max_y=std::max(max_y,by);
+                    }
+                }
+                demand(max_x>=0&&std::abs(min_x+max_x+1-20)<=2&&std::abs(min_y+max_y+1-14)<=2,
+                       "shoulder button label is not centered");
+            }
             const int counter=fps_counter::tile_h*fps_counter::scale(3,w,h);
             const auto place=ui::place(page,example.manual,w,h,counter);
             demand(place.y>=0&&place.y+place.h<=h-counter&&place.x+place.w<=w,"panel outside drawable");

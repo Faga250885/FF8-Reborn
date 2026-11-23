@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.15/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
+**[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.16/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
 > **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. **El próximo objetivo son los 60 FPS.** El desarrollo continuará a medida que haya tiempo disponible. Todavía no hay fecha para ese modo.
@@ -29,7 +29,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 
 ## Novedades
 
-- **Menú clásico.** Las tres secciones están arriba y la activa permanece resaltada. Pulsa arriba desde la primera opción para llevar la manito a las secciones, elige con izquierda o derecha y abre con A o Intro. La ayuda muestra iconos de la cruceta y los botones.
+- **Menú clásico.** Las tres secciones están arriba y la activa permanece resaltada. Pulsa arriba desde la primera opción para llevar la manito a las secciones, elige con izquierda o derecha y abre con A o Intro. Al recorrer las opciones, L1 y R1 cambian de sección inmediatamente. La ayuda muestra iconos de la cruceta y los botones.
 - **Resolución automática del filtro.** Cada perfil elige la resolución de su señal según la ventana del juego. Izquierda o derecha la ajustan de 5 en 5 líneas. Intro o A vuelve a Auto. Los nueve controles de porcentaje se ajustan de 10 en 10.
 - **Difuminado lateral.** Se corrigió la línea oscura que aparecía entre el margen izquierdo y el escenario prerenderizado a 1280×800. El difuminado ahora se alinea con el borde que dibuja el juego.
 - **Actualizaciones desde Windows y Steam Deck.** Al iniciar el juego, FF8 Reborn consulta una vez el canal de su plataforma. Cuando hay una versión nueva, aparece un aviso azul arriba a la izquierda y suena el canto breve de un Chocobo. Suena una vez por versión en cada sesión de juego. El aviso permanece diez segundos y se desvanece en dos. Abre el menú con **F8** o **Select + Start** para ver la versión instalada y la disponible. Elige **Download update** cuando quieras instalarla.
@@ -67,11 +67,11 @@ En una batalla grabada de 42 segundos a 1280 × 800 en Windows, la versión 1.4.
 Si tienes la versión **1.4.0-deck.1** o posterior, pulsa **View + Menu → Check for updates → Download update**. Cuando aparezca **Update ready**, cierra FFVIII y su lanzador y vuelve a abrir el juego. Si ya tenías seleccionado **Original**, se conserva. Para instalar por primera vez, sigue estos pasos.
 
 1. Instala **FINAL FANTASY VIII Remastered** en Steam. Cierra el juego y su lanzador.
-2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.15/FF8-Reborn-Deck-Setup).
+2. Cambia al modo Escritorio y descarga [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.16/FF8-Reborn-Deck-Setup).
 3. En Dolphin, haz clic derecho sobre el archivo. En **Propiedades → Permisos**, marca **Es ejecutable** y pulsa **Aceptar**.
 4. Abre el archivo con doble clic y pulsa **Install**. Cuando termine, vuelve al modo Juego y abre FFVIII desde Steam. Pulsa **Vista + Menú** a la vez para abrir los ajustes del mod.
 
-El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.15/FF8-Reborn-Deck.pyz).
+El instalador reconoce las bibliotecas de Steam, incluidas las de la microSD. Si te pide localizar una biblioteca, elige la carpeta que contiene `steamapps`. Para quitar el mod, cierra el juego, abre de nuevo el instalador y elige **Uninstall**. La interfaz usa Python 3.8 o superior y Zenity. También está disponible el [instalador de línea de comandos](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.16/FF8-Reborn-Deck.pyz).
 
 Si acabamos de publicar una versión y ves **Up to date**, compara **Display → Installed version** con la versión de Steam Deck que aparece arriba. GitHub puede tardar unos minutos en mostrarla al juego. Pulsa **Check for updates** de nuevo. Si la fila cambia a **Download update**, pulsa **A** otra vez para descargarla. También puedes cerrar FFVIII y usar **Update or repair** en el instalador de modo Escritorio para actualizar conservando tus ajustes.
 
@@ -186,7 +186,8 @@ Dentro del juego, la manito de 16 × 16 píxeles de FFVI señala la opción acti
 | --- | --- | --- |
 | Abrir el menú | F8 (fijo) | Mantén Select y pulsa Start (Vista + Menú en Xbox y Steam Deck) |
 | Filtro de fábrica anterior / siguiente durante la partida | — | Mantén Select y pulsa LB / RB (L1 / R1) |
-| Ir a las secciones superiores y señalar la siguiente / anterior | Tab / Mayús + Tab | RB / LB (R1 / L1) |
+| Ir a las secciones superiores y señalar la siguiente / anterior | Tab / Mayús + Tab | Cruceta arriba desde la primera fila, luego izquierda / derecha |
+| Cambiar de sección directamente al recorrer las opciones | — | LB / RB (L1 / R1) |
 | Abrir la sección resaltada / regresar a la fila anterior | Intro / Esc | A / B |
 | Recorrer las opciones | Arriba / Abajo | Cruceta o palanca izquierda arriba / abajo |
 | Cambiar un valor o perfil | Izquierda / Derecha | Cruceta o palanca izquierda a los lados |

@@ -382,7 +382,6 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         case VK_RETURN: focus_section(pending_section);break;
         case VK_LEFT: change_section(-1);break;
         case VK_RIGHT: change_section(1);break;
-        case VK_DOWN: focus_section(pending_section);break;
         }
         return;
     }

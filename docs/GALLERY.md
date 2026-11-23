@@ -126,7 +126,7 @@ The menu uses the native game timing for presentation.
 
 Use **Display** for screen options and updates, **Screen filter** for the picture profile and **Menu settings** to resize the overlay or change controller shortcuts. These 1280 × 800 previews show the street outside the Galbadia Hotel.
 
-Press **Up** on the first setting to move the hand to the sections above. Choose a section with **Left / Right** and press **A / Enter** or **Down** to open it. **B / Esc** returns to the setting you were editing. [View the section selector](images/settings-sections.png)
+Press **Up** on the first setting to move the hand to the sections above. Choose a section with **Left / Right** and press **A / Enter** to open it. From the settings list, **L1 / R1** switch sections immediately. **B / Esc** returns to the setting you were editing. [View the section selector](images/settings-sections.png)
 
 [![Display menu over the Galbadia Hotel scene](images/settings-display.png)](images/settings-display.png)
 

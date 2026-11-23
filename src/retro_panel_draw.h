@@ -9,7 +9,7 @@ static bool painted=false;
 constexpr int display_width=256,filter_width=256,side_width=126;
 constexpr int main_y=26,first_y=32,filter_row=17,display_row=17;
 constexpr int left=24,output_height=15,footer_height=40;
-constexpr int section_height=22,keys_height=92,menu_gap=4;
+constexpr int section_height=22,keys_height=112,menu_gap=4;
 static constexpr const wchar_t* section_names[]={L"Display",L"Screen filter",L"Menu settings"};
 static int main_width(retro_panel::Section page){
     return page==retro_panel::Section::ScreenFilter?filter_width:display_width;
@@ -286,6 +286,23 @@ static std::wstring help(int selected,const RetroSettings& s,retro_panel::Update
             return L"Save a custom copy to keep your changes.";
     }
 }
+static void centered_icon_label(Canvas& c,const wchar_t* text,int x,int y,int width,int height){
+    int left=INT_MAX,right=-1,top=11,bottom=-1,pen=0;
+    for(const wchar_t* p=text;*p;++p){
+        const Glyph& g=glyph(*p);
+        for(int gy=0;gy<11;++gy)for(int gx=0;gx<g.width;++gx){
+            if(g.rows[gy]&(1u<<(g.width-1-gx))){
+                left=std::min(left,pen+gx);right=std::max(right,pen+gx);
+                top=std::min(top,gy);bottom=std::max(bottom,gy);
+            }
+        }
+        pen+=g.advance;
+    }
+    if(right<left||bottom<top)return;
+    const int draw_x=x+(width-(right-left+1))/2-left;
+    const int draw_y=y+(height-(bottom-top+1))/2-top;
+    c.label(text,draw_x,draw_y,draw_x+pen,draw_y+11,0,ink);
+}
 static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,bool failed,
                    retro_panel::UpdateState update,UpdateMeter meter,int w,int h){
     using namespace retro_panel;
@@ -334,7 +351,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     c.paragraph(hint,9,footer+6,mw-9,2,
                 !choose&&(failed||(update_prompt&&update_close_failed)||(record&&(shortcut_too_many||shortcut_conflict))||(selected==ModUpdate&&update==update_error))?warning:ink);
 
-    static constexpr const wchar_t* keys[][2]={{L"↑ ↓",L"Navigate"},{L"← →",L"Adjust"},{L"A",L"Select"},{L"B",L"Close"}};
+    static constexpr const wchar_t* keys[][2]={{L"L1 R1",L"Section"},{L"↑ ↓",L"Navigate"},{L"← →",L"Adjust"},{L"A",L"Select"},{L"B",L"Close"}};
     const int sx=mw+menu_gap,ky=main_y;
     static constexpr const wchar_t* prompt_keys[][2]={{L"↑ ↓",L"Navigate"},{L"A",L"Select"},{L"B",L"Back"}};
     static constexpr const wchar_t* chooser_keys[][2]={{L"← →",L"Section"},{L"A",L"Select"},{L"B",L"Back"}};
@@ -348,18 +365,31 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
             const wchar_t* key=actions[i][0];
             if(key[0]==L'↑'||key[0]==L'←'){
                 const int x=sx+8;
-                const COLORREF inactive=RGB(85,105,155);
-                c.box(x+3,y-1,x+9,y+13,ink);c.box(x-1,y+3,x+13,y+9,ink);
-                c.box(x+4,y,x+8,y+12,inactive);c.box(x,y+4,x+12,y+8,inactive);
+                c.box(x+4,y,x+8,y+1,ink);c.box(x+4,y+11,x+8,y+12,ink);
+                c.box(x+4,y+1,x+5,y+4,ink);c.box(x+7,y+1,x+8,y+4,ink);
+                c.box(x+4,y+8,x+5,y+11,ink);c.box(x+7,y+8,x+8,y+11,ink);
+                c.box(x,y+4,x+1,y+8,ink);c.box(x+11,y+4,x+12,y+8,ink);
+                c.box(x+1,y+4,x+4,y+5,ink);c.box(x+1,y+7,x+4,y+8,ink);
+                c.box(x+8,y+4,x+11,y+5,ink);c.box(x+8,y+7,x+11,y+8,ink);
                 const bool vertical=key[0]==L'↑';
-                if(vertical){c.box(x+4,y,x+8,y+4,mint);c.box(x+4,y+8,x+8,y+12,mint);}
-                else{c.box(x,y+4,x+4,y+8,mint);c.box(x+8,y+4,x+12,y+8,mint);}
+                constexpr unsigned fade[]={220,145,70};
+                for(int j=0;j<3;++j){
+                    if(vertical){c.blend_box(x+5,y+1+j,x+7,y+2+j,mint,fade[j]);c.blend_box(x+5,y+10-j,x+7,y+11-j,mint,fade[j]);}
+                    else{c.blend_box(x+1+j,y+5,x+2+j,y+7,mint,fade[j]);c.blend_box(x+10-j,y+5,x+11-j,y+7,mint,fade[j]);}
+                }
             }else if((key[0]==L'A'||key[0]==L'B')&&!key[1]){
                 const int x=sx+8;
                 c.stepped_box(x,y,14,14,ink);
                 c.stepped_box(x+1,y+1,12,12,track);
-                c.label(key,x+2,y,x+14,y+14,0,ink);
+                centered_icon_label(c,key,x,y,14,14);
                 c.label(key[0]==L'A'?L"Enter":L"Esc",sx+24,y,sx+57,y+14,0,mint);
+            }else if(!wcscmp(key,L"L1 R1")){
+                for(int button=0;button<2;++button){
+                    const int x=sx+6+button*22;
+                    const wchar_t* title=button?L"R1":L"L1";
+                    c.stepped_box(x,y,20,14,ink);c.stepped_box(x+1,y+1,18,12,track);
+                    centered_icon_label(c,title,x,y,20,14);
+                }
             }else{
                 c.label(key,sx+8,y,sx+45,y+14,0,mint);
             }

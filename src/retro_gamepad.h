@@ -106,8 +106,14 @@ static void pad_input(Pad& pad,int index,unsigned held,ULONGLONG tick,const wcha
     const WORD shoulders=XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if(pressed&XINPUT_GAMEPAD_B)handle_key(VK_ESCAPE,path,s);
     else if(pressed&XINPUT_GAMEPAD_A)handle_key(VK_RETURN,path,s);
-    else if(!arrows&&(pressed&shoulders)&&(held&shoulders)!=shoulders)
-        change_section((pressed&XINPUT_GAMEPAD_RIGHT_SHOULDER)?1:-1);
+    else if(!arrows&&(pressed&shoulders)&&(held&shoulders)!=shoulders){
+        const int step=(pressed&XINPUT_GAMEPAD_RIGHT_SHOULDER)?1:-1;
+        if(choosing_section)change_section(step);
+        else if(!confirm_close&&!update_choice_open){
+            constexpr int count=int(std::size(sections));
+            focus_section(sections[(int(page)+step+count)%count]);
+        }
+    }
     else if(arrows&&(!(arrows&(arrows-1)))&&(pad.direction!=arrows||tick>=pad.repeat_at)){
         handle_key(arrows==1?VK_UP:arrows==2?VK_DOWN:arrows==4?VK_LEFT:VK_RIGHT,path,s);
         pad.repeat_at=tick+(arrows==pad.direction?110:420);

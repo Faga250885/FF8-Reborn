@@ -126,7 +126,7 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 En **Display** puedes ajustar la pantalla y buscar actualizaciones. En **Screen filter** eliges el perfil de imagen y en **Menu settings** puedes ajustar el tamaño del menú o cambiar los atajos del mando. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
 
-Pulsa **arriba** desde la primera opción para llevar la manito a las secciones superiores. Elige con **izquierda / derecha** y abre con **A / Intro** o **abajo**. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.png)
+Pulsa **arriba** desde la primera opción para llevar la manito a las secciones superiores. Elige con **izquierda / derecha** y abre con **A / Intro**. Desde la lista de opciones, **L1 / R1** cambian de sección inmediatamente. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.png)
 
 [![Menú Display sobre la calle del Hotel Galbadia](images/settings-display.png)](images/settings-display.png)
 
