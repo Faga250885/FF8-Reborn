@@ -2,7 +2,7 @@
 
 [FF8 Reborn](../README.es.md) · [English](GALLERY.md)
 
-Las imágenes del juego proceden de la edición de Steam de FFVIII Remastered. Las vistas del menú muestran el panel actual del mod dibujado sobre cuadros capturados del juego. Abre cada imagen para verla a tamaño completo.
+Las imágenes del juego proceden de la edición de Steam de FFVIII Remastered. Las vistas del menú muestran el panel actual del mod dibujado sobre cuadros capturados del juego. Los estados de actualización y progreso se prepararon para ilustrar el proceso. Abre cada imagen para verla a tamaño completo.
 
 <a name="features"></a>
 
@@ -126,23 +126,29 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 En **Display** puedes ajustar la pantalla y buscar actualizaciones. En **Screen filter** eliges el perfil de imagen y en **Menu settings** puedes ajustar el tamaño del menú o cambiar los atajos del mando. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
 
-Pulsa **LB / RB** o **Tab** para llevar la manito a la lista de secciones de la derecha. Elige una con **↑ / ↓** y ábrela con **A / Intro**. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.jpg)
+Pulsa **arriba** desde la primera opción para llevar la manito a las secciones superiores. Elige con **izquierda / derecha** y abre con **A / Intro** o **abajo**. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.png)
 
-[![Menú Display sobre la calle del Hotel Galbadia](images/settings-display.jpg)](images/settings-display.jpg)
+[![Menú Display sobre la calle del Hotel Galbadia](images/settings-display.png)](images/settings-display.png)
 
-[![Menú Screen filter con el perfil recomendado y la simulación de televisor apagada](images/settings-filter.jpg)](images/settings-filter.jpg)
+[![Menú Screen filter con el perfil recomendado y la simulación de televisor apagada](images/settings-filter.png)](images/settings-filter.png)
 
 Elige **Off** en **Profile** para apagar todos los efectos del filtro, incluido el desenfoque de movimiento. Con un perfil activo, **TV simulation** permite ajustar el patrón de fósforos, su intensidad y su nitidez. Los perfiles Sony Trinitron y los dos RCA activan esta opción por defecto.
 
 Si cierras el menú después de editar un filtro, puedes guardar tu copia personalizada, descartar los cambios o seguir editando.
 
-[![Menú Menu settings con el tamaño predeterminado](images/settings-menu-size.jpg)](images/settings-menu-size.jpg)
+[![Menú Menu settings con el tamaño predeterminado](images/settings-menu-size.png)](images/settings-menu-size.png)
 
-Durante la partida, pulsa **Select + LB** para usar el filtro anterior o **Select + RB** para pasar al siguiente. El nombre del filtro aparece en pantalla. Para cambiar un atajo, entra en **Menu settings**, elige el que quieres cambiar y mantén pulsados uno o dos botones durante un segundo. [Ver el aviso de cambio de filtro](images/settings-quick-filter.jpg)
+Durante la partida, pulsa **Select + LB** para usar el filtro anterior o **Select + RB** para pasar al siguiente. El nombre del filtro aparece en pantalla. Para cambiar un atajo, entra en **Menu settings**, elige el que quieres cambiar y mantén pulsados uno o dos botones durante un segundo. [Ver el aviso de cambio de filtro](images/settings-quick-filter.png)
 
 [![Aviso de actualización con el mismo estilo del menú](images/update-notice.png)](images/update-notice.png)
 
 Cuando la actualización termina de descargarse, verificarse y guardarse, puedes elegir **Close game now** o **Later**. Elige **Later** para seguir jugando y guardar tu partida. La actualización se aplica la próxima vez que abras el juego.
+
+[![Actualización disponible](images/update-available.png)](images/update-available.png)
+
+[![Progreso de descarga](images/update-progress.png)](images/update-progress.png)
+
+[![Diálogo de actualización lista](images/update-ready.png)](images/update-ready.png)
 
 <a name="filters"></a>
 

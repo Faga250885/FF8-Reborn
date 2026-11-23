@@ -380,8 +380,9 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         switch(key){
         case VK_ESCAPE: choosing_section=false;break;
         case VK_RETURN: focus_section(pending_section);break;
-        case VK_LEFT: case VK_UP: change_section(-1);break;
-        case VK_RIGHT: case VK_DOWN: change_section(1);break;
+        case VK_LEFT: change_section(-1);break;
+        case VK_RIGHT: change_section(1);break;
+        case VK_DOWN: focus_section(pending_section);break;
         }
         return;
     }
@@ -395,6 +396,9 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         return;
     }
     if(key==VK_UP||key==VK_DOWN){
+        if(key==VK_UP&&row==order_for(page).rows[0]){
+            pending_section=page;choosing_section=true;return;
+        }
         move_row(key==VK_UP?-1:1,s);
         return;
     }

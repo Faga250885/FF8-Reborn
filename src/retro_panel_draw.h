@@ -6,16 +6,15 @@ static Surface panel;
 static std::array<int,51> last_state{};
 static unsigned last_update_revision=0;
 static bool painted=false;
-constexpr int display_width=241,filter_width=262,side_width=104;
-constexpr int main_y=12,first_y=24,filter_row=17,display_row=20;
+constexpr int display_width=256,filter_width=256,side_width=126;
+constexpr int main_y=26,first_y=32,filter_row=17,display_row=17;
 constexpr int left=24,output_height=15,footer_height=40;
-constexpr int section_height=64,keys_height=140;
+constexpr int section_height=22,keys_height=92,menu_gap=4;
 static constexpr const wchar_t* section_names[]={L"Display",L"Screen filter",L"Menu settings"};
-constexpr COLORREF section_blue=RGB(142,205,255);
 static int main_width(retro_panel::Section page){
     return page==retro_panel::Section::ScreenFilter?filter_width:display_width;
 }
-static int design_width(retro_panel::Section page){return main_width(page)+side_width+1;}
+static int design_width(retro_panel::Section page){return main_width(page)+menu_gap+side_width;}
 static int row_top(int id,bool restore_visible){
     using namespace retro_panel;
     const auto m=std::find(std::begin(menu_order),std::end(menu_order),id);
@@ -34,7 +33,7 @@ static int footer_top(retro_panel::Section page,bool restore_visible){
                                   row_top(SaveCustom,restore_visible)+filter_row+5;
 }
 static int design_height(retro_panel::Section page,bool restore,bool bypass=false){
-    const int side_bottom=main_y+section_height+keys_height+(bypass?20:0);
+    const int side_bottom=main_y+keys_height+(bypass?20:0);
     return std::max(footer_top(page,restore)+footer_height,side_bottom)+2;
 }
 struct Placement {int x,y,w,h,canvas_height;};
@@ -48,7 +47,7 @@ static Placement place(retro_panel::Section page,bool restore,int w,int h,int co
         available_height/double(design_height(retro_panel::Section::ScreenFilter,true)+16));
     const double whole=std::max(1.,std::round(h/400.));
     const double normal=fit>=1.?std::min(whole,std::floor(fit)):fit;
-    const int sidebar=main_y+section_height+keys_height+(bypass?20:0)+2;
+    const int sidebar=main_y+keys_height+(bypass?20:0)+2;
     const double scale=std::min({normal*(display_settings.menu_scale/100.),width_fit,available_height/double(sidebar+16)});
     const int visible_height=std::min(design_height(page,restore,bypass),int(std::floor(available_height/scale+1e-6))-16);
     const int margin=int(std::lround(8*scale));
@@ -110,7 +109,7 @@ static constexpr UpdateText update_text[]={
     {L"Saving update…",L"",L"Preparing the verified update for the next launch."}
 };
 static void row_label(Canvas& c,int id,int selected,int y,int height,const wchar_t* title,
-                      const wchar_t* value,int right,COLORREF title_colour=mint,COLORREF value_colour=ink,int indent=0){
+                      const wchar_t* value,int right,COLORREF title_colour=ink,COLORREF value_colour=ink,int indent=0){
     if(id==selected&&(!retro_panel::choosing_section||retro_panel::confirm_close||retro_panel::update_choice_open))
         c.cursor(5,y+(height-16)/2);
     int end=right;
@@ -134,7 +133,7 @@ static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,U
     const bool tag_fits=update==update_available&&!available.empty()&&
         text_width(message.action)+5+text_width(available.c_str())<=right-left;
     row_label(c,ModUpdate,selected,y,display_row,message.action,tag_fits?available.c_str():progress[0]?progress:message.status,
-              right,update_actionable(update)?mint:muted,update==update_error?warning:ink);
+              right,update_actionable(update)?ink:muted,update==update_error?warning:ink);
     static const std::wstring installed(update_version::tag,update_version::tag+sizeof(update_version::tag)-1);
     row_label(c,InstalledVersion,selected,row_top(InstalledVersion,false),display_row,L"Installed version",installed.c_str(),right);
     if(update==update_downloading||update==update_verifying||update==update_saving||update==update_ready){
@@ -167,7 +166,7 @@ static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int 
     const int values[]={0,s.effective_lines(w,h,base_profile()),s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness,s.motion_blur};
     const int right=filter_width-9;
     wchar_t output[72];
-    swprintf(output,std::size(output),L"%ls · %d×%d",filter_resolution::label(filter_resolution::detect(w,h)),w,h);
+    swprintf(output,std::size(output),L"%d×%d",w,h);
     const auto view=filter_page(selected,restore,footer);
     if(!view.offset){
         c.label(L"Output tuning",left,tuning_top,108,tuning_top+output_height,0,muted);
@@ -202,7 +201,7 @@ static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int 
             else{swprintf(formatted,std::size(formatted),L"%d%%",percentage);value=formatted;}
         }
         const int indent=id==TVScreen||id==PhosphorStrength||id==PhosphorSharpness?6:0;
-        row_label(c,id,selected,y,filter_row,title,value,right,active?mint:muted,active?ink:muted,indent);
+        row_label(c,id,selected,y,filter_row,title,value,right,active?ink:muted,active?ink:muted,indent);
     }
 }
 static const wchar_t* shortcut_action(int id){
@@ -296,13 +295,18 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     const bool update_prompt=update_choice_open&&!confirm_close&&!record;
     const bool choose=choosing_section&&!confirm_close&&!record&&!update_prompt;
     const int mw=main_width(page);
-    const int footer=record||update_prompt?first_y+4*display_row+5:confirm_close?first_y+3*display_row+5:
+    const int footer=record||update_prompt?first_y+41+2*display_row+menu_gap+5:confirm_close?first_y+3*display_row+5:
         std::min(footer_top(page,can_restore(s)),int(std::lround(c.height/c.scale))-footer_height-2);
-    const wchar_t* heading=confirm_close?L"Save filter changes?":record?L"Set controller shortcut":
-                           update_prompt?L"Update ready":section_names[int(page)];
-    c.window(0,main_y,mw,footer-main_y);
-    c.window(6,0,text_width(heading)+18,21);
-    c.label(heading,15,4,mw-9,17,0,ink);
+    c.window(0,main_y,mw,footer-main_y-menu_gap,false,false);
+    const int tab_width=(design_width(page)-2*menu_gap)/3;
+    for(int section=0;section<int(std::size(section_names));++section){
+        const int x=section*(tab_width+menu_gap);
+        c.window(x,0,tab_width,section_height,section==int(page),false);
+        const wchar_t* title=section_names[section];
+        const int text_x=x+(tab_width-text_width(title))/2;
+        c.label(title,text_x,0,x+tab_width,section_height,0,ink);
+        if(choose&&section==int(pending_section))c.cursor(x+4,3);
+    }
     std::wstring available;
 #ifdef GEO_NATIVE_CAPTURE
     if(page==Section::Display&&!confirm_close)available=mod_update::available_version();
@@ -326,41 +330,48 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
         hint=choose?std::wstring(L"Enter / A opens ")+section_names[int(pending_section)]+L". Esc / B goes back.":
                     help(selected,s,update,failed,available);
     }
-    c.window(0,footer,mw,footer_height);
+    c.window(0,footer,mw,footer_height,false,false);
     c.paragraph(hint,9,footer+6,mw-9,2,
                 !choose&&(failed||(update_prompt&&update_close_failed)||(record&&(shortcut_too_many||shortcut_conflict))||(selected==ModUpdate&&update==update_error))?warning:ink);
 
-    c.window(mw,main_y,side_width,section_height);
-    for(int section=0;section<int(std::size(section_names));++section){
-        const bool active=section==int(page);
-        const bool pending=choose&&section==int(pending_section);
-        const int top=main_y+6+section*17;
-        if(pending)c.cursor(mw+5,top);
-        c.label(section_names[section],mw+left,top,mw+side_width-5,top+16,0,pending?mint:active?section_blue:ink);
-    }
-    static constexpr const wchar_t* keys[][2]={{L"Tab / LB / RB",L"Section"},{L"↑ ↓",L"Navigate"},
-        {L"← →",L"Adjust"},{L"Enter / A",L"Select"},{L"Esc / B",L"Close"}};
-    const int ky=main_y+section_height;
-    static constexpr const wchar_t* prompt_keys[][2]={{L"↑ ↓",L"Navigate"},{L"Enter / A",L"Select"},{L"Esc / B",L"Keep editing"}};
-    static constexpr const wchar_t* chooser_keys[][2]={{L"Tab / LB / RB",L"Browse sections"},{L"↑ ↓",L"Navigate"},
-        {L"Enter / A",L"Open section"},{L"Esc / B",L"Back"}};
-    static constexpr const wchar_t* record_keys[][2]={{L"Hold 1 second",L"Save shortcut"},{L"Tap B / Esc / F8",L"Cancel"}};
-    static constexpr const wchar_t* update_keys[][2]={{L"↑ ↓",L"Navigate"},{L"Enter / A",L"Select"},{L"Esc / B",L"Later"}};
+    static constexpr const wchar_t* keys[][2]={{L"↑ ↓",L"Navigate"},{L"← →",L"Adjust"},{L"A",L"Select"},{L"B",L"Close"}};
+    const int sx=mw+menu_gap,ky=main_y;
+    static constexpr const wchar_t* prompt_keys[][2]={{L"↑ ↓",L"Navigate"},{L"A",L"Select"},{L"B",L"Back"}};
+    static constexpr const wchar_t* chooser_keys[][2]={{L"← →",L"Section"},{L"A",L"Select"},{L"B",L"Back"}};
+    static constexpr const wchar_t* record_keys[][2]={{L"1 sec",L"Save"},{L"B",L"Cancel"}};
+    static constexpr const wchar_t* update_keys[][2]={{L"↑ ↓",L"Navigate"},{L"A",L"Select"},{L"B",L"Later"}};
     const auto draw_keys=[&](const auto& actions){
-        const int count=int(std::size(actions)),height=5+count*27;
-        c.window(mw,ky,side_width,height);
+        const int count=int(std::size(actions)),height=12+count*20;
+        c.window(sx,ky,side_width,height,false,false);
         for(int i=0;i<count;++i){
-            const int y=ky+6+i*27;
-            c.label(actions[i][0],mw+9,y,mw+side_width-5,y+12,0,mint);
-            c.label(actions[i][1],mw+9,y+12,mw+side_width-5,y+24,0,ink);
+            const int y=ky+6+i*20;
+            const wchar_t* key=actions[i][0];
+            if(key[0]==L'↑'||key[0]==L'←'){
+                const int x=sx+8;
+                const COLORREF inactive=RGB(85,105,155);
+                c.box(x+3,y-1,x+9,y+13,ink);c.box(x-1,y+3,x+13,y+9,ink);
+                c.box(x+4,y,x+8,y+12,inactive);c.box(x,y+4,x+12,y+8,inactive);
+                const bool vertical=key[0]==L'↑';
+                if(vertical){c.box(x+4,y,x+8,y+4,mint);c.box(x+4,y+8,x+8,y+12,mint);}
+                else{c.box(x,y+4,x+4,y+8,mint);c.box(x+8,y+4,x+12,y+8,mint);}
+            }else if((key[0]==L'A'||key[0]==L'B')&&!key[1]){
+                const int x=sx+8;
+                c.stepped_box(x,y,14,14,ink);
+                c.stepped_box(x+1,y+1,12,12,track);
+                c.label(key,x+2,y,x+14,y+14,0,ink);
+                c.label(key[0]==L'A'?L"Enter":L"Esc",sx+24,y,sx+57,y+14,0,mint);
+            }else{
+                c.label(key,sx+8,y,sx+45,y+14,0,mint);
+            }
+            c.label(actions[i][1],sx+64,y,sx+side_width-5,y+14,0,ink);
         }
         return height;
     };
     const int key_box_height=confirm_close?draw_keys(prompt_keys):record?draw_keys(record_keys):update_prompt?draw_keys(update_keys):
                              choose?draw_keys(chooser_keys):draw_keys(keys);
     if(bypass){
-        c.window(mw,ky+key_box_height,side_width,20);
-        c.label(L"Original view",mw+9,ky+key_box_height+2,mw+side_width-4,ky+key_box_height+18,0,mint);
+        c.window(sx,ky+key_box_height+menu_gap,side_width,20,false,false);
+        c.label(L"Original view",sx+9,ky+key_box_height+menu_gap+2,sx+side_width-4,ky+key_box_height+menu_gap+18,0,mint);
     }
 }
 static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,int h,bool bypass=false){

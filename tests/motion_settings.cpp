@@ -53,7 +53,10 @@ int main(){
         tap(XINPUT_GAMEPAD_DPAD_DOWN);
     }
     assert(selected()==Aspect);
-    key(VK_UP);assert(selected()==InstalledVersion);
+    key(VK_UP);assert(choosing_section&&pending_section==Section::Display);
+    key(VK_DOWN);assert(!choosing_section&&selected()==Aspect);
+    key(VK_DOWN);key(VK_UP);assert(selected()==Aspect);
+    row=InstalledVersion;
     static int updates=0;
     update_status=[](){return update_available;};update_action=[](){++updates;};
     key(VK_LEFT);key(VK_RIGHT);key(VK_RETURN);tap(XINPUT_GAMEPAD_A);
@@ -97,11 +100,11 @@ int main(){
     assert(choosing_section&&pending_section==Section::MenuSettings);
     tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(pending_section==Section::Display);
     key(VK_LEFT);assert(pending_section==Section::MenuSettings);
-    tap(XINPUT_GAMEPAD_DPAD_DOWN);assert(pending_section==Section::Display);
+    tap(XINPUT_GAMEPAD_DPAD_RIGHT);assert(pending_section==Section::Display);
     key(VK_TAB);assert(pending_section==Section::ScreenFilter);
     assert(display_settings.wide==initial_wide&&selected()==Aspect&&!dirty);
     tap(XINPUT_GAMEPAD_A);assert(!choosing_section&&section_view()==Section::ScreenFilter&&selected()==Profile);
-    tap(XINPUT_GAMEPAD_DPAD_UP);assert(selected()==SaveCustom);
+    tap(XINPUT_GAMEPAD_DPAD_UP);assert(choosing_section&&pending_section==Section::ScreenFilter);
     tap(XINPUT_GAMEPAD_DPAD_DOWN);
     assert(selected()==Profile&&active_profile==8&&same_filter(initial,s)&&!dirty);
     go(Glow);key(VK_RIGHT);
@@ -247,8 +250,8 @@ int main(){
     // A disabled filter skips its inactive sliders in both directions.
     key(VK_DOWN);assert(selected()==SaveCustom);
     key(VK_UP);assert(selected()==Profile);
-    key(VK_UP);assert(selected()==SaveCustom);
-    key(VK_DOWN);assert(selected()==Profile&&section_view()==Section::ScreenFilter);
+    key(VK_UP);assert(choosing_section&&pending_section==Section::ScreenFilter);
+    key(VK_DOWN);assert(!choosing_section&&selected()==Profile&&section_view()==Section::ScreenFilter);
     tap(XINPUT_GAMEPAD_DPAD_LEFT);
     assert(active_profile==custom&&s.motion_blur==0);
     go(Restore);

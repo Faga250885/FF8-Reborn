@@ -39,10 +39,10 @@ struct Canvas {
         box(x+1,y+1,x+w-1,y+h-1,colour);
         box(x,y+3,x+w,y+h-3,colour);
     }
-    void window(int x,int y,int w,int h){
+    void window(int x,int y,int w,int h,bool selected=false,bool shadow=true){
         static constexpr int blues[][2]={{131,206},{123,200},{115,194},{104,184},{89,174},{80,166},
             {70,160},{61,153},{49,146},{35,137},{22,131},{0,123},{0,115},{0,107},{0,99},{0,87}};
-        stepped_box(x+1,y+2,w,h,RGB(8,8,25));
+        if(shadow)stepped_box(x+1,y+2,w,h,RGB(8,8,25));
         stepped_box(x,y,w,h,RGB(27,27,51));
         stepped_box(x+1,y+1,w-2,h-2,RGB(116,116,131));
         box(x+3,y+1,x+w-4,y+2,RGB(222,222,229));
@@ -53,7 +53,9 @@ struct Canvas {
         for(int i=0;i<h-6;++i){
             const int cut=i==0||i==h-7?1:0;
             const int* shade=blues[i*std::size(blues)/(h-6)];
-            box(x+3+cut,y+3+i,x+w-3-cut,y+4+i,RGB(shade[0],shade[0],shade[1]));
+            const COLORREF fill=selected?RGB(std::min(255,shade[0]+32),std::min(255,shade[0]+55),std::min(255,shade[1]+36)):
+                                               RGB(shade[0],shade[0],shade[1]);
+            box(x+3+cut,y+3+i,x+w-3-cut,y+4+i,fill);
         }
     }
     void cursor(int x,int y){
