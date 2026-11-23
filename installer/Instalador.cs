@@ -13,7 +13,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("FF8 Reborn Installer")]
 [assembly: AssemblyProduct("FF8 Reborn")]
-[assembly: AssemblyVersion("1.4.5.0")]
+[assembly: AssemblyVersion("1.4.6.0")]
 
 internal static class Juego {
     internal const string Nombre = "FINAL FANTASY VIII Remastered";
@@ -52,6 +52,7 @@ internal static class Juego {
     const string RebornCustomCopy = "3F5E6E59BB11D85FA59993BD66FBE79D6E420192129EF1A5A21632AB5DD74507";
     const string RebornEnglish = "42ED54AD00B57263C9108B2B42EC7E7E36CB67C470903A8AB487C068E76A035F";
     static bool EsAnterior(string firma) {
+        if(firma=="3439053ABE15D66CDBF5465DFD18E937F0ADB76A5C614E01EEBADC3D48D8091E")return true;
         if(firma=="CBCF42706FE76196AB1B512B78083CB853A35F2C0DF7ECFDF8F1FBEB5B98DFD5")return true;
         if(firma=="2B712AB4E4FD625B9FC93FA35B8A4E6EBAB4CEAC71AFEB9D7B6969291C7BA359")return true;
         if(firma=="5C6110649CACC9AF074A59B736B15508D06211B399ACA192C772D87F1373BA53")return true;
@@ -251,41 +252,47 @@ internal sealed class Ventana : Form {
     readonly ComboBox edicion=new ComboBox();
     readonly Label tienda;
     readonly TextBox carpeta=new TextBox();
-    readonly Label estado=new Label();
-    readonly Button instalar=new Button(), quitar=new Button();
+    readonly MenuLabel estado=new MenuLabel();
+    readonly Button instalar=new MenuButton(), quitar=new MenuButton();
     readonly Portada portada=new Portada();
-    static readonly Color papel=Color.FromArgb(246,245,239), tinta=Color.FromArgb(25,49,52),
-        suave=Color.FromArgb(70,91,89), verde=Color.FromArgb(21,86,82), linea=Color.FromArgb(201,208,199);
-    Label Rotulo(string texto,int x,int y,int w,int h,float size,Color color,bool bold) {
-        var l=new Label {Text=texto,ForeColor=color,Font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular),UseMnemonic=false};
-        l.SetBounds(x,y,w,h); Controls.Add(l); return l;
+    Label Rotulo(string texto,int x,int y,int w,int h,float pixels,Color color) {
+        var label=new MenuLabel{Text=texto,ForeColor=color,Pixels=pixels};
+        label.SetBounds(x,y,w,h);Controls.Add(label);return label;
     }
-    void Regla(int x,int y,int w,int h) {
-        var p=new Panel {BackColor=linea};p.SetBounds(x,y,w,h);Controls.Add(p);
+    void Boton(Button button,string text,int x,int y,int width) {
+        button.Text=text;button.SetBounds(x,y,width,36);Controls.Add(button);
     }
-    void Boton(Button b,string texto,int x,int y,int w,bool principal) {
-        b.Text=texto;b.SetBounds(x,y,w,35);b.FlatStyle=FlatStyle.Flat;
-        b.BackColor=principal?verde:papel;b.ForeColor=principal?Color.White:tinta;
-        b.FlatAppearance.BorderSize=1;b.FlatAppearance.BorderColor=principal?verde:linea;
-        b.FlatAppearance.MouseOverBackColor=principal?Color.FromArgb(31,104,98):Color.FromArgb(229,233,224);
-        b.Font=new Font("Segoe UI",9,principal?FontStyle.Bold:FontStyle.Regular);Controls.Add(b);
+    protected override void OnPaint(PaintEventArgs e) {
+        base.OnPaint(e);
+        var g=e.Graphics;
+        var previous=g.Save();
+        float scale=g.DpiX/96f;
+        g.TranslateTransform(AutoScrollPosition.X,AutoScrollPosition.Y);
+        g.ScaleTransform(scale,scale);
+        ClassicUI.Box(g,new Rectangle(272,33,532,191));
+        ClassicUI.Box(g,new Rectangle(282,13,126,32));
+        ClassicUI.Box(g,new Rectangle(272,229,532,104));
+        ClassicUI.Box(g,new Rectangle(16,342,788,64));
+        g.Restore(previous);
     }
     public Ventana(string ruta) : this(ruta,Juego.DetectarGog()) {}
     internal Ventana(string ruta,string gog) {
         Text="FF8 Reborn · Installer";
         AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi;
-        Font=new Font("Segoe UI",10); ClientSize=new Size(778,372);BackColor=papel;ForeColor=tinta;
+        Font=new Font("Segoe UI",10);ClientSize=new Size(820,420);
+        DoubleBuffered=true;BackColor=ClassicUI.Black;ForeColor=ClassicUI.Ink;
         FormBorderStyle=FormBorderStyle.FixedDialog; MaximizeBox=false; StartPosition=FormStartPosition.CenterScreen;
-        AutoScroll=true;
-        portada.SetBounds(0,0,210,372);Controls.Add(portada);
-        tienda=Rotulo("INSTALLER",234,16,290,18,8,verde,true);
-        Rotulo("Install FF8 Reborn",231,33,530,40,22,tinta,true);
-        Regla(234,81,520,1);
-        Rotulo("Game folder",234,93,250,22,10,tinta,true);
-        carpeta.SetBounds(234,119,412,29);carpeta.Text=String.IsNullOrEmpty(ruta)?gog:ruta;carpeta.TabIndex=0;
+        AutoScroll=true;AutoScrollMinSize=new Size(820,420);
+        portada.SetBounds(16,33,246,300);Controls.Add(portada);
+        Rotulo("Setup",298,15,95,28,28,ClassicUI.Ink);
+        tienda=Rotulo("Steam",292,51,260,25,22,ClassicUI.Ice);
+        Rotulo("Game folder",292,78,207,26,25,ClassicUI.Ink);
+        carpeta.BackColor=Color.FromArgb(19,20,59);carpeta.ForeColor=ClassicUI.Ink;
+        carpeta.BorderStyle=BorderStyle.FixedSingle;
+        carpeta.SetBounds(292,113,378,27);carpeta.Text=String.IsNullOrEmpty(ruta)?gog:ruta;carpeta.TabIndex=0;
         if(!String.IsNullOrEmpty(ruta)&&!String.IsNullOrEmpty(gog)&&!Juego.EsGog(ruta)){
-            edicion.SetBounds(550,85,204,27);edicion.DropDownStyle=ComboBoxStyle.DropDownList;
-            edicion.AccessibleName="Game edition";edicion.Items.AddRange(new object[]{"Steam","GOG"});
+            edicion.SetBounds(606,57,179,27);edicion.DropDownStyle=ComboBoxStyle.DropDownList;
+            edicion.TabIndex=1;edicion.AccessibleName="Game edition";edicion.Items.AddRange(new object[]{"Steam","GOG"});
             edicion.SelectedIndex=0;Controls.Add(edicion);
             edicion.SelectedIndexChanged+=delegate{
                 if(edicion.SelectedIndex<0)return;
@@ -293,7 +300,7 @@ internal sealed class Ventana : Form {
             };
         }
         carpeta.AccessibleName="Game folder";Controls.Add(carpeta);
-        var buscar=new Button();Boton(buscar,"Browse…",656,117,98,false);buscar.TabIndex=1;
+        var buscar=new MenuButton();Boton(buscar,"Browse…",678,106,109);buscar.TabIndex=2;
         buscar.Click+=delegate {
             using(var dialogo=new FolderBrowserDialog {Description="Select the folder containing FFVIII_EFIGS.dll",ShowNewFolderButton=false}) {
                 if(Directory.Exists(carpeta.Text)) dialogo.SelectedPath=carpeta.Text;
@@ -302,17 +309,17 @@ internal sealed class Ventana : Form {
         };
         carpeta.Validated+=delegate{RevisarCarpeta();};
         carpeta.TextChanged+=delegate{if(Directory.Exists(carpeta.Text.Trim()))RevisarCarpeta();};
-        Rotulo("Change settings while playing",234,177,518,28,13,tinta,true);
-        Rotulo("Press F8 on your keyboard or Select + Start together on your controller.",234,211,518,50,10,tinta,false);
-        Regla(234,266,520,1);
-        Boton(instalar,"Install",234,280,208,true);instalar.TabIndex=2;
+        Rotulo("In-game settings",292,243,485,29,27,ClassicUI.Ice);
+        var instructions=(MenuLabel)Rotulo("Press F8 on the keyboard or Select + Start on the controller.",292,274,492,43,21,ClassicUI.Ink);
+        instructions.Wrap=true;
+        Boton(instalar,"Install",292,161,242);instalar.TabIndex=3;
         instalar.Click+=delegate{
             if(!actual){Cambiar(true);return;}
             try {Process.Start(new ProcessStartInfo("steam://rungameid/1026680"){UseShellExecute=true});}
             catch(Exception e){estado.Text=e.Message;}
         };
-        Boton(quitar,"Uninstall",645,280,109,false);quitar.TabIndex=3;quitar.Click+=delegate{Cambiar(false);};
-        estado.SetBounds(234,326,520,42);estado.Font=new Font("Segoe UI",9);estado.ForeColor=suave;Controls.Add(estado);
+        Boton(quitar,"Uninstall",632,161,155);quitar.TabIndex=4;quitar.Click+=delegate{Cambiar(false);};
+        estado.SetBounds(33,349,756,51);estado.Pixels=21;estado.Wrap=true;estado.ForeColor=ClassicUI.Ink;estado.AccessibleName="Installation status";Controls.Add(estado);
         RevisarCarpeta();ActiveControl=instalar;
     }
     protected override void OnLoad(EventArgs e) {
@@ -334,7 +341,7 @@ internal sealed class Ventana : Form {
         try {
             bool gog=Juego.EsGog(ruta);
             if(edicion.Items.Count>0 && edicion.SelectedIndex>=0 && (edicion.SelectedIndex==1)!=gog)edicion.SelectedIndex=-1;
-            tienda.Text=gog?"INSTALLER   /   GOG":"INSTALLER   /   STEAM";
+            tienda.Text=gog?"GOG edition":"Steam edition";
             instalar.Enabled=!gog;
             if(gog){
                 actual=false;instalar.Text="GOG support pending";quitar.Visible=false;

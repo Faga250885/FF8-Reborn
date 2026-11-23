@@ -24,7 +24,8 @@ $exe=Join-Path $out 'FF8-Reborn-Setup.exe'
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 $sources='Instalador.cs','Portada.cs'|ForEach-Object{Join-Path $installer $_}
 $atlas=Join-Path $installer 'Atlas.jpg'
-& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll "/resource:$payload,mod.gz" "/resource:$atlas,atlas.jpg" "/out:$exe" @sources $package
+$pixelFont=Join-Path $installer 'FF8Menu.ttf'
+& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 /r:System.Windows.Forms.dll /r:System.Drawing.dll "/resource:$payload,mod.gz" "/resource:$atlas,atlas.jpg" "/resource:$pixelFont,FF8Menu.ttf" "/out:$exe" @sources $package
 if($LASTEXITCODE){throw 'Installer build failed.'}
 $deckDir=(New-Item -ItemType Directory -Force -Path (Join-Path $out 'deck')).FullName
 $deckDll=Join-Path $deckDir 'libvgmstream.dll'

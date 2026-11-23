@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.11/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.12/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
 > **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. **60 FPS is the next goal.** Development continues as time allows. There is no release date for that mode.
@@ -11,10 +11,11 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 ## Recent changes
 
-- **Filter controls.** Left and Right adjust all nine percentage sliders in 10-point steps with the keyboard or controller. Vertical resolution moves in 5-line steps.
+- **FFVI-style settings menu.** Blue gradient windows, silver frames, pixel lettering and a pointing hand mark the active setting. **Display** holds aspect ratio, frame rate, map, sidebars and updates. **Screen filter** holds the presets and their adjustments. Switch sections with Tab or the controller’s shoulder buttons. Your filter preview stays active while you compare display settings.
+- **Automatic filter resolution.** Each preset chooses its signal resolution for the current game window. Use Left or Right to adjust it by 5 lines, or Enter / A to return to Auto. The nine percentage sliders move in 10-point steps.
 - **Blurred sidebars.** Fixed a thin dark line where the left sidebar met the picture in prerendered fields at 1280×800. The mod now aligns the blur with the edge drawn by the game.
-- **In-game updates on Windows and Steam Deck.** FF8 Reborn checks its platform's release channel once when the game starts. If a newer version is available, a notice appears in the upper-left corner for ten seconds and fades out over two seconds. Open **F8** or **View + Menu** to see the installed and available versions. Choose **Download update** when you want to install it.
-- **Filters adapt to your game resolution.** The same profile adjusts its sampling and CRT pattern for Steam Deck at 720p/800p, Full HD at 1080p, QHD at 1440p and 4K at 2160p. **Screen filter → Auto tuning** shows the active resolution. Each profile also has its own **Motion blur** strength, adjustable from 0% to 100% in steps of 10.
+- **In-game updates on Windows and Steam Deck.** FF8 Reborn checks its platform's release channel once when the game starts. When a newer version is available, a matching blue notice appears in the upper left with a short Chocobo call. The call plays once for that version per game session. The notice stays for ten seconds and fades over two. Open **F8** or **Select + Start** to see the installed and available versions. Choose **Download update** when you want to install it.
+- **Filters adapt to your game resolution.** The same profile adjusts its sampling and CRT pattern for Steam Deck at 720p/800p, Full HD at 1080p, QHD at 1440p and 4K at 2160p. **Screen filter → Output tuning** shows the active resolution. Each profile also has its own **Motion blur** strength, adjustable from 0% to 100% in steps of 10.
 - **Steam Deck performance.** The 30 FPS mode uses native frames in towns and on the world map and interpolates battles. Physical Deck playtests confirmed stable 30 FPS in those scenes. The Deck version remains experimental, and 60 FPS is a development goal. Selected rendering optimizations also ship on Windows.
 - **Widescreen battles and transitions.** Battle flashes reach both edges even when the game draws the flash in tiles. We verified this during the attack with Rinoa and Angelo in Galbadia. The EXP, items and ability-point pages use the available height and make room for active battle-assist icons. The scene holds its size as you enter Triple Triad. During camera movement, battle interpolation checks for triangles that stretch between separate combatants.
 
@@ -48,11 +49,11 @@ In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 sub
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.11/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.12/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.11/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.12/FF8-Reborn-Deck.pyz) is also available.
 
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
@@ -96,9 +97,9 @@ Windows 1.4.1 uses a Steam Deck optimization that skips redundant OpenGL state c
 
 ## Screen filters
 
-Open **F8** or **View + Menu** and look at **Screen filter → Auto tuning**. FF8 Reborn reads the game window's pixel dimensions and tunes the selected filter while you play. Resizing the window or docking a Steam Deck updates the tuning when the game's output size changes. Your chosen preset and saved Custom values carry across displays.
+Open **F8** or **Select + Start** and look at **Screen filter → Output tuning**. FF8 Reborn reads the game window's pixel dimensions and tunes the selected filter while you play. Resizing the window or docking a Steam Deck updates the tuning when the game's output size changes. Your chosen preset and saved Custom values carry across displays.
 
-| Example game output | Auto tuning |
+| Example game output | Output tuning |
 | --- | --- |
 | 1280 × 720 or 1280 × 800 (Steam Deck) | 720p / 800p |
 | 1920 × 1080 (Full HD) | 1080p |
@@ -106,9 +107,9 @@ Open **F8** or **View + Menu** and look at **Screen filter → Auto tuning**. FF
 | 3840 × 2160 (4K UHD) | 2160p (4K) |
 
 <details>
-<summary>View Auto tuning in the 1280 × 800 settings panel</summary>
+<summary>View Output tuning in the 1280 × 800 settings panel</summary>
 
-![Screen filter showing 720p / 800p tuning at 1280 × 800 above the selected FF8 Reborn profile](docs/images/auto-tuning.png)
+![The FF8 Reborn filter using Auto at 265 lines in a 1280 × 800 game window](docs/images/auto-tuning.png)
 
 </details>
 
@@ -118,7 +119,16 @@ At 720p, 800p and 1080p, the standard CRT filter uses a gentler RGB mask, and th
 
 To combine **PS1 Digital**, **HD Blend** or any other filter with a TV screen, select **TV phosphors → Trinitron grille** in the live menu. **Phosphor sharpness** sets the focus of the stripes from soft (0%) to crisp (100%). **Phosphor strength** sets their visibility. Find all three controls under **Screen filter**. Choose **Create a custom copy** to save the combination, or **Save my changes** when editing your custom preset. Select **Use filter profile** to return to each preset’s own screen.
 
-**Vertical resolution** moves in steps of 5, from 120 to 720 lines. General filters start at **320**. **PS1 Digital**, **PS1 · RGB Monitor**, **PS1 · CRT TV** and the three television presets start at **240**. Older custom values load at the nearest multiple of 5.
+**Vertical resolution** starts on **Auto**. The table shows the simulated signal height for each preset. PS1 Digital and the classic TV and monitor presets use the PlayStation’s 240-line non-interlaced mode as their reference. PS1 Sharp and HD Blend can resolve more detail on taller screens. [Sony PlayStation hardware manual, chapter 3](https://psx.arthus.net/sdk/Psy-Q/DOCS/Devrefs/Hardware.pdf).
+
+| Filter | 720p | 800p (Deck) | 1080p | 1440p | 2160p |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| PS1 Digital, PS1 · RGB Monitor, PS1 · CRT TV, Sony Trinitron, RCA Precision In-Line, RCA CT-100 | 240 | 240 | 240 | 240 | 240 |
+| Soft CRT, PS1 Backgrounds, FF8 Reborn (recommended) | 240 | 265 | 320 | 320 | 320 |
+| PS1 Sharp | 240 | 265 | 360 | 480 | 480 |
+| HD Blend | 320 | 320 | 360 | 480 | 720 |
+
+With **Vertical resolution** highlighted, press Left or Right to preview a manual setting between 120 and 720 in steps of 5. Press Enter or A on the same row to return to Auto. Choose **Create a custom copy** or **Save my changes** to keep the adjustment. Previously saved custom resolutions stay manual when you resize the window or change displays.
 
 Three TV profiles model how an electron beam lights the tube. **Sony Trinitron KV-27FS100** uses continuous RGB stripes, **RCA Precision In-Line** uses staggered slots, and **RCA CT-100** uses triangular groups of phosphor dots. In the live panel, adjust **RGB mask** to change how visible the phosphors are and **Scanlines** to tune the space between illuminated lines. [Compare all three at full resolution](docs/GALLERY.md#televisions).
 
@@ -126,7 +136,7 @@ Three TV profiles model how an electron beam lights the tube. **Sony Trinitron K
 
 [Open the original 2560 × 1440 screenshots of every filter](docs/GALLERY.md#filters).
 
-**FF8 Reborn (recommended)** combines a 320-line image with mild scanlines and dithering. **HD Blend** is for players who prefer a higher-resolution image. It compares nearby colors at two distances, softens abrupt color boundaries and limits brightness changes around fine details. Adjust **Edge smoothing** to taste. [Compare every preset outside the Galbadia Hotel](docs/GALLERY.md#hd-blend).
+**FF8 Reborn (recommended)** combines mild scanlines and dithering with up to 320 simulated lines. **HD Blend** is for players who prefer a higher-resolution image. It compares nearby colors at two distances, softens abrupt color boundaries and limits brightness changes around fine details. Adjust **Edge smoothing** to taste. [Compare every preset outside the Galbadia Hotel](docs/GALLERY.md#hd-blend).
 
 Other looks include **PS1 Digital**, **Soft CRT**, **PS1 · RGB Monitor**, **PS1 Backgrounds**, **PS1 · CRT TV**, **PS1 Sharp** and **Off**.
 
@@ -144,9 +154,14 @@ Under **Screen filter → Motion blur**, use Left/Right to adjust the strength l
 
 ## Live menu and controls
 
+Open the menu with **F8** or **Select + Start**. Choose **Display** to change how the game fills the screen, or **Screen filter** to edit its look.
+
+The in-game cursor uses the 16 × 16 hand from FFVI. The installer uses the desktop pointer and highlights the focused button. The update notice plays one 0.72-second call from FFVII. [FFVI menu sprite sheet](https://www.spriters-resource.com/snes/ff6/asset/54693/) · [FFVII Chocobo recording](https://ffc.rpgclassics.com/low/species/chocobo.shtml).
+
 | Action | Keyboard | XInput controller / Steam Input |
 | --- | --- | --- |
-| Open or close the panel | F8 | Select + Start (View + Menu on Xbox layouts) |
+| Open or close the panel | F8 | Select + Start (View + Menu on Xbox controllers and Steam Deck) |
+| Switch between Display and Screen filter | Tab | LB / RB (L1 / R1) |
 | Move through settings | Up / Down | D-pad or left stick up / down |
 | Change a value or switch profile | Left / Right | D-pad or left stick left / right |
 | Activate the highlighted action | Enter | A |
@@ -158,7 +173,7 @@ Display settings save as you adjust them. Editing a filter shows **Custom (previ
 
 To keep your edits, choose **Create a custom copy**, **Save to my custom profile** or **Save my changes**, depending on whether you already have a saved copy. **Restore filter defaults** previews the base preset's values. You can test that look before deciding whether to save it.
 
-[View the in-game panel](docs/GALLERY.md#frame-rate).
+[View the two menu sections at Steam Deck resolution](docs/GALLERY.md#settings-menu).
 
 ## Update, uninstall and troubleshoot
 

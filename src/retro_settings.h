@@ -5,10 +5,28 @@ struct RetroSettings {
     enum Tube { standard, aperture_grille, slot_mask, dot_triad };
     Tube phosphors=standard;
     int tv_screen=0,phosphor_strength=100,phosphor_sharpness=70,motion_blur=0;
+    bool auto_lines=true;
     static constexpr int hd_profile=7;
     static constexpr int min_lines=120,max_lines=720,line_step=5;
-    int visible_lines(int active_rows)const{
-        return ps1_raster?(lines*active_rows+120)/240:lines;
+    constexpr int effective_lines(int width,int height,int base_profile)const{
+        if(!auto_lines||width<=0||height<=0)return lines;
+        // Three physical samples per signal row leave room for the beam and
+        // its dark interval on handheld displays. Round down to a slider stop.
+        const int sampled=std::max(min_lines,height/(3*line_step)*line_step);
+        switch(base_profile){
+        case 2: case 4: case 8: // Soft CRT, PS1 Backgrounds, Reborn
+            return std::min(sampled,320);
+        case 6: // PS1 Sharp can resolve up to twice the PS1 signal.
+            return std::min(sampled,480);
+        case hd_profile: // HD Blend also retains the full-resolution source.
+            return std::clamp(sampled,320,max_lines);
+        default: // Digital PS1, CRT monitors and the three television sets
+            return std::min(sampled,240);
+        }
+    }
+    constexpr int visible_lines(int active_rows,int width,int height,int base_profile)const{
+        const int signal=effective_lines(width,height,base_profile);
+        return ps1_raster?(signal*active_rows+120)/240:signal;
     }
     static constexpr RetroSettings with_blur(RetroSettings filter,int strength){
         filter.motion_blur=strength;
@@ -36,6 +54,7 @@ struct RetroSettings {
         if(mode!=1 && mode!=2)mode=0;
         const int saved_lines=read(L"Lines",defaults.lines,min_lines,max_lines);
         lines=((saved_lines+line_step/2)/line_step)*line_step;
+        auto_lines=read(L"LinesAuto",1,0,1)!=0;
         pixelation=read(L"Pixelation",defaults.pixelation,0,100);
         scanlines=read(L"Scanlines",defaults.scanlines,0,100);
         mask=read(L"Mask",defaults.mask,0,100);

@@ -2,7 +2,7 @@
 
 [FF8 Reborn](../README.md) · [Español](GALERIA.md)
 
-Captured directly in the Steam game with FF8 Reborn active. Previews fit this page. Select **Open original** for the 2560 × 1440 Steam JPG. If your browser fits it to the window, click the image to zoom to 100%.
+The gameplay images come from the Steam edition of FFVIII Remastered. The settings previews show the current mod menu rendered over frames captured from the game. Open an image to inspect it at full size.
 
 <a name="features"></a>
 
@@ -120,6 +120,18 @@ The menu uses the native game timing for presentation.
 
 [← Previous](#fps-60) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-original.jpg) · [Next →](#widescreen)
 
+<a name="settings-menu"></a>
+
+## Settings menu
+
+**Display** groups screen options and the updater. **Screen filter** groups the active profile, its controls and the action for saving a custom copy. The blue windows and pointing hand follow the FFVI menu design. The 1280 × 800 examples show the street outside the Galbadia Hotel.
+
+[![Display menu over the Galbadia Hotel scene](images/settings-display.jpg)](images/settings-display.jpg)
+
+[![Screen filter menu showing the recommended preset at 265 lines](images/settings-filter.jpg)](images/settings-filter.jpg)
+
+[![Update notification in the same menu style](images/update-notice.png)](images/update-notice.png)
+
 <a name="filters"></a>
 
 ## Screen filters
@@ -214,7 +226,7 @@ Low-resolution image with softened edges.
 
 [![PS1 Sharp](images/sharp.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg)
 
-Shown at 360 lines. The current preset starts at 320.
+Captured at 360 lines.
 
 [← Previous](#tv) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [Next →](#hd-blend)
 
@@ -224,7 +236,7 @@ Shown at 360 lines. The current preset starts at 320.
 
 [![HD Blend](images/hd-blend.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg)
 
-Shown at 480 lines. The current preset starts at 320.
+Captured at 480 lines.
 
 [← Previous](#sharp) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [Next →](#recommended)
 
@@ -234,6 +246,6 @@ Shown at 480 lines. The current preset starts at 320.
 
 [![FF8 Reborn (recommended)](images/recommended.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg)
 
-The recommended 320-line CRT preset.
+The recommended CRT preset, captured at 320 lines.
 
 [← Previous](#hd-blend) · [Open original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg) · [Next →](#off)

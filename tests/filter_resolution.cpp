@@ -19,6 +19,40 @@ static std::array<BYTE,144*4> read_strip(const Surface& out){
     return pixels;
 }
 
+static int count_scanlines(const Surface& out){
+    std::vector<BYTE> column(size_t(out.h)*4);
+    pBindFramebuffer(GL_READ_FRAMEBUFFER,out.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glReadPixels(out.w/2,0,1,out.h,GL_RGBA,GL_UNSIGNED_BYTE,column.data());
+    int darkest=255,lightest=0;
+    for(int y=0;y<out.h;y++){
+        darkest=std::min(darkest,int(column[4*y]));lightest=std::max(lightest,int(column[4*y]));
+    }
+    const int middle=(darkest+lightest)/2;
+    int rows=0;
+    for(int y=0;y<out.h;y++)
+        if(column[4*y]<middle&&column[4*((y+1)%out.h)]>=middle)++rows;
+    return rows;
+}
+
+static void check_presented_grid(HDC dc,int profile,int expected){
+    // Inspect the uniforms uploaded by the same entry point used for SwapBuffers.
+    rd::Pipeline* passes[]={&rd::pipeline,&rd::television_pipeline,&rd::cell_pipeline,
+                             &rd::screen_pipeline,&rd::tv_rows_pipeline,&rd::tv_screen_pipeline};
+    for(auto* pass:passes)pass->configured=false;
+    retro_panel::active_profile=profile;
+    int w=0,h=0;
+    const bool decorated=begin_retro_frame(dc,w,h);
+    int active_passes=0;
+    for(auto* pass:passes)if(pass->configured&&pass->grid>=0){
+        GLfloat grid[2]{};
+        pGetUniformfv(pass->program,pass->grid,grid);
+        assert(grid[1]==expected);
+        ++active_passes;
+    }
+    assert((active_passes>0)==(profile!=0));
+    if(decorated)rd::end_window(false,false,w,h);
+}
+
 int main(){
     std::setvbuf(stdout,nullptr,_IONBF,0);
     using Tier=fr::Tier;
@@ -57,25 +91,36 @@ int main(){
         if(h==2160)assert(stripe[4]>lo&&stripe[4]<hi); // A physical pixel spans two virtual phosphors.
         rd::restore(out.fbo,w,h);assert(read_strip(out)==unfiltered);
 
-        if(h==800||h==1440){
-            auto crt=rgb;crt.mask=0;crt.scanlines=100;
-            for(int rows:{315,320,325}){
-                crt.lines=rows;
-                assert(rd::apply(crt,out.fbo,w,h));
-                std::vector<BYTE> column(size_t(h)*4);
-                pBindFramebuffer(GL_READ_FRAMEBUFFER,out.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
-                glReadPixels(w/2,0,1,h,GL_RGBA,GL_UNSIGNED_BYTE,column.data());
-                int darkest=255,lightest=0;
-                for(int y=0;y<h;y++){
-                    darkest=std::min(darkest,int(column[4*y]));lightest=std::max(lightest,int(column[4*y]));
-                }
-                const int middle=(darkest+lightest)/2;
-                int scanlines=0;
-                for(int y=0;y<h;y++)
-                    if(column[4*y]<middle&&column[4*((y+1)%h)]>=middle)++scanlines;
-                assert(scanlines==rows);
-                rd::restore(out.fbo,w,h);
+        auto count_signal=[&](int rows){
+            auto crt=rgb;crt.mask=0;crt.scanlines=100;crt.lines=rows;
+            assert(rd::apply(crt,out.fbo,w,h));
+            assert(count_scanlines(out)==rows);
+            rd::restore(out.fbo,w,h);
+        };
+        // On a uniform source, the captured beam periods measure the number
+        // of rows the actual shader draws independently of the menu text.
+        const int balanced=h==720?240:h==800?265:320;
+        const int sharp=h==720?240:h==800?265:h==1080?360:480;
+        const int hd=h<=800?320:h==1080?360:h==1440?480:720;
+        assert(SetWindowPos(win,nullptr,0,0,w,h,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE));
+        for(int id=0;id<retro_panel::profile_count;++id){
+            const auto& preset=retro_panel::profiles[id];
+            const int expected=id==2||id==4||id==8?balanced:id==6?sharp:id==7?hd:240;
+            assert(preset.effective_lines(w,h,id)==expected);
+            display_settings.retro=preset;
+            for(int active_rows:{240,224,216}){
+                current.raster_rows=active_rows;
+                const int visible=preset.ps1_raster?active_rows:expected;
+                assert(preset.visible_lines(active_rows,w,h,id)==visible);
+                check_presented_grid(dc,id,visible);
             }
+        }
+        for(int rows:{balanced,sharp,hd,240,224,216})count_signal(rows);
+        if(h==800||h==1440)for(int rows:{315,320,325}){
+            auto manual=RetroSettings::recommended();manual.auto_lines=false;manual.lines=rows;
+            assert(manual.visible_lines(224,w,h,8)==rows);
+            display_settings.retro=manual;check_presented_grid(dc,8,rows);
+            count_signal(rows);
         }
         RetroSettings tv=rgb;tv.mode=0;tv.tv_screen=RetroSettings::aperture_grille;
         assert(rd::apply(tv,out.fbo,w,h));

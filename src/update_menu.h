@@ -18,6 +18,9 @@ static void say(State value,const std::wstring& text){
     state.store(value,std::memory_order_release);
 }
 static State status(){return state.load(std::memory_order_acquire);}
+// The worker publishes offered before setting update_available. A new check
+// or download is started only by the same game thread which reads it here.
+static unsigned available_build(){return status()==retro_panel::update_available?offered.build:0;}
 static void download_bytes(unsigned& received,unsigned& total){
     received=received_bytes.load(std::memory_order_relaxed);
     total=total_bytes.load(std::memory_order_relaxed);

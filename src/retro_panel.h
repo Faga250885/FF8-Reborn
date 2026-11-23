@@ -3,7 +3,10 @@
 static void log(const char*);
 namespace retro_panel {
 static bool open=false,dirty=false,failed=false;
-static int row=0;
+enum Row { Tabs=-1, Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
+enum class Section { Display, ScreenFilter };
+static Section page=Section::Display;
+static int row=Tabs;
 
 static HWND attached=nullptr;
 static RetroSettings* current=nullptr;
@@ -14,6 +17,7 @@ static std::atomic<bool> capture_pad{false};
 static bool is_open(){return open;}
 static bool save_failed(){return failed;}
 static int selected(){return row;}
+static Section section_view(){return page;}
 enum UpdateState { update_idle, update_checking, update_current, update_available,
                    update_downloading, update_ready, update_error, update_verifying, update_saving };
 static UpdateState (*update_status)()=nullptr;
@@ -41,7 +45,6 @@ static constexpr RetroSettings profiles[]={
     RetroSettings::with_blur({2,240,80,44,70,32,6,60,true,false,RetroSettings::dot_triad},40)
 };
 static constexpr int profile_count=sizeof(profiles)/sizeof(profiles[0]);
-enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
 static bool editable(int mode,int index) {
     return index==Profile || index==MotionBlur || mode==2 || (mode==1 && (index<=Pixels || index>=Dither));
 }
@@ -58,10 +61,19 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-static constexpr Row visual_order[]={ModUpdate,Map,Aspect,FPS,Counter,Sides,Profile,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,MotionBlur,FilterType,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
-static constexpr int visible_rows=sizeof(visual_order)/sizeof(visual_order[0]);
-static_assert(visible_rows==RowCount,"every available setting must be reachable");
-static int visual_index(int id){return int(std::find(visual_order,visual_order+visible_rows,id)-visual_order);}
+static constexpr Row display_order[]={Aspect,FPS,Map,Sides,Counter,ModUpdate};
+static constexpr Row filter_order[]={Profile,FilterType,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,MotionBlur,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
+static_assert(std::size(display_order)+std::size(filter_order)==RowCount,"every available setting must be reachable");
+struct RowOrder {
+    const Row* rows;
+    int count;
+    constexpr const Row* begin() const {return rows;}
+    constexpr const Row* end() const {return rows+count;}
+};
+static constexpr RowOrder order_for(Section view){
+    return view==Section::Display?RowOrder{display_order,int(std::size(display_order))}:
+                                  RowOrder{filter_order,int(std::size(filter_order))};
+}
 static constexpr int custom=profile_count;
 static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · RGB Monitor",L"PS1 Backgrounds",
     L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Sony Trinitron KV-27FS100",
@@ -72,12 +84,30 @@ static int migrated_slot=-1;
 static RetroSettings slots[custom+1];
 static int base_profile(){return active_profile==custom?custom_base:active_profile;}
 static bool same_filter(const RetroSettings& a,const RetroSettings& b){
-    if(a.mode!=b.mode||a.ps1_raster!=b.ps1_raster||a.hd_blend!=b.hd_blend||a.phosphors!=b.phosphors)return false;
+    if(a.mode!=b.mode||a.ps1_raster!=b.ps1_raster||a.hd_blend!=b.hd_blend||a.phosphors!=b.phosphors||a.auto_lines!=b.auto_lines)return false;
     if(a.tv_screen!=b.tv_screen||a.phosphor_strength!=b.phosphor_strength||a.phosphor_sharpness!=b.phosphor_sharpness)return false;
-    for(auto field:fields)if(a.*field!=b.*field)return false;
+    for(auto field:fields)if((field!=&RetroSettings::lines||!a.auto_lines)&&a.*field!=b.*field)return false;
     return true;
 }
 static bool can_restore(const RetroSettings& s){return !same_filter(s,profiles[base_profile()]);}
+static bool visible_row(int id,const RetroSettings& s){return id!=Restore||can_restore(s);}
+static void change_section(){
+    page=page==Section::Display?Section::ScreenFilter:Section::Display;
+    row=Tabs;
+}
+static void move_row(int step,const RetroSettings& s){
+    const auto order=order_for(page);
+    int index=row==Tabs?(step>0?-1:order.count):
+        int(std::find(order.begin(),order.end(),row)-order.begin());
+    for(index+=step;index>=0&&index<order.count;index+=step){
+        const Row next=order.rows[index];
+        if(!visible_row(next,s))continue;
+        if(next>=Lines&&next<=MotionBlur&&!editable(s.mode,next))continue;
+        row=next;
+        return;
+    }
+    row=Tabs;
+}
 // Custom has always been stored in slot 9. New factory profiles follow it on disk.
 static int disk_id(int id){return id==custom?9:id>=9?id+1:id;}
 static int menu_id(int id){return id==9?custom:id>9?id-1:id;}
@@ -86,34 +116,55 @@ static int selected_profile(const wchar_t* path,const RetroSettings& live){
     const int id=menu_id(int(GetPrivateProfileIntW(L"Retro",L"Selected",UINT_MAX,path)));
     return id>=0&&id<=custom?id:std::min(custom,preset(live));
 }
-static void update_factory_defaults(const wchar_t* path,RetroSettings& live){
-    const int id=selected_profile(path,live);
-    if(id==custom)return;
-    const auto slot=section(id);
-    // Browsing a factory filter in deck.6 cached its old default (zero) in
-    // Retro. A separate slot identifies an explicitly saved blur override.
-    if(!live.motion_blur&&GetPrivateProfileIntW(slot.c_str(),L"MotionBlur",UINT_MAX,path)==UINT_MAX)
-        live.motion_blur=profiles[id].motion_blur;
-    if(id!=2&&id!=4&&id!=6&&id!=7)return;
-    const int former=id==6?360:id==7?480:240;
-    if(live.lines==former&&GetPrivateProfileIntW(slot.c_str(),L"Mode",UINT_MAX,path)==UINT_MAX)
-        live.lines=profiles[id].lines;
-}
-static void load_slots(const wchar_t* path,const RetroSettings& live){
+static void read_selection(const wchar_t* path,const RetroSettings& live){
+    active_profile=selected_profile(path,live);
     custom_base=menu_id(int(GetPrivateProfileIntW(L"Retro",L"CustomBase",8,path)));
     if(custom_base<0||custom_base>=custom)custom_base=8;
+}
+static bool has_setting(const wchar_t* path,const wchar_t* group,const wchar_t* key){
+    wchar_t value[32];
+    return GetPrivateProfileStringW(group,key,L"",value,std::size(value),path)>0;
+}
+static void update_factory_defaults(const wchar_t* path,RetroSettings& live){
+    read_selection(path,live);
+    const int id=active_profile;
+    const auto slot=section(id);
+    const bool stored_slot=has_setting(path,slot.c_str(),L"Mode");
+    const bool explicit_policy=has_setting(path,L"Retro",L"LinesAuto");
+    const bool saved_lines=stored_slot&&has_setting(path,slot.c_str(),L"Lines");
+    const bool live_lines=has_setting(path,L"Retro",L"Lines");
+    if(!live_lines&&saved_lines){
+        RetroSettings saved;saved.load(path,slot.c_str(),base_profile());live.lines=saved.lines;
+    }
+    // Browsing a factory filter in deck.6 cached its old default (zero) in
+    // Retro. A separate slot identifies an explicitly saved blur override.
+    if(id!=custom&&!live.motion_blur&&!has_setting(path,slot.c_str(),L"MotionBlur"))
+        live.motion_blur=profiles[id].motion_blur;
+    if(explicit_policy)return;
+    if(!stored_slot&&(id==2||id==4||id==6||id==7)){
+        const int former=id==6?360:id==7?480:240;
+        if(live.lines==former)live.lines=profiles[id].lines;
+    }
+    // Old versions cached the selected factory profile under Retro. Only a
+    // separate saved slot (or selecting Custom) records an explicit copy.
+    live.auto_lines=saved_lines?GetPrivateProfileIntW(slot.c_str(),L"LinesAuto",0,path)!=0:
+        !live_lines||(id!=custom&&live.lines==profiles[id].lines);
+}
+static void load_slots(const wchar_t* path,const RetroSettings& live){
+    read_selection(path,live);
     for(int i=0;i<=custom;i++){
         slots[i]=profiles[i==custom?custom_base:i];
         const auto key=section(i);
         const bool exists=GetPrivateProfileIntW(key.c_str(),L"Mode",UINT_MAX,path)!=UINT_MAX;
         if(exists){
             slots[i].load(path,key.c_str(),i==custom?custom_base:i);
+            if(!has_setting(path,key.c_str(),L"LinesAuto")&&has_setting(path,key.c_str(),L"Lines"))
+                slots[i].auto_lines=false;
             if(i!=custom&&GetPrivateProfileIntW(key.c_str(),L"MotionBlur",UINT_MAX,path)==UINT_MAX)
                 slots[i].motion_blur=profiles[i].motion_blur;
         }
         if(i==custom)custom_exists=exists;
     }
-    active_profile=selected_profile(path,live);
     migrate_custom=active_profile==custom&&!custom_exists;
     if(migrate_custom){slots[custom]=live;custom_exists=true;}
     wchar_t marker[32];
@@ -128,6 +179,10 @@ static void load_slots(const wchar_t* path,const RetroSettings& live){
         migrated_slot=active_profile;
         slots[active_profile].motion_blur=live.motion_blur;
     }
+    if(slots[active_profile].auto_lines!=live.auto_lines||(!live.auto_lines&&slots[active_profile].lines!=live.lines)){
+        migrated_slot=active_profile;
+        slots[active_profile].auto_lines=live.auto_lines;slots[active_profile].lines=live.lines;
+    }
     dirty=false;failed=false;
 }
 static bool number(const wchar_t* file,const wchar_t* group,const wchar_t* key,int value){
@@ -135,7 +190,8 @@ static bool number(const wchar_t* file,const wchar_t* group,const wchar_t* key,i
 }
 static bool write_filter(const wchar_t* file,const wchar_t* group,const RetroSettings& s){
     static const wchar_t* keys[]={L"Lines",L"Pixelation",L"Scanlines",L"Mask",L"Glow",L"Dither",L"EdgeSoftness",L"MotionBlur"};
-    if(!number(file,group,L"Mode",s.mode)||!number(file,group,L"PS1Raster",s.ps1_raster))return false;
+    if(!number(file,group,L"Mode",s.mode)||!number(file,group,L"PS1Raster",s.ps1_raster)||
+       !number(file,group,L"LinesAuto",s.auto_lines))return false;
     if(!number(file,group,L"Phosphors",s.phosphors))return false;
     if(!number(file,group,L"TVScreen",s.tv_screen)||!number(file,group,L"PhosphorStrength",s.phosphor_strength)||!number(file,group,L"PhosphorSharpness",s.phosphor_sharpness))return false;
     static_assert(std::size(keys)==std::size(fields));
@@ -185,17 +241,23 @@ static int next_percent(int value,int direction){
 }
 static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
     if(key==VK_F8&&!open){
-        load_slots(path,s);row=Profile;open=true;capture_pad=true;return;
+        load_slots(path,s);row=Tabs;open=true;capture_pad=true;return;
     }
     if(!open)return;
     if(key==VK_ESCAPE||key==VK_F8){
         if(dirty)s=slots[active_profile];
         dirty=false;failed=false;open=false;capture_pad=false;return;
     }
-    if(key==VK_UP||key==VK_DOWN){
-        int step=key==VK_UP?-1:1,index=visual_index(row);
-        do{index=(index+step+visible_rows)%visible_rows;row=visual_order[index];}
-        while((row>=Lines&&row<=MotionBlur&&!editable(s.mode,row))||(row==Restore&&!can_restore(s)));
+    if(key==VK_TAB){
+        change_section();
+        return;
+    }
+    if(row==Tabs&&(key==VK_LEFT||key==VK_RIGHT)){
+        page=key==VK_LEFT?Section::Display:Section::ScreenFilter;
+        return;
+    }
+    if(key==VK_UP||key==VK_DOWN||(key==VK_RETURN&&row==Tabs)){
+        move_row(key==VK_UP?-1:1,s);
         return;
     }
     const bool activate=key==VK_RETURN;
@@ -238,13 +300,26 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
     }
     if(row==TVScreen)s.tv_screen=(s.tv_screen+step+4)%4;
     else if(row==FilterType)s.mode=(s.mode+step+3)%3;
+    else if(row==Lines){
+        if(!editable(s.mode,row))return;
+        if(activate){
+            if(s.auto_lines)return;
+            s.auto_lines=true;s.lines=profiles[base_profile()].lines;
+        }else{
+            RECT area{};
+            if(attached)GetClientRect(attached,&area);
+            const int shown=s.effective_lines(area.right,area.bottom,base_profile());
+            const int next=std::clamp(shown+step*RetroSettings::line_step,RetroSettings::min_lines,RetroSettings::max_lines);
+            if(next==shown)return;
+            s.lines=next;s.auto_lines=false;
+        }
+    }
     else{
         if(activate||(row<=MotionBlur&&!editable(s.mode,row)))return;
         const auto field=row==PhosphorStrength?&RetroSettings::phosphor_strength:
                          row==PhosphorSharpness?&RetroSettings::phosphor_sharpness:fields[row-Lines];
         int& value=s.*field;
-        const int next=row==Lines?std::clamp(value+step*RetroSettings::line_step,
-            RetroSettings::min_lines,RetroSettings::max_lines):next_percent(value,step);
+        const int next=next_percent(value,step);
         if(next==value)return;
         value=next;
     }
@@ -252,7 +327,7 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
 }
 static bool panel_key(UINT key){
     return key==VK_F8||(open&&(key==VK_UP||key==VK_DOWN||key==VK_LEFT||key==VK_RIGHT||
-        key==VK_RETURN||key==VK_ESCAPE||key==VK_SHIFT));
+        key==VK_RETURN||key==VK_ESCAPE||key==VK_SHIFT||key==VK_TAB));
 }
 static bool focused(HWND window){
     return !IsIconic(window) && GetAncestor(window,GA_ROOT)==GetForegroundWindow() && GetFocus()==window;

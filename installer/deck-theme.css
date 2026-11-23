@@ -1,0 +1,52 @@
+window.background, dialog.background {
+  background-image: linear-gradient(to bottom, #5959ae, #3d3d99 27%, #161683 55%, #000057);
+  background-color: #000063;
+  color: #f8f8ef;
+  border: 2px solid #b6b6c0;
+  border-radius: 3px;
+  box-shadow: inset 1px 1px #dedee5, inset -2px -2px #31314a;
+}
+label, button, treeview {
+  font-family: "Reborn Menu", sans-serif;
+  font-size: 32px;
+  font-weight: normal;
+  color: #f8f8ef;
+  text-shadow: 1px 1px #10102a;
+}
+/* The message already identifies the action. Keep the text aligned with
+   the list dialogs, which do not reserve room for a stock GTK icon. */
+box > image:first-child {
+  opacity: 0;
+  margin-right: -40px;
+}
+headerbar {
+  background-image: linear-gradient(to bottom, #5050a6, #161683);
+  color: #f8f8ef;
+  border-bottom: 1px solid #747483;
+  box-shadow: none;
+}
+scrolledwindow, treeview, listview, list {
+  background-color: #161683;
+  color: #f8f8ef;
+}
+treeview:selected, row:selected {
+  background-color: #4646a0;
+  color: #a2f5ff;
+}
+button {
+  background-image: linear-gradient(to bottom, #5050a6, #000073);
+  background-color: #161683;
+  border: 1px solid #b6b6c0;
+  border-radius: 2px;
+  box-shadow: inset -1px -1px #31314a;
+  min-height: 26px;
+  padding: 3px 16px;
+}
+button:hover, button:focus {
+  background-image: linear-gradient(to bottom, #6868b8, #232389);
+  border-color: #dedee5;
+  box-shadow: inset 0 0 0 1px #a2f5ff;
+}
+button:hover label, button:focus label {
+  color: #a2f5ff;
+}

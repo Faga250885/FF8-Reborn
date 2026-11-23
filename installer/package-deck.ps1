@@ -6,6 +6,9 @@ try {
     $package=[IO.Compression.ZipArchive]::new($file,[IO.Compression.ZipArchiveMode]::Create)
     try {
         $files=@{'__main__.py'=(Join-Path $PSScriptRoot 'deck.py'); 'libvgmstream.dll'=$Renderer}
+        foreach($asset in 'deck-theme.css','FF8Menu.ttf'){
+            $files[$asset]=Join-Path $PSScriptRoot $asset
+        }
         foreach($name in $files.Keys){
             $stream=$package.CreateEntry($name).Open()
             try {

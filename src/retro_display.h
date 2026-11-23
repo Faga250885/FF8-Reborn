@@ -83,7 +83,8 @@ static bool prepare(bool tv=false,Stage stage=Stage::full){
     inspect_context();
     const char* vertex="#version 120\nvoid main(){gl_Position=gl_Vertex;}\n";
     const char* notice_fragment="uniform vec2 size,origin;uniform sampler2D sourceImage;"
-        "void main(){gl_FragColor=texture2D(sourceImage,(gl_FragCoord.xy-origin)/size);}";
+        "void main(){vec4 pixel=texture2D(sourceImage,(gl_FragCoord.xy-origin)/size);"
+        "if(pixel.a==0.0)discard;gl_FragColor=pixel;}";
     const char* fragment=stage==Stage::notice?notice_fragment:stage==Stage::motion?motion_fragment:tv?television_fragment:R"GLSL(
 uniform sampler2D sourceImage;
 uniform vec2 size;

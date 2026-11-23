@@ -2,7 +2,7 @@
 
 [FF8 Reborn](../README.es.md) · [English](GALLERY.md)
 
-Capturas tomadas directamente en FFVIII Remastered de Steam con FF8 Reborn activo. Las vistas previas caben en esta página. Pulsa **Abrir original** para ver el JPG de Steam a 2560 × 1440. Si el navegador lo ajusta a la ventana, haz clic en la imagen con la lupa para verla al 100 %.
+Las imágenes del juego proceden de la edición de Steam de FFVIII Remastered. Las vistas del menú muestran el panel actual del mod dibujado sobre cuadros capturados del juego. Abre cada imagen para verla a tamaño completo.
 
 <a name="features"></a>
 
@@ -120,6 +120,18 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 [← Anterior](#fps-60) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/fps-original.jpg) · [Siguiente →](#widescreen)
 
+<a name="settings-menu"></a>
+
+## Menú de configuración
+
+**Display** reúne las opciones de pantalla y el actualizador. **Screen filter** reúne el perfil activo, sus controles y la opción de guardar una copia personalizada. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
+
+[![Menú Display sobre la calle del Hotel Galbadia](images/settings-display.jpg)](images/settings-display.jpg)
+
+[![Menú Screen filter con el perfil recomendado a 265 líneas](images/settings-filter.jpg)](images/settings-filter.jpg)
+
+[![Aviso de actualización con el mismo estilo del menú](images/update-notice.png)](images/update-notice.png)
+
 <a name="filters"></a>
 
 ## Filtros gráficos
@@ -214,7 +226,7 @@ Imagen a baja resolución con contornos suavizados.
 
 [![PS1 Sharp](images/sharp.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg)
 
-Captura a 360 líneas. El perfil actual parte de 320.
+Captura a 360 líneas.
 
 [← Anterior](#tv) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/sharp.jpg) · [Siguiente →](#hd-blend)
 
@@ -224,7 +236,7 @@ Captura a 360 líneas. El perfil actual parte de 320.
 
 [![HD Blend](images/hd-blend.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg)
 
-Captura a 480 líneas. El perfil actual parte de 320.
+Captura a 480 líneas.
 
 [← Anterior](#sharp) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/hd-blend.jpg) · [Siguiente →](#recommended)
 
@@ -234,6 +246,6 @@ Captura a 480 líneas. El perfil actual parte de 320.
 
 [![FF8 Reborn (recommended)](images/recommended.jpg)](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg)
 
-El perfil CRT recomendado de 320 líneas.
+El perfil CRT recomendado, capturado a 320 líneas.
 
 [← Anterior](#hd-blend) · [Abrir original · 2560 × 1440](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/v1.1.0/docs/images/recommended.jpg) · [Siguiente →](#off)

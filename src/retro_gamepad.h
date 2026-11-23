@@ -17,8 +17,10 @@ static void pad_input(Pad& pad,int index,WORD held,ULONGLONG tick,const wchar_t*
     if(toggle){handle_key(VK_F8,path,s);owner=open?index:-1;pad.direction=0;return;}
     if(!open||(held&chord))return;
     const WORD arrows=held&(XINPUT_GAMEPAD_DPAD_UP|XINPUT_GAMEPAD_DPAD_DOWN|XINPUT_GAMEPAD_DPAD_LEFT|XINPUT_GAMEPAD_DPAD_RIGHT);
+    const WORD shoulders=XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if(pressed&XINPUT_GAMEPAD_B)handle_key(VK_ESCAPE,path,s);
     else if(pressed&XINPUT_GAMEPAD_A)handle_key(VK_RETURN,path,s);
+    else if(!arrows&&(pressed&shoulders)&&(held&shoulders)!=shoulders)handle_key(VK_TAB,path,s);
     else if(arrows&&(!(arrows&(arrows-1)))&&(pad.direction!=arrows||tick>=pad.repeat_at)){
         handle_key(arrows==1?VK_UP:arrows==2?VK_DOWN:arrows==4?VK_LEFT:VK_RIGHT,path,s);
         pad.repeat_at=tick+(arrows==pad.direction?110:420);

@@ -21,7 +21,9 @@ int main(){
         pad_input(pad,0,0,++tick,path,s);
     };
     auto go=[&](Row id){
-        for(int i=0;i<visible_rows&&selected()!=id;++i)tap(XINPUT_GAMEPAD_DPAD_DOWN);
+        const auto order=order_for(section_view());
+        if(std::find(order.begin(),order.end(),id)==order.end())key(VK_TAB);
+        for(int i=0;i<=RowCount&&selected()!=id;++i)tap(XINPUT_GAMEPAD_DPAD_DOWN);
         assert(selected()==id);
     };
     auto read_int=[&](const wchar_t* group,const wchar_t* name){
@@ -31,8 +33,46 @@ int main(){
     static_assert(std::size(strengths)==profile_count);
     read();
     assert(s.motion_blur==20);
+    assert(!panel_key(VK_TAB));
+    const auto initial=s;
+    const bool initial_wide=display_settings.wide;
     tap(XINPUT_GAMEPAD_START|XINPUT_GAMEPAD_BACK);
-    assert(open&&selected()==Profile&&active_profile==8);
+    assert(open&&capture_pad&&selected()==Tabs&&section_view()==Section::Display&&active_profile==8);
+    assert(panel_key(VK_TAB));
+    tap(XINPUT_GAMEPAD_A);assert(selected()==Aspect&&display_settings.wide==initial_wide);
+    key(VK_UP);assert(selected()==Tabs);
+    key(VK_UP);assert(selected()==ModUpdate);
+    static int updates=0;
+    update_status=[](){return update_available;};update_action=[](){++updates;};
+    key(VK_LEFT);assert(updates==0);tap(XINPUT_GAMEPAD_A);assert(updates==1);
+    update_status=[](){return update_downloading;};key(VK_RETURN);assert(updates==1);
+    update_status=nullptr;update_action=nullptr;
+    key(VK_DOWN);assert(selected()==Tabs);
+    key(VK_RIGHT);assert(section_view()==Section::ScreenFilter);
+    key(VK_RIGHT);assert(selected()==Tabs&&section_view()==Section::ScreenFilter);
+    tap(XINPUT_GAMEPAD_DPAD_LEFT);assert(section_view()==Section::Display);
+    tap(XINPUT_GAMEPAD_DPAD_LEFT);assert(selected()==Tabs&&section_view()==Section::Display);
+    key(VK_DOWN);assert(selected()==Aspect);
+    pad_input(pad,0,XINPUT_GAMEPAD_LEFT_SHOULDER,++tick,path,s);
+    assert(selected()==Tabs&&section_view()==Section::ScreenFilter);
+    pad_input(pad,0,XINPUT_GAMEPAD_LEFT_SHOULDER,tick+500,path,s);
+    assert(selected()==Tabs&&section_view()==Section::ScreenFilter);
+    tick+=500;tap(0);
+    tap(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER);
+    assert(section_view()==Section::ScreenFilter);
+    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(section_view()==Section::Display);
+    key(VK_TAB);assert(section_view()==Section::ScreenFilter);
+    tap(XINPUT_GAMEPAD_DPAD_DOWN);
+    assert(selected()==Profile&&active_profile==8&&same_filter(initial,s)&&!dirty);
+    go(Glow);key(VK_RIGHT);
+    assert(dirty&&s.glow==10);
+    key(VK_TAB);go(Aspect);key(VK_RIGHT);
+    assert(read_int(L"Display",L"Wide")==!initial_wide&&dirty&&s.glow==10);
+    key(VK_LEFT);
+    tap(XINPUT_GAMEPAD_RIGHT_SHOULDER);assert(selected()==Tabs&&section_view()==Section::ScreenFilter);
+    tap(XINPUT_GAMEPAD_B);assert(!open&&!dirty&&same_filter(initial,s)&&!capture_pad);
+    key(VK_F8);assert(selected()==Tabs&&section_view()==Section::ScreenFilter);
+    key(VK_RETURN);assert(selected()==Profile);
     for(int i=0;i<profile_count;++i){
         key(VK_RIGHT);
         assert(s.motion_blur==strengths[active_profile]&&selected()==Profile);
@@ -72,7 +112,7 @@ int main(){
     assert(number(path,L"Display",L"CRTPersistence",25));
     read();
     assert(s.motion_blur==30);
-    key(VK_F8);
+    key(VK_F8);go(Profile);
     key(VK_RIGHT);
     assert(s.motion_blur==10);
     key(VK_LEFT);
@@ -147,7 +187,7 @@ int main(){
     read();
     assert(s.motion_blur==20&&read_int(section(custom).c_str(),L"MotionBlur")==20);
     // Explicit old factory slot overrides survive even when the saved value is zero.
-    key(VK_F8);
+    key(VK_F8);go(Profile);
     while(active_profile!=8)key(VK_LEFT);
     key(VK_F8);
     assert(number(path,section(8).c_str(),L"MotionBlur",0));
@@ -169,5 +209,67 @@ int main(){
         assert(old.lines==expected);
     }
     assert(DeleteFileW(path));
-    puts("Factory motion blur values, upgrade, preview navigation, manual save, discard, restore and restart OK");
+    // Old installs cache the factory selection and can also have a deliberately
+    // saved Custom with the exact same number of lines.
+    assert(number(path,L"Retro",L"Selected",8)&&number(path,L"Retro",L"Mode",2));
+    assert(number(path,L"Retro",L"Lines",320)&&number(path,L"Retro",L"CustomBase",8));
+    assert(number(path,L"RetroPerfil9",L"Mode",2)&&number(path,L"RetroPerfil9",L"Lines",320));
+    read();
+    assert(!open&&active_profile==8&&s.auto_lines&&s.effective_lines(1280,800,base_profile())==265);
+    key(VK_F8);go(Profile);
+    while(active_profile!=custom)key(VK_RIGHT);
+    assert(!s.auto_lines&&s.lines==320);
+    key(VK_F8);read();
+    assert(active_profile==custom&&base_profile()==8&&!s.auto_lines);
+    assert(s.effective_lines(1280,800,base_profile())==320&&read_int(L"Retro",L"LinesAuto")==0);
+
+    // Exercise the slider against a real window so its first step starts at
+    // the value visible on the handheld, not the desktop factory value.
+    HWND window=CreateWindowW(L"STATIC",L"Filter settings",WS_POPUP,0,0,1280,800,
+                              nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    assert(window);attached=window;
+    tap(XINPUT_GAMEPAD_START|XINPUT_GAMEPAD_BACK);go(Profile);
+    while(active_profile!=8)key(VK_LEFT);
+    go(Lines);key(VK_RIGHT);
+    assert(dirty&&!s.auto_lines&&s.lines==270);
+    tap(XINPUT_GAMEPAD_DPAD_LEFT);
+    assert(dirty&&!s.auto_lines&&s.lines==265);
+    go(SaveCustom);tap(XINPUT_GAMEPAD_A);
+    key(VK_F8);read();
+    assert(!s.auto_lines&&s.lines==265&&read_int(L"RetroPerfil9",L"LinesAuto")==0);
+    assert(SetWindowPos(window,nullptr,0,0,2560,1440,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE));
+    assert(s.effective_lines(2560,1440,base_profile())==265);
+    key(VK_F8);go(Lines);tap(XINPUT_GAMEPAD_A);
+    assert(dirty&&s.auto_lines&&s.effective_lines(2560,1440,base_profile())==320);
+    key(VK_LEFT);
+    assert(!s.auto_lines&&s.lines==315);
+    key(VK_RETURN);
+    assert(s.auto_lines&&s.effective_lines(2560,1440,base_profile())==320);
+    go(Glow);key(VK_RIGHT);
+    assert(s.auto_lines);
+    go(SaveCustom);key(VK_RETURN);key(VK_F8);read();
+    assert(active_profile==custom&&base_profile()==8&&read_int(L"RetroPerfil9",L"LinesAuto")==1);
+    assert(s.auto_lines&&s.effective_lines(1280,800,base_profile())==265&&s.glow==10);
+    key(VK_F8);go(Lines);key(VK_RIGHT);tap(XINPUT_GAMEPAD_B);
+    assert(!open&&s.auto_lines&&s.effective_lines(1280,800,base_profile())==265);
+    attached=nullptr;assert(DestroyWindow(window));
+
+    // An old saved factory override is explicit even at the default number.
+    assert(DeleteFileW(path));
+    assert(number(path,L"Retro",L"Selected",8)&&number(path,L"Retro",L"Mode",2));
+    assert(number(path,L"Retro",L"Lines",320));
+    assert(number(path,L"RetroPerfil8",L"Mode",2)&&number(path,L"RetroPerfil8",L"Lines",320));
+    read();assert(active_profile==8&&!s.auto_lines&&s.lines==320);
+    key(VK_F8);go(Restore);key(VK_RETURN);
+    assert(dirty&&s.auto_lines&&s.effective_lines(1280,800,base_profile())==265);
+    key(VK_ESCAPE);assert(!s.auto_lines&&s.lines==320);
+    assert(DeleteFileW(path));
+    // Resolve the base even before F8, e.g. a saved Auto HD Blend on a dock.
+    assert(number(path,L"Retro",L"Selected",9)&&number(path,L"Retro",L"CustomBase",7));
+    assert(number(path,L"Retro",L"Mode",1)&&number(path,L"Retro",L"Lines",320));
+    assert(number(path,L"Retro",L"LinesAuto",1));
+    read();assert(active_profile==custom&&base_profile()==7&&s.auto_lines);
+    assert(s.effective_lines(3840,2160,base_profile())==720);
+    assert(DeleteFileW(path));
+    puts("Factory filters, legacy slots, live Auto/manual resolution, dock, controller, save, discard and restart OK");
 }

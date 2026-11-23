@@ -2,18 +2,21 @@
 import argparse
 import fcntl
 import hashlib
+from html import escape
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import zipfile
 
 
 ENGINE = "b0097e4edd96fa2c32745b04328939eb8d182c2e89121d51405bc486b13f9108"
 AUDIO = "20179b6187e278f07b7373465d49d167a7e298f4bca40c1b28d70d8d984191d9"
 RELEASES = {
+    "3339f935e77cb8a28f1f2addf614e0a3333fbc3ef0c49d80ec8c9d98e7a0f489",
     "cb8a3db8f9c3c77840b74874d0295f4581299b870f70982304a4992ff414623f",
     "aac40e350972ae7158ac2d72e8bf0f8f239b520268ce3bf9a39da642ccedf5e1",
     "7006067e76701023c8a1786a5179fce87b019e99674b5090b956628f1b090296",
@@ -177,8 +180,40 @@ def install_game(game, uninstall):
     return ("Original DLL restored in " if uninstall else "FF8 Reborn installed in ") + str(game)
 
 
+def theme_environment(folder):
+    # GTK 3 and 4 both read the per-application copy. Fontconfig registers
+    # the bundled font for this process only, including on read-only SteamOS.
+    assets = ("FF8Menu.ttf", "deck-theme.css")
+    if zipfile.is_zipfile(sys.argv[0]):
+        with zipfile.ZipFile(sys.argv[0]) as package:
+            for name in assets:
+                (folder / name).write_bytes(package.read(name))
+    else:
+        for name in assets:
+            (folder / name).write_bytes(Path(__file__).with_name(name).read_bytes())
+    style = (folder / "deck-theme.css").read_text(encoding="utf-8")
+    for gtk in ("gtk-3.0", "gtk-4.0"):
+        theme = folder / gtk
+        theme.mkdir()
+        (theme / "gtk.css").write_text(style, encoding="utf-8")
+    conf = folder / "fonts.conf"
+    system_fonts = os.environ.get("FONTCONFIG_FILE", "/etc/fonts/fonts.conf")
+    conf.write_text(
+        '<fontconfig><include ignore_missing="yes">' + escape(system_fonts) +
+        '</include><dir>' + escape(str(folder)) + '</dir><cachedir>' +
+        escape(str(folder / "cache")) + '</cachedir></fontconfig>', encoding="utf-8")
+    return dict(os.environ, XDG_CONFIG_HOME=str(folder), XDG_CACHE_HOME=str(folder / "cache"),
+                FONTCONFIG_FILE=str(conf))
+
+
 def dialog(*args):
-    result = subprocess.run(["zenity", "--title=FF8 Reborn", *args], stdout=subprocess.PIPE, text=True)
+    cmd = ["zenity", "--title=FF8 Reborn", *args]
+    # Let the system file picker keep its normal bookmarks, fonts and icons.
+    if "--file-selection" in args:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+    else:
+        with tempfile.TemporaryDirectory(prefix="ff8-reborn-ui-") as temp:
+            result = subprocess.run(cmd, env=theme_environment(Path(temp)), stdout=subprocess.PIPE, text=True)
     if result.returncode == 1:
         return None
     result.check_returncode()
@@ -196,27 +231,34 @@ def graphical_install(games):
     elif len(games) == 1:
         game = games[0]
     else:
-        folder = dialog("--list", "--column=Game folder", "--width=700", *map(str, games))
+        folder = dialog("--list", "--text=Choose a game installation.", "--column=Game folder",
+                        "--width=700", *map(str, games))
         if not folder:
             return
         game = Path(folder)
 
     installed = (game / "FF8_geometry.installed").is_file() or (game / "libvgmstream_orig.dll").is_file()
+    heading = '<span size="x-large" foreground="#a2f5ff">FF8 Reborn</span>'
+    path = escape("\n".join(textwrap.wrap(str(game), width=50, break_on_hyphens=False,
+                                         replace_whitespace=False, drop_whitespace=False)))
     if installed:
-        action = dialog("--list", "--radiolist", "--column=", "--column=Action", "--no-markup",
-                        "--text", str(game), "TRUE", "Update or repair", "FALSE", "Uninstall")
+        action = dialog("--list", "--radiolist", "--column=", "--column=Action", "--hide-header",
+                        "--ok-label=Apply", "--width=600", "--height=350",
+                        "--text", heading + "\nFinal Fantasy VIII Remastered\n\n" + path,
+                        "TRUE", "Update or repair", "FALSE", "Uninstall")
         if not action:
             return
         uninstall = action == "Uninstall"
     else:
-        if dialog("--question", "--no-markup", "--ok-label=Install", "--cancel-label=Cancel",
-                  "--text", "Install FF8 Reborn here?\n\n" + str(game)) is None:
+        if dialog("--question", "--width=600", "--ok-label=Install", "--cancel-label=Cancel",
+                  "--text", heading + "\nFinal Fantasy VIII Remastered\n\n" + path +
+                  "\n\nConfigure the mod in game with F8 or Select + Start.") is None:
             return
         uninstall = False
-    message = install_game(game, uninstall)
-    if not uninstall:
-        message += "\n\nReturn to Gaming Mode and launch the game from Steam."
-    dialog("--info", "--no-markup", "--text", message)
+    install_game(game, uninstall)
+    message = ("Original game files restored." if uninstall else
+               "Installation complete.\n\nReturn to Gaming Mode and launch the game from Steam.")
+    dialog("--info", "--width=600", "--text", heading + "\n\n" + message + "\n\n" + path)
 
 
 def main():

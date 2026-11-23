@@ -378,6 +378,7 @@ struct TextureState {GLint id=0,env=GL_MODULATE;bool enabled=false;float matrix[
 #include "texture_transfer.h"
 #include "fps_counter.h"
 #include "retro_panel_draw.h"
+#include "chocobo_notice_sound.h"
 #include "update_notice.h"
 static std::shared_ptr<TextureCopy> freeze_texture(GLuint id){
     auto found=texture_cache.find(id);if(found!=texture_cache.end())return found->second;
@@ -1423,25 +1424,24 @@ static void track_display_refresh(HDC handle,double time){
     }
     else presentation_clock.refresh_period=0;
 }
-static bool begin_retro_frame(HDC handle,int& w,int& h){
+static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nullptr){
+    if(drawn_notice)*drawn_notice=0;
     const bool panel=retro_panel::is_open();
     const int counter=display_settings.fps_counter;
-    bool offered=false;
+    unsigned offered=0;
 #ifdef GEO_NATIVE_CAPTURE
     mod_update::on_first_present();
-    offered=mod_update::status()==retro_panel::update_available;
+    offered=mod_update::available_build();
 #endif
     auto& history=retro_display::motion_history;
     const int blur=enabled?display_settings.retro.motion_blur:0;
     if(!blur)history.reset();
     if(!counter)fps_counter::reset_meter();
-    const double notice_time=offered?now():0;
-    const bool notice_due=offered&&(update_notice::lifetime.began<0||notice_time<update_notice::lifetime.began+12.);
-    if(!panel&&!counter&&!blur&&!notice_due&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
+    const float notice_alpha=offered&&!panel?update_notice::lifetime.opacity(offered,now()):0.f;
+    if(!panel&&!counter&&!blur&&notice_alpha<=0&&(!enabled||!retro_display::active(display_settings.retro))&&!retro_display::valid_front)return false;
     RECT rect{};
     if(!GetClientRect(WindowFromDC(handle),&rect)){retro_display::valid_front=false;history.previous_time=0;return false;}
     w=rect.right;h=rect.bottom;
-    const float notice_alpha=notice_due&&w>0&&h>0&&!panel?update_notice::lifetime.opacity(true,notice_time):0.f;
     if(blur){
         const int mode=current.mode;
         const bool gameplay=mode>=1&&mode<=3&&current.layout()==mode&&!current.menu_edge&&
@@ -1451,14 +1451,15 @@ static bool begin_retro_frame(HDC handle,int& w,int& h){
         history.begin(blur,scene,handle,w,h,now());
     }
     RetroSettings filter=enabled?display_settings.retro:RetroSettings{};
-    filter.lines=filter.visible_lines(current.raster_rows);
+    filter.lines=filter.visible_lines(current.raster_rows,w,h,retro_panel::base_profile());
     const int scale=fps_counter::scale(counter,w,h);
     const auto notice=notice_alpha>0?update_notice::place(w,h,fps_counter::tile_h*scale):update_notice::Placement{};
     const int overlay_w=panel?w:std::max(fps_counter::tile_w*scale,notice.x+notice.w);
     const int overlay_h=panel?h:std::max(fps_counter::tile_h*scale,notice_alpha>0?h-notice.y:0);
     if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice_alpha>0,overlay_w,overlay_h))return false;
     if(scale&&!retro_display::retiring_front)fps_counter::draw(w,h,scale);
-    if(notice_alpha>0&&!retro_display::retiring_front)update_notice::draw(0,notice,notice_alpha);
+    if(notice_alpha>0&&!retro_display::retiring_front&&update_notice::draw(0,notice,notice_alpha)&&drawn_notice)
+        *drawn_notice=offered;
     if(panel&&!retro_display::retiring_front)
         retro_panel_draw::draw(display_settings.retro,retro_panel::selected(),0,w,h,!enabled);
     return true;
@@ -1467,7 +1468,8 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
     if(stride_trace::enabled&&game_mode()==2)stride_trace::present(began,alpha<0?sources:displayed_source,alpha);
     int retro_w=0,retro_h=0;
     const double filter_start=filter_seconds?now():0;
-    const bool filtered=begin_retro_frame(handle,retro_w,retro_h);
+    unsigned drawn_notice=0;
+    const bool filtered=begin_retro_frame(handle,retro_w,retro_h,&drawn_notice);
     if(filtered&&filter_seconds)*filter_seconds=now()-filter_start;
 #ifndef GEO_AUTOTEST
     if(accessibility_test&&test_capture_requested)qa_native_image(width,height);
@@ -1483,6 +1485,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         deck_output.before_swap(alpha,began,outer_restores,native_replayed);
     const double swap_start=(deck_fixed_rate()||alpha>=0)?now():0;
     BOOL result=real_swap(handle);
+    update_notice::after_swap(drawn_notice,result!=FALSE);
     if(result&&alpha>=0)presentation_clock.submitted(swap_start);
     if(!result&&alpha>=0)can_present=false;
     if(deck_fixed_rate()&&!result){
@@ -2242,8 +2245,10 @@ static BOOL WINAPI retro_only_swap(HDC handle){
     retro_panel::poll(WindowFromDC(handle),retro_ini_path.c_str(),display_settings.retro);
 
     int w=0,h=0;
-    const bool filtered=begin_retro_frame(handle,w,h);
+    unsigned drawn_notice=0;
+    const bool filtered=begin_retro_frame(handle,w,h,&drawn_notice);
     const BOOL result=real_swap(handle);
+    update_notice::after_swap(drawn_notice,result!=FALSE);
     if(result&&display_settings.fps_counter)fps_counter::presented(now());
     if(filtered)retro_display::end_window(result!=FALSE,false,w,h);
     return result;
