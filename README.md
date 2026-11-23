@@ -9,6 +9,24 @@ FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. 
 
 **In active development.** If you find a bug, [report it on GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) or add a comment to an existing issue. Reports in English or Spanish are welcome.
 
+## The in-game menu
+
+Open the menu with **F8** or **Select + Start** and adjust settings while you play. The active section stays highlighted, and the pointing hand navigates the settings and the sections above. Click any image to open it at full size.
+
+**Display**
+
+[![Display settings with the new classic menu](docs/images/settings-display.png)](docs/images/settings-display.png)
+
+**Screen filter**
+
+[![Screen filter settings with the new classic menu](docs/images/settings-filter.png)](docs/images/settings-filter.png)
+
+**Menu settings**
+
+[![Menu size and controller shortcut settings](docs/images/settings-menu-size.png)](docs/images/settings-menu-size.png)
+
+These previews use the current mod renderer over a captured game scene. See the [installer](#install-and-play) and the [update notification and in-game update screens](docs/GALLERY.md#settings-menu) for more images.
+
 ## Recent changes
 
 - **Classic settings menu.** The three sections sit across the top, with the active section highlighted. Press Up on the first option to move the hand to the section row, then Left or Right to choose and A or Enter to open. The controls panel shows directional-pad and button icons.
