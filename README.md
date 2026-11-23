@@ -55,6 +55,8 @@ If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for
 
 The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.14/FF8-Reborn-Deck.pyz) is also available.
 
+If a release has just appeared and the menu says **Up to date**, compare **Display → Installed version** with the Deck release linked above. GitHub can take a few minutes to show the new release to the game. Select **Check for updates** again. When the row changes to **Download update**, press **A** again to download it. You can also close FFVIII and choose **Update or repair** in the Desktop Mode installer to update while keeping your settings.
+
 To use just the filters, open the in-game panel with **View + Menu**. Set **Frame rate** to **Original**, **Aspect ratio** to **Original (4:3)** and **Full-screen map** to **Original**, then choose your screen filter.
 
 ## GOG for Windows
