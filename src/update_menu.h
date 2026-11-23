@@ -3,6 +3,7 @@
 namespace mod_update {
 using State=retro_panel::UpdateState;
 static std::atomic<State> state{retro_panel::update_idle};
+static std::atomic<unsigned> revision{0};
 static SRWLOCK detail_lock=SRWLOCK_INIT;
 static wchar_t message[128]{};
 static std::atomic<unsigned> received_bytes{0},total_bytes{0};
@@ -16,6 +17,7 @@ static void say(State value,const std::wstring& text){
     lstrcpynW(message,text.c_str(),int(sizeof(message)/sizeof(*message)));
     ReleaseSRWLockExclusive(&detail_lock);
     state.store(value,std::memory_order_release);
+    revision.fetch_add(1,std::memory_order_release);
 }
 static State status(){return state.load(std::memory_order_acquire);}
 // The worker publishes offered before setting update_available. A new check
@@ -32,14 +34,12 @@ static void detail(wchar_t* out,size_t capacity){
     ReleaseSRWLockShared(&detail_lock);
 }
 static std::wstring wide(const std::string& ascii){return {ascii.begin(),ascii.end()};}
-static std::wstring versions(){
+static std::wstring available_version(){
     wchar_t tag[33]{};
     AcquireSRWLockShared(&detail_lock);
     lstrcpynW(tag,available_tag,33);
     ReleaseSRWLockShared(&detail_lock);
-    auto line=L"Installed "+wide(update_version::tag);
-    if(tag[0])line+=std::wstring(L"   ·   Available ")+tag;
-    return line;
+    return tag;
 }
 
 struct HttpHandle {

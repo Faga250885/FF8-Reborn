@@ -13,7 +13,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("FF8 Reborn Installer")]
 [assembly: AssemblyProduct("FF8 Reborn")]
-[assembly: AssemblyVersion("1.4.6.0")]
+[assembly: AssemblyVersion("1.4.7.0")]
 
 internal static class Juego {
     internal const string Nombre = "FINAL FANTASY VIII Remastered";
@@ -52,6 +52,7 @@ internal static class Juego {
     const string RebornCustomCopy = "3F5E6E59BB11D85FA59993BD66FBE79D6E420192129EF1A5A21632AB5DD74507";
     const string RebornEnglish = "42ED54AD00B57263C9108B2B42EC7E7E36CB67C470903A8AB487C068E76A035F";
     static bool EsAnterior(string firma) {
+        if(firma=="93423D8D58C4BC4FCE546D4420646DBEC6C14D5F9B8DC1E42DCC7639FB41424C")return true;
         if(firma=="3439053ABE15D66CDBF5465DFD18E937F0ADB76A5C614E01EEBADC3D48D8091E")return true;
         if(firma=="CBCF42706FE76196AB1B512B78083CB853A35F2C0DF7ECFDF8F1FBEB5B98DFD5")return true;
         if(firma=="2B712AB4E4FD625B9FC93FA35B8A4E6EBAB4CEAC71AFEB9D7B6969291C7BA359")return true;

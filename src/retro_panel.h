@@ -3,10 +3,10 @@
 static void log(const char*);
 namespace retro_panel {
 static bool open=false,dirty=false,failed=false;
-enum Row { Tabs=-1, Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, RowCount };
+enum Row { Profile, Lines, Pixels, Scan, Mask, Glow, Dither, Edges, MotionBlur, FilterType, Map, Aspect, FPS, Sides, Counter, TVScreen, PhosphorStrength, PhosphorSharpness, SaveCustom, Restore, ModUpdate, InstalledVersion, RowCount };
 enum class Section { Display, ScreenFilter };
 static Section page=Section::Display;
-static int row=Tabs;
+static int row=Aspect;
 
 static HWND attached=nullptr;
 static RetroSettings* current=nullptr;
@@ -61,7 +61,7 @@ static int preset(const RetroSettings& s) {
     }
     return s.mode==1?profile_count:profile_count+1;
 }
-static constexpr Row display_order[]={Aspect,FPS,Map,Sides,Counter,ModUpdate};
+static constexpr Row display_order[]={Aspect,FPS,Map,Sides,Counter,ModUpdate,InstalledVersion};
 static constexpr Row filter_order[]={Profile,FilterType,Lines,Pixels,Scan,Mask,Glow,Dither,Edges,MotionBlur,TVScreen,PhosphorStrength,PhosphorSharpness,Restore,SaveCustom};
 static_assert(std::size(display_order)+std::size(filter_order)==RowCount,"every available setting must be reachable");
 struct RowOrder {
@@ -91,22 +91,17 @@ static bool same_filter(const RetroSettings& a,const RetroSettings& b){
 }
 static bool can_restore(const RetroSettings& s){return !same_filter(s,profiles[base_profile()]);}
 static bool visible_row(int id,const RetroSettings& s){return id!=Restore||can_restore(s);}
-static void change_section(){
-    page=page==Section::Display?Section::ScreenFilter:Section::Display;
-    row=Tabs;
+static void focus_section(Section next){
+    page=next;
+    row=order_for(page).rows[0];
 }
 static void move_row(int step,const RetroSettings& s){
     const auto order=order_for(page);
-    int index=row==Tabs?(step>0?-1:order.count):
-        int(std::find(order.begin(),order.end(),row)-order.begin());
-    for(index+=step;index>=0&&index<order.count;index+=step){
-        const Row next=order.rows[index];
-        if(!visible_row(next,s))continue;
-        if(next>=Lines&&next<=MotionBlur&&!editable(s.mode,next))continue;
-        row=next;
-        return;
-    }
-    row=Tabs;
+    int index=int(std::find(order.begin(),order.end(),row)-order.begin());
+    do {
+        index=(index+step+order.count)%order.count;
+        row=order.rows[index];
+    } while(!visible_row(row,s)||(row>=Lines&&row<=MotionBlur&&!editable(s.mode,row)));
 }
 // Custom has always been stored in slot 9. New factory profiles follow it on disk.
 static int disk_id(int id){return id==custom?9:id>=9?id+1:id;}
@@ -241,7 +236,7 @@ static int next_percent(int value,int direction){
 }
 static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
     if(key==VK_F8&&!open){
-        load_slots(path,s);row=Tabs;open=true;capture_pad=true;return;
+        load_slots(path,s);focus_section(page);open=true;capture_pad=true;return;
     }
     if(!open)return;
     if(key==VK_ESCAPE||key==VK_F8){
@@ -249,19 +244,16 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         dirty=false;failed=false;open=false;capture_pad=false;return;
     }
     if(key==VK_TAB){
-        change_section();
+        focus_section(page==Section::Display?Section::ScreenFilter:Section::Display);
         return;
     }
-    if(row==Tabs&&(key==VK_LEFT||key==VK_RIGHT)){
-        page=key==VK_LEFT?Section::Display:Section::ScreenFilter;
-        return;
-    }
-    if(key==VK_UP||key==VK_DOWN||(key==VK_RETURN&&row==Tabs)){
+    if(key==VK_UP||key==VK_DOWN){
         move_row(key==VK_UP?-1:1,s);
         return;
     }
     const bool activate=key==VK_RETURN;
     if(!activate&&key!=VK_LEFT&&key!=VK_RIGHT)return;
+    if(row==InstalledVersion)return;
     const int step=key==VK_LEFT?-1:1;
     if(row==ModUpdate){
         if(activate&&update_action&&update_status&&update_actionable(update_status()))update_action();

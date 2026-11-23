@@ -4,10 +4,12 @@ namespace retro_panel_draw {
 #include "ffvi_menu_canvas.h"
 static Surface panel;
 static std::array<int,33> last_state{};
+static unsigned last_update_revision=0;
 static bool painted=false;
 constexpr int display_width=241,filter_width=262,side_width=104;
 constexpr int main_y=12,first_y=24,filter_row=17,display_row=20;
-constexpr int left=24,output_height=15,version_height=31,footer_height=40;
+constexpr int left=24,output_height=15,footer_height=40;
+constexpr COLORREF section_blue=RGB(142,205,255);
 static int main_width(retro_panel::Section page){
     return page==retro_panel::Section::Display?display_width:filter_width;
 }
@@ -23,14 +25,15 @@ static int row_top(int id,bool restore_visible){
 constexpr int tuning_top=first_y+filter_row;
 static int footer_top(retro_panel::Section page,bool restore_visible){
     using namespace retro_panel;
-    return page==Section::Display?row_top(ModUpdate,false)+display_row+version_height+5:
+    return page==Section::Display?row_top(InstalledVersion,false)+display_row+5:
                                   row_top(SaveCustom,restore_visible)+filter_row+5;
 }
-static int design_height(retro_panel::Section page,bool restore){
-    return footer_top(page,restore)+footer_height+2;
+static int design_height(retro_panel::Section page,bool restore,bool bypass=false){
+    const int side_bottom=main_y+47+140+(bypass?20:0);
+    return std::max(footer_top(page,restore)+footer_height,side_bottom)+2;
 }
 struct Placement {int x,y,w,h;};
-static Placement place(retro_panel::Section page,bool restore,int w,int h,int counter){
+static Placement place(retro_panel::Section page,bool restore,int w,int h,int counter,bool bypass=false){
     // Use whole output pixels wherever the screen fits them. A small window
     // can still show the whole menu. Both sections share the same pixel scale.
     const int available_height=h-counter;
@@ -39,7 +42,7 @@ static Placement place(retro_panel::Section page,bool restore,int w,int h,int co
     const double whole=std::max(1.,std::round(h/400.));
     const double scale=fit>=1.?std::min(whole,std::floor(fit)):fit;
     const int margin=int(std::lround(8*scale));
-    const int pw=int(std::lround(design_width(page)*scale)),ph=int(std::lround(design_height(page,restore)*scale));
+    const int pw=int(std::lround(design_width(page)*scale)),ph=int(std::lround(design_height(page,restore,bypass)*scale));
     return {margin,h-counter-margin-ph,pw,ph};
 }
 struct UpdateMeter {
@@ -90,7 +93,7 @@ static void row_label(Canvas& c,int id,int selected,int y,int height,const wchar
     }
     c.label(title,left,y,end,y+height,0,title_colour);
 }
-static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter){
+static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter,const std::wstring& available){
     using namespace retro_panel;
     const auto& message=update_text[update];
     const int y=row_top(ModUpdate,false),right=display_width-9;
@@ -100,25 +103,23 @@ static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,U
         else if(meter.transferred_kib<1024)swprintf(progress,std::size(progress),L"%d KiB",meter.transferred_kib);
         else swprintf(progress,std::size(progress),L"%.1f MiB",meter.transferred_kib/1024.);
     }
-    row_label(c,ModUpdate,selected,y,display_row,message.action,progress[0]?progress:message.status,
+    const bool tag_fits=update==update_available&&!available.empty()&&
+        text_width(message.action)+5+text_width(available.c_str())<=right-left;
+    row_label(c,ModUpdate,selected,y,display_row,message.action,tag_fits?available.c_str():progress[0]?progress:message.status,
               right,update_actionable(update)?mint:muted,update==update_error?warning:ink);
-#ifdef GEO_NATIVE_CAPTURE
-    const auto versions=mod_update::versions();
-#else
-    const std::wstring versions=L"Installed "+std::wstring(update_version::tag,update_version::tag+sizeof(update_version::tag)-1);
-#endif
-    c.paragraph(versions,9,y+display_row,right,2,secondary);
+    static const std::wstring installed(update_version::tag,update_version::tag+sizeof(update_version::tag)-1);
+    row_label(c,InstalledVersion,selected,row_top(InstalledVersion,false),display_row,L"Installed version",installed.c_str(),right);
     if(update==update_downloading||update==update_verifying||update==update_saving||update==update_ready){
-        const int top=y+display_row+version_height-3;
-        c.box(9,top,right,top+3,track);
-        if(meter.percent>=0)c.box(9,top,9+(right-9)*meter.percent/100,top+3,mint);
+        const int top=y+display_row-3;
+        c.box(left,top,right,top+3,track);
+        if(meter.percent>=0)c.box(left,top,left+(right-left)*meter.percent/100,top+3,mint);
         else{
-            const int pos=9+(right-9-32)*meter.sweep/12;
+            const int pos=left+(right-left-32)*meter.sweep/12;
             c.box(pos,top,pos+32,top+3,mint);
         }
     }
 }
-static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter){
+static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter,const std::wstring& available){
     using namespace retro_panel;
     static constexpr const wchar_t* counter_sizes[]={L"Off",L"Small",L"Medium",L"Large"};
     const std::wstring fps=display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":L"Original";
@@ -127,7 +128,7 @@ static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,
         fps.c_str(),display_settings.field_sides?L"On":L"Off",counter_sizes[display_settings.fps_counter]};
     for(int i=Map;i<=Counter;++i)
         row_label(c,i,selected,row_top(i,false),display_row,labels[i-Map],values[i-Map],display_width-9);
-    draw_update(c,selected,update,meter);
+    draw_update(c,selected,update,meter,available);
 }
 static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int h){
     using namespace retro_panel;
@@ -168,7 +169,7 @@ static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int 
         row_label(c,id,selected,y,filter_row,title,value,right,active?mint:muted,active?ink:muted);
     }
 }
-static std::wstring help(int selected,const RetroSettings& s,retro_panel::UpdateState update,bool failed){
+static std::wstring help(int selected,const RetroSettings& s,retro_panel::UpdateState update,bool failed,const std::wstring& available){
     using namespace retro_panel;
     if(failed)return L"Couldn’t save your changes. Try again.";
     if(selected==ModUpdate){
@@ -177,7 +178,7 @@ static std::wstring help(int selected,const RetroSettings& s,retro_panel::Update
         detail[std::size(detail)-1]=0;
         return detail[0]?detail:update_text[update].hint;
     }
-    if(selected==Tabs)return L"← → Choose a section. Enter / A opens it.";
+    if(selected==InstalledVersion)return available.empty()?L"Version of FF8 Reborn currently installed.":L"Available version: "+available;
     switch(selected){
         case Aspect:return L"Set the game screen format.";
         case FPS:return L"Set the presentation frame rate.";
@@ -206,17 +207,20 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     c.window(0,main_y,mw,footer-main_y);
     c.window(6,0,text_width(heading)+18,21);
     c.label(heading,15,4,mw-9,17,0,ink);
-    if(filter)draw_filter(c,s,selected,w,h);else draw_display(c,selected,update,meter);
+    std::wstring available;
+#ifdef GEO_NATIVE_CAPTURE
+    if(!filter)available=mod_update::available_version();
+#endif
+    if(filter)draw_filter(c,s,selected,w,h);else draw_display(c,selected,update,meter,available);
     c.window(0,footer,mw,footer_height);
-    c.paragraph(help(selected,s,update,failed),9,footer+6,mw-9,2,
+    c.paragraph(help(selected,s,update,failed,available),9,footer+6,mw-9,2,
                 failed||(selected==ModUpdate&&update==update_error)?warning:ink);
 
     c.window(mw,main_y,side_width,47);
     for(int section=0;section<2;++section){
         const bool active=(section==1)==filter;
         const int top=main_y+6+section*17;
-        if(selected==Tabs&&active)c.cursor(mw+4,top);
-        c.label(section?L"Screen filter":L"Display",mw+(selected==Tabs?24:10),top,mw+side_width-5,top+16,0,active?mint:ink);
+        c.label(section?L"Screen filter":L"Display",mw+10,top,mw+side_width-5,top+16,0,active?section_blue:ink);
     }
     static constexpr const wchar_t* keys[][2]={{L"Tab / LB / RB",L"Section"},{L"↑ ↓",L"Navigate"},
         {L"← →",L"Adjust"},{L"Enter / A",L"Select"},{L"Esc / B",L"Close"}};
@@ -236,10 +240,10 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     if(w<24||h<24)return false;
     const auto page=retro_panel::section_view();
     const bool restore=retro_panel::can_restore(settings);
-    const int pw=design_width(page),ph=design_height(page,restore);
+    const int pw=design_width(page),ph=design_height(page,restore,bypass);
     const int counter=fps_counter::tile_h*fps_counter::scale(display_settings.fps_counter,w,h);
     if(h-counter<24)return false;
-    const auto position=place(page,restore,w,h,counter);
+    const auto position=place(page,restore,w,h,counter,bypass);
     const bool failed=retro_panel::save_failed();
     const auto update=page==retro_panel::Section::Display&&retro_panel::update_status?
         retro_panel::update_status():retro_panel::update_idle;
@@ -247,7 +251,11 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
                                     settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,settings.phosphors,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
                                     settings.motion_blur,w,h,settings.auto_lines,int(page)};
     UpdateMeter meter=last_meter;
-    const bool changed=!painted||last_state!=state;
+    unsigned update_revision=0;
+#ifdef GEO_NATIVE_CAPTURE
+    if(page==retro_panel::Section::Display)update_revision=mod_update::revision.load(std::memory_order_acquire);
+#endif
+    const bool changed=!painted||last_state!=state||last_update_revision!=update_revision;
     const bool active_update=page==retro_panel::Section::Display&&(update==retro_panel::update_downloading||
                              update==retro_panel::update_verifying||update==retro_panel::update_saving);
     if(changed||active_update){
@@ -263,7 +271,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
         if(!canvas.pixels)return false;
         render(canvas,settings,selected,bypass,failed,update,meter,w,h);
         if(!upload(panel,canvas))return false;
-        last_state=state;last_meter=meter;painted=true;
+        last_state=state;last_meter=meter;last_update_revision=update_revision;painted=true;
     }
     return blit(panel,target,position.x,position.y,position.w,position.h,1.f);
 }
