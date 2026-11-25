@@ -452,7 +452,7 @@ static bool retire_front(HDC handle,int w,int h){
     if(!retiring_front)valid_front=false;
     return retiring_front;
 }
-static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0){
+static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bool overlay=false,int overlay_w=0,int overlay_h=0,bool outer_restores=false){
     retiring_front=false;
     if(!settings.filter_enabled())motion_history.reset();
     if((!settings.active()&&!motion_history.strength&&!overlay)||w<=0||h<=0||w>8192||h>8192||
@@ -477,6 +477,7 @@ static bool begin_window(const RetroSettings& settings,HDC handle,int w,int h,bo
     }
     if(filter&&apply(settings,0,w,h))return true;
     if(overlay){
+        if(outer_restores&&!exchanges_front)return true;
         // Opening the editor with the original image still requires an
         // unmodified copy for engines which draw the next frame incrementally.
         try{allocate(source,cw,ch);}

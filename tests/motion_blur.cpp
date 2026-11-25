@@ -107,5 +107,14 @@ int main(){
     current={};current.mode=2;native_atlas_view=3;routed(false);
     current.mode=6;routed(false);
     current.mode=3;display_settings.retro.motion_blur=0;routed(false);
+    filter.mode=0;
+    rd::exchanges_front=false;rd::valid_front=false;
+    release(rd::source);
+    assert(rd::begin_window(filter,dc,96,64,true,20,12,true));
+    assert(!rd::source.fbo); // The surrounding replay already owns the backbuffer.
+    rd::end_window(true,true,96,64);
+    assert(rd::begin_window(filter,dc,96,64,true,20,12));
+    assert(rd::source.w==20&&rd::source.h==12);
+    rd::end_window(false,false,96,64);
     std::puts("Motion blur: both edges, 10 strengths, still frames, both swap methods, scene routing, cuts, pause, failed swap and Off OK");
 }

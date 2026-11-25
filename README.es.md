@@ -105,6 +105,8 @@ El instalador reconoce la edición GOG. Si encuentra ambas tiendas, permite eleg
 
 FF8 Reborn aún no tiene una GPU mínima medida para 60 o 120 FPS. A 120 FPS, la CPU y la GPU disponen de unos 8,3 ms por cuadro. Influyen la resolución y la complejidad de la escena. En una prueba de diez segundos en el mapamundi a 2560 × 1440, un Ryzen 5 7600X con una RTX 5070 promedió 118,2 FPS mostrados en pantalla. [Medición de FPS](docs/GALERIA.md#frame-rate)
 
+La versión 1.4.21 de Windows reduce las copias de los búferes de imagen y lee juntas las dos muestras que validan cada escena. En una prueba con una RTX 5070, la mediana para dibujar cuatro cuadros intermedios de la misma batalla bajó de **10,34 a 9,35 ms a 1080p** y de **9,71 a 8,77 ms a 4K**. Son tiempos de renderizado de una escena grabada. Las comparaciones de escenarios prerenderizados, mapamundi y batalla a 1080p, 1440p y 4K dieron los mismos resultados de color, profundidad y máscaras.
+
 - Un PC con Windows y la cuenta de Steam propietaria de [FINAL FANTASY VIII Remastered (app 1026680)](https://store.steampowered.com/app/1026680/FINAL_FANTASY_VIII__REMASTERED/).
 - La edición compatible de Steam para Windows con `FFVIII_EFIGS.dll`. El instalador comprueba el motor y la DLL de audio original. La edición de PC de 2013 y la de PlayStation usan otros motores.
 - Inicia el juego desde Steam. Al arrancar, el mod comprueba la aplicación, la licencia y la cuenta propietaria. Una copia prestada o de fin de semana gratuito no activa el mod. La descarga contiene únicamente el mod.

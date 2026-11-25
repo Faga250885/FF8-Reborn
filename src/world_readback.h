@@ -4,7 +4,7 @@ static constexpr GLsizeiptr parity_plane_bytes=160*90*4;
 static constexpr GLsizeiptr parity_storage_bytes=2*parity_plane_bytes+
     (deck_renderer?160*DeckOutputAudit::rows*4:0);
 static int parity_read_rows(){
-    return deck_renderer?(deck_output.submitted_count?180+DeckOutputAudit::rows:180):90;
+    return deck_renderer&&deck_output.submitted_count?180+DeckOutputAudit::rows:180;
 }
 struct ParityReadState {
     GLint fbo,buffer,pack;
@@ -18,7 +18,7 @@ struct ParityReadState {
         pBindFramebuffer(GL_READ_FRAMEBUFFER,fbo);glReadBuffer(buffer);
         glPopClientAttrib();pBindBuffer(GL_PIXEL_PACK_BUFFER,pack);
     }
-    static void read(GLuint src,void* out,int rows=90){
+    static void read(GLuint src,void* out,int rows){
         pBindFramebuffer(GL_READ_FRAMEBUFFER,src);glReadBuffer(GL_COLOR_ATTACHMENT0);
         glReadPixels(0,0,160,rows,GL_RGBA,GL_UNSIGNED_BYTE,out);
     }
@@ -61,8 +61,7 @@ struct WorldReadback {
                     allocated=size==parity_storage_bytes;
                 }
                 if(allocated){
-                    ParityReadState::read(sample_a.fbo,nullptr,parity_read_rows());
-                    if(!deck_renderer)ParityReadState::read(sample_b.fbo,reinterpret_cast<void*>(parity_plane_bytes));
+                    ParityReadState::read(parity_samples.fbo,nullptr,parity_read_rows());
                 }
             }
             const GLenum error=glGetError();
@@ -82,7 +81,7 @@ struct WorldReadback {
     bool copy(BYTE* target){
         const double begin=now();
         GLint old;glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,&old);pBindBuffer(GL_PIXEL_PACK_BUFFER,buffer);
-        const size_t bytes=deck_renderer?size_t(160*4*parity_read_rows()):2*parity_plane_bytes;
+        const size_t bytes=size_t(160*4*parity_read_rows());
         const BYTE* ptr=static_cast<const BYTE*>(map(GL_PIXEL_PACK_BUFFER,0,bytes,GL_MAP_READ_BIT));
         bool okay=false;
         if(ptr){

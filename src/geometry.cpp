@@ -680,7 +680,7 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     bool reactive_sides=false,camera_cut=false,field_movie=false;
     GLuint native_field_target=0;
     bool field_layout_only=false;};
-static Frame building,previous,current;static Surface test_target,backup,reference_target,sample_a,sample_b;
+static Frame building,previous,current;static Surface test_target,backup,reference_target,parity_samples;
 #include "deck_draw_storage.h"
 static DeckDrawStorage draw_storage;
 static unsigned baked_passes=0,clock_presents=0,sleep_presents=0;
@@ -846,7 +846,7 @@ static bool capture_start(Op* clear=nullptr) {
 #ifndef GEO_AUTOTEST
         // Diagnostic snapshot files serialize all attachments, including
         // the initial contents of planes the stock scene never reads.
-        if(clear&&deck_battle_capture()){
+        if(clear&&(!deck_renderer||deck_battle_capture())){
             const auto retained=bits&~discarded_seed_planes(building,current,*clear,target);
             if(retained!=bits)building.captured_seed_planes[capture_target]=retained;
             bits=retained;
@@ -1150,10 +1150,8 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
             restore_prefix=false;
         }
         GLbitfield seed=seed_plan.required(current,entry.first,t);
-        if(deck_renderer){
-            const auto stored=current.captured_seed_planes.find(entry.first);
-            if(stored!=current.captured_seed_planes.end())seed&=stored->second;
-        }
+        const auto stored=current.captured_seed_planes.find(entry.first);
+        if(stored!=current.captured_seed_planes.end())seed&=stored->second;
         if(seed)blit(t.seed.fbo,dest,t.w,t.h,t.w,t.h,seed);
     }
     pBindBuffer(GL_ARRAY_BUFFER,0);pBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
@@ -1454,7 +1452,7 @@ static void track_display_refresh(HDC handle,double time){
     presentation_clock.refresh_period=hz>1?1./hz:0;
     display_settings.monitor_refresh(hz);
 }
-static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nullptr){
+static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nullptr,bool outer_restores=false){
     if(drawn_notice)*drawn_notice=0;
     const bool panel=retro_panel::is_open();
     const int counter=display_settings.fps_counter;
@@ -1491,7 +1489,7 @@ static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nu
     const auto feedback=quick_alpha>0?filter_notice::place(w,h,occupied,quick.profile):update_notice::Placement{};
     const int overlay_w=panel?w:std::max({fps_counter::tile_w*scale,notice.x+notice.w,feedback.x+feedback.w});
     const int overlay_h=panel?h:feedback.h?h-feedback.y:occupied;
-    if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice.h||feedback.h,overlay_w,overlay_h))return false;
+    if(!retro_display::begin_window(filter,handle,w,h,panel||scale||notice.h||feedback.h,overlay_w,overlay_h,outer_restores))return false;
     if(scale&&!retro_display::retiring_front)fps_counter::draw(w,h,scale);
     if(notice_alpha>0&&!retro_display::retiring_front&&update_notice::draw(0,notice,notice_alpha)&&drawn_notice)
         *drawn_notice=offered;
@@ -1505,7 +1503,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
     int retro_w=0,retro_h=0;
     const double filter_start=filter_seconds?now():0;
     unsigned drawn_notice=0;
-    const bool filtered=begin_retro_frame(handle,retro_w,retro_h,&drawn_notice);
+    const bool filtered=begin_retro_frame(handle,retro_w,retro_h,&drawn_notice,outer_restores);
     if(filtered&&filter_seconds)*filter_seconds=now()-filter_start;
 #ifndef GEO_AUTOTEST
     if(accessibility_test&&test_capture_requested)qa_native_image(width,height);
@@ -1631,8 +1629,7 @@ static void capture_native_reference(GLuint source){
 static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times=nullptr,bool native_captured=false){
     const double begin=times?now():0;
     resize(test_target,width,height);
-    resize(sample_a,160,deck_renderer?(deck_output_diagnostics?180+DeckOutputAudit::rows:180):90,false);
-    if(!deck_renderer)resize(sample_b,160,90,false);
+    resize(parity_samples,160,deck_renderer&&deck_output_diagnostics?180+DeckOutputAudit::rows:180,false);
     replay(test_target.fbo,1);
     const double drawn=times?now():0;
     // Normalize both sources to the same offscreen orientation before scaling.
@@ -1640,9 +1637,9 @@ static void submit_parity_samples(GLuint native_source=0,WorldParityTimes* times
     // pick adjacent source rows at texel-boundary ties on the NVIDIA driver.
     if(!native_captured)capture_native_reference(native_source);
     const double copied=times?now():0;
-    blit(reference_target.fbo,sample_a.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
-    blit(test_target.fbo,deck_renderer?sample_a.fbo:sample_b.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT,0,0,deck_renderer?90:0);
-    if(deck_renderer)deck_output.submit(sample_a.fbo);
+    blit(reference_target.fbo,parity_samples.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT);
+    blit(test_target.fbo,parity_samples.fbo,width,height,160,90,GL_COLOR_BUFFER_BIT,0,0,90);
+    if(deck_renderer)deck_output.submit(parity_samples.fbo);
     if(times){
         times->replay+=drawn-begin;times->copy+=copied-drawn;times->samples+=now()-copied;
     }
@@ -1705,8 +1702,7 @@ static bool collect_parity(GLenum submission_error=GL_NO_ERROR,bool queued=false
     if(!copied){
         ParityReadState guard;
         pBindBuffer(GL_PIXEL_PACK_BUFFER,0);
-        ParityReadState::read(sample_a.fbo,a,parity_read_rows());
-        if(!deck_renderer)ParityReadState::read(sample_b.fbo,b);
+        ParityReadState::read(parity_samples.fbo,a,parity_read_rows());
     }
     unsigned difference=0,bad=0;
     for(size_t i=0;i<parity_plane_bytes;i+=4)for(unsigned c=0;c<3;++c){
@@ -2357,19 +2353,22 @@ static BOOL WINAPI retro_only_swap(HDC handle){
 // The native renderer cannot submit new drawing on this thread until its
 // sleep/wait returns. All intermediate presents in that wait can restore
 // from the same original color, depth and stencil image.
-struct DeckIdleBackup {
-    static inline thread_local DeckIdleBackup* active=nullptr;
-    DeckIdleBackup* parent=active;
+struct IdleBackbuffer {
+    static inline thread_local IdleBackbuffer* active=nullptr;
+    IdleBackbuffer* parent=active;
     bool saved=false;
-    DeckIdleBackup(){if(deck_fixed_rate())active=this;}
-    ~DeckIdleBackup(){active=parent;}
+    IdleBackbuffer(){active=this;}
+    ~IdleBackbuffer(){
+        if(parent&&saved)parent->saved=false;
+        active=parent;
+    }
 };
 static bool present_during_wait(bool force_previous){
     // Snapshot and restore the entire native BACK buffer (including depth),
     // so extra swaps never become input to incremental game rendering.
     if(deck_needs_native_swap)return false;
     const double started=now();
-    auto window=DeckIdleBackup::active;
+    auto window=IdleBackbuffer::active;
     if(!window||!window->saved){
         resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());
         if(window)window->saved=true;
@@ -2423,7 +2422,7 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         requested_wait+=requested;reclaimed_wait+=requested-duration;++frame_waits;
     }
     const double end=start+duration;
-    DeckIdleBackup idle_backup;
+    IdleBackbuffer idle_backup;
     const bool repeated_field=presentation_mode==1&&duration>=output_period()+2*presentation_clock.replay_cost+.0005;
     FieldPrefixCache::Window prefix_window(field_prefix,end,repeated_field);
     pacing_callback=true;
@@ -2499,7 +2498,7 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
        handle!=*(HANDLE*)((BYTE*)engine+engine_layout->timer_handle))return real_wait(handle,timeout);
     waits++;present_reason=8;qa_stage(8);double start=now();
     const double end=start+timeout*.001;
-    DeckIdleBackup idle_backup;
+    IdleBackbuffer idle_backup;
     auto remaining_ms=[&]()->DWORD{return timeout==INFINITE?INFINITE:
         (DWORD)std::max(0.,std::ceil((end-now())*1000.));};
     if(output_timer){
@@ -2551,7 +2550,7 @@ static void forget_deleted_context(){
     can_present=false;loaded=false;context=nullptr;dc=nullptr;thread=0;
     building={};previous={};current={};draw_storage={};texture_cache.clear();recognized.clear();spare_textures={};
     replay_targets.clear();replay_depth.clear();replay_textures.clear();outgoing_draws.clear();checkpoint_outgoing.clear();
-    test_target={};backup={};reference_target={};sample_a={};sample_b={};encounter_native={};
+    test_target={};backup={};reference_target={};parity_samples={};encounter_native={};
     for(auto&s:field_blur::levels)s={};field_blur::isolated_edge={};for(auto&s:infirmary::sheets)s={};
 #ifdef GEO_AUTOTEST
     test_older={};previous_reference={};
