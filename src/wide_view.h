@@ -288,13 +288,45 @@ struct WideView {
         return summon_hud&&summon_clip(s)?1:hud_clip(s);
     }
 
+    static bool hud_vertex(const Vertex& v){
+        // Alternate font atlas glyphs use 0.9997 instead of exactly 1.
+        return std::abs(v.p[3]-1.f)<=.002f&&v.p[2]>=0&&v.p[2]<=.004f;
+    }
+
+    bool hud_draw(const Op& op) const {
+        return corner_hud&&horizontal<1&&outer_width&&op.target&&op.mode==GL_TRIANGLES&&
+               !op.vertices.empty()&&op.vertices.size()%6==0&&std::abs(op.vertices.front().p[3]-1.f)<=.002f&&
+               op.state.viewport[2]==scene_width&&op.state.viewport[3]==scene_height&&
+               std::abs(op.state.projection[0]-2.f/640)<=.00001f;
+    }
+
+    int clipped_hud_side(const Op& op) const {
+        const auto& s=op.state;
+        const int known=clipped_hud_side(s);
+        if(known||!s.scissor_on||s.scissor[2]<=0||s.scissor[2]>=scene_width||!hud_draw(op))
+            return known;
+        const int x=int(std::lround(640.*s.scissor[0]/scene_width));
+        const int end=int(std::lround(640.*(s.scissor[0]+s.scissor[2])/scene_width));
+        const int side=x>=32&&x<240&&end<=command_right?-1:x>=436&&end<=640?1:0;
+        if(!side)return 0;
+        // Page slides can use a tall scissor. Check that the clipped draw
+        // belongs to one lower HUD panel and use that anchor for both.
+        const float panel_top=side<0?296.f:344.f;
+        for(size_t i=0;i<op.vertices.size();i+=6){
+            const auto* quad=op.vertices.data()+i;
+            Bounds bounds;
+            if(!hud_vertex(*quad)||!flat_rect(quad,bounds)||bounds.t<panel_top||bounds.b>468)
+                return 0;
+        }
+        return side;
+    }
+
     int sprite_side(const Vertex* q,int clip_side) const {
         if(!corner_hud)return 0;
         float l=q->p[0],r=l,t=q->p[1],b=t;
         for(int i=0;i<6;i++){
             const float* p=q[i].p;
-            // Alternate font atlas glyphs use 0.9997 instead of exactly 1.
-            if(std::abs(p[3]-1.f)>.002f||p[2]<0||p[2]>.004f)return 0;
+            if(!hud_vertex(q[i]))return 0;
             l=std::min(l,p[0]);r=std::max(r,p[0]);
             t=std::min(t,p[1]);b=std::max(b,p[1]);
         }
@@ -318,11 +350,9 @@ struct WideView {
     }
 
     const Vertex* position_hud(const Op&op,const Vertex* vertices,std::vector<Vertex>&buffer) const {
-        if(!corner_hud||horizontal>=1||!outer_width||!op.target||op.mode!=GL_TRIANGLES||
-           op.vertices.empty()||op.vertices.size()%6||std::abs(op.vertices[0].p[3]-1.f)>.002f||
-           op.state.viewport[2]!=scene_width||std::abs(op.state.projection[0]-2.f/640)>.00001f)return vertices;
+        if(!hud_draw(op))return vertices;
         const float distance=320*(1/horizontal-1);
-        const int clip_side=clipped_hud_side(op.state);
+        const int clip_side=clipped_hud_side(op);
         // Some submissions batch several windows or text styles in one draw.
         // Classify complete original sprites before translating the live pose.
         for(size_t i=0;i<op.vertices.size();i+=6){
@@ -732,7 +762,7 @@ struct WideView {
 
         float projection[16];memcpy(projection,s.projection,sizeof(projection));
         for(int k=0;k<16;k+=4)projection[k]*=horizontal;
-        float shift=clipped_hud_side(s)*(1-horizontal);
+        float shift=clipped_hud_side(op)*(1-horizontal);
         if(world_map_draw(op)){
             // Keep the same 12-unit right inset as the native rectangular minimap.
             const float extra=320*(1/horizontal-1);

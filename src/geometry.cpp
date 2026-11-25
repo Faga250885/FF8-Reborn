@@ -1270,7 +1270,8 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
             !memcmp(op.state.viewport,last_draw->state.viewport,sizeof(op.state.viewport))&&
             !memcmp(op.state.scissor,last_draw->state.scissor,sizeof(op.state.scissor))&&
             !memcmp(op.state.projection,last_draw->state.projection,sizeof(op.state.projection))&&
-            view.world_map_draw(op)==view.world_map_draw(*last_draw);
+            view.world_map_draw(op)==view.world_map_draw(*last_draw)&&
+            (!view.corner_hud||view.clipped_hud_side(op)==view.clipped_hud_side(*last_draw));
         set_state(op.state,last_draw?&last_draw->state:nullptr,view.outer_width&&!same_scene_view,reuse_draw_state?&replay_samplers:nullptr);
         if(!last_draw||memcmp(&op.raster,&last_draw->raster,sizeof(op.raster)))apply_extra(op.raster);
         last_draw=&op;

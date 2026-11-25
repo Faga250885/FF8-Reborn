@@ -188,6 +188,34 @@ int main(){
     assert(view.clipped_hud_side(gf.state)==1);
     for(size_t i=0;i<gf.vertices.size();i+=6)assert(view.sprite_side(gf.vertices.data()+i,1)==1);
 
+    auto page=packet(GL_TRIANGLES);
+    page.state.scissor[0]=148;page.state.scissor[1]=64;
+    page.state.scissor[2]=372;page.state.scissor[3]=864;
+    view.command_right=276;
+    rect(page,78,330,260,350);
+    assert(view.clipped_hud_side(page.state)==0);
+    assert(view.clipped_hud_side(page)==-1);
+    const float shift=320*(1/view.horizontal-1);
+    assert(view.position_hud(page,page.vertices.data(),out)==out.data());
+    assert(out[0].p[0]==page.vertices[0].p[0]-shift);
+    view.apply(page);
+    GLint box[4];glGetIntegerv(GL_SCISSOR_BOX,box);
+    assert(box[0]==int(std::floor(page.state.scissor[0]*view.horizontal)));
+    assert(box[1]==64&&box[3]==864);
+    page.state.scissor[1]=86;page.state.scissor[3]=700;
+    assert(view.clipped_hud_side(page)==-1);
+    auto stage=page;
+    for(auto& v:stage.vertices)v.p[3]=1.f/150.f;
+    assert(view.clipped_hud_side(stage)==0);
+    page.state.scissor[2]=800;
+    assert(view.clipped_hud_side(page)==0);
+
+    auto right_list=packet(GL_TRIANGLES);
+    right_list.state.scissor[0]=900;right_list.state.scissor[1]=56;
+    right_list.state.scissor[2]=320;right_list.state.scissor[3]=790;
+    rect(right_list,454,360,580,382);
+    assert(view.clipped_hud_side(right_list)==1);
+
     view.horizontal=1;assert(!changed(view,tiles,out)); // Native presentation.
     assert(glGetError()==GL_NO_ERROR);
     puts("Battle flashes cover both edges. Native view, local effects, HUD and projected geometry preserved.");
