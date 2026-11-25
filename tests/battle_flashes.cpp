@@ -168,10 +168,33 @@ int main(){
 
     view.battle=view.corner_hud=true;
     auto timer=packet(GL_TRIANGLES);
+    rect(timer,520,36,552,68);
+    rect(timer,554,36,586,68);
     rect(timer,574,36,606,68);
     for(auto& v:timer.vertices)v.p[2]=.0010483871f;
-    timer.vertices.front().uv[0][1]=.625f;
+    for(size_t i=0;i<timer.vertices.size();i+=6)timer.vertices[i].uv[0][1]=.625f;
     view.inspect_battle_hud(timer);
+    assert(view.countdown_hud);
+    const float shift=320*(1/view.horizontal-1);
+    assert(view.position_hud(timer,timer.vertices.data(),out)==out.data());
+    for(size_t i=0;i<out.size();i++)assert(out[i].p[0]==timer.vertices[i].p[0]+(shift+18.f));
+
+    auto mixed=packet(GL_TRIANGLES);
+    rect(mixed,540,36,556,68);
+    for(auto& v:mixed.vertices)v.p[2]=.00101613f;
+    mixed.vertices.front().uv[0][1]=.625f;
+    rect(mixed,52,320,148,336);
+    rect(mixed,514,372,610,378);
+    assert(view.position_hud(mixed,mixed.vertices.data(),out)==out.data());
+    assert(out[0].p[0]==mixed.vertices[0].p[0]+(shift+18.f));
+    assert(out[6].p[0]==mixed.vertices[6].p[0]-shift);
+    assert(out[12].p[0]==mixed.vertices[12].p[0]+shift);
+    view.corner_hud=false;
+    assert(view.position_hud(mixed,mixed.vertices.data(),out)==out.data());
+    assert(out[0].p[0]==mixed.vertices[0].p[0]+(shift+18.f));
+    assert(out[6].p[0]==mixed.vertices[6].p[0]);
+    assert(out[12].p[0]==mixed.vertices[12].p[0]);
+    view.corner_hud=true;
     auto hand=packet(GL_TRIANGLES);
     rect(hand,12,338,60,370);
     for(auto& v:hand.vertices)v.p[2]=.0010645161f;
@@ -195,7 +218,6 @@ int main(){
     rect(page,78,330,260,350);
     assert(view.clipped_hud_side(page.state)==0);
     assert(view.clipped_hud_side(page)==-1);
-    const float shift=320*(1/view.horizontal-1);
     assert(view.position_hud(page,page.vertices.data(),out)==out.data());
     assert(out[0].p[0]==page.vertices[0].p[0]-shift);
     view.apply(page);
@@ -216,7 +238,45 @@ int main(){
     rect(right_list,454,360,580,382);
     assert(view.clipped_hud_side(right_list)==1);
 
+    WideView limit_view(frame,false);
+    limit_view.outer_width=limit_view.scene_width=1280;
+    limit_view.scene_height=960;limit_view.horizontal=view.horizontal;
+    auto limit=packet(GL_TRIANGLES);
+    rect(limit,518,366,566,382);
+    for(auto& v:limit.vertices)v.p[2]=.00169355f;
+    limit.vertices.front().uv[0][0]=.8125f;
+    limit_view.inspect_battle_hud(limit);
+    assert(limit_view.position_hud(limit,limit.vertices.data(),out)==out.data());
+    assert(out.front().p[0]==518+shift);
+
+    auto combos=packet(GL_TRIANGLES);
+    rect(combos,24,344,40,360);
+    rect(combos,280,376,508,408);
+    rect(combos,330,359,349,379);
+    rect(combos,330,344,349,360);
+    std::rotate(combos.vertices.begin(),combos.vertices.begin()+3,combos.vertices.begin()+6);
+    for(size_t i=0;i<combos.vertices.size();i++)
+        combos.vertices[i].p[2]=i<18?.0016f:.002f;
+    combos.vertices.front().uv[0][0]=.1875f;
+    combos.vertices.front().uv[0][1]=0;
+    limit_view.inspect_battle_hud(combos);
+    assert(limit_view.position_hud(combos,combos.vertices.data(),out)==out.data());
+    for(size_t i=0;i<18;i++)assert(out[i].p[0]==combos.vertices[i].p[0]-shift);
+    for(size_t i=18;i<24;i++)assert(out[i].p[0]==combos.vertices[i].p[0]);
+
+    limit_view.limit_hud=WideView::LimitHud::none;
+    auto shot=packet(GL_TRIANGLES);
+    rect(shot,512,416,560,432);
+    rect(shot,498,428,514,444);
+    rect(shot,596,382,612,414);
+    for(auto& v:shot.vertices)v.p[2]=.00116129f;
+    shot.vertices.front().uv[0][0]=.8125f;
+    limit_view.inspect_battle_hud(shot);
+    assert(limit_view.position_hud(shot,shot.vertices.data(),out)==out.data());
+    for(size_t i=0;i<out.size();i++)assert(out[i].p[0]==shot.vertices[i].p[0]+shift);
+
     view.horizontal=1;assert(!changed(view,tiles,out)); // Native presentation.
+    assert(view.position_hud(timer,timer.vertices.data(),out)==timer.vertices.data());
     assert(glGetError()==GL_NO_ERROR);
     puts("Battle flashes cover both edges. Native view, local effects, HUD and projected geometry preserved.");
 }

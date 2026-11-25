@@ -141,6 +141,11 @@ struct WideView {
     int command_right=244;
     bool corner_hud=false;
     bool summon_hud=false;
+    bool countdown_hud=false;
+    enum class LimitHud { none, shot, duel };
+    LimitHud limit_hud=LimitHud::none;
+    float limit_hud_depth=0;
+    bool duel_menu=false;
     float menu_cursor_depth=.001f;
     GLuint battle_backdrop_target=0;
     GLuint battle_capture_plane_target=0;
@@ -219,18 +224,20 @@ struct WideView {
         }
         if(battle&&horizontal<1){
             find_battle_backdrop(frame.ops);
+            bool centered_gauge=false;
             for(const auto& op:frame.ops){
                 if(!op.target||op.clear||op.state.viewport[2]!=scene_width||
                    std::abs(op.state.projection[0]-2.f/640)>.00001f)continue;
                 // The trigger gauge is one window with two long horizontal
                 // rails. Its frame tiles and moving sprites share native X.
-                if(has_gauge_rail(op)){corner_hud=false;break;}
+                if(!centered_gauge)centered_gauge=has_gauge_rail(op);
                 inspect_battle_hud(op);
                 if(hud_clip(op.state)!=1)continue;
                 corner_hud=true;
                 const int x=int(std::lround(640.*op.state.scissor[0]/scene_width));
                 if(x<436)command_right=std::max(command_right,x);
             }
+            if(centered_gauge)corner_hud=false;
         }
     }
     static bool map_layer(const Vertex& v){
@@ -264,6 +271,16 @@ struct WideView {
                std::lround(480.*clip[1]/scene_height)==32&&
                std::lround(480.*clip[3]/scene_height)==432;
     }
+
+    struct Bounds { float l,r,t,b; };
+    static bool countdown_glyph(const Vertex* q,Bounds& b){
+        return (q->p[1]==36||q->p[1]==68)&&q->p[0]>=500&&q->p[0]<=606&&
+               q->p[2]>=.001f&&q->p[2]<.00125f&&q->uv[0][1]==.625f&&
+               std::abs(q->p[3]-1.f)<=.002f&&flat_rect(q,b)&&
+               b.t==36&&b.b==68&&b.l>=500&&b.r<=606&&
+               (b.r-b.l==32||(b.l==540&&b.r==556));
+    }
+
     void inspect_battle_hud(const Op& op){
         if(op.mode!=GL_TRIANGLES||op.vertices.empty()||op.vertices.size()%6||
            std::abs(op.vertices.front().p[3]-1.f)>.002f)return;
@@ -276,11 +293,23 @@ struct WideView {
                (b.t==358||b.t==388||b.t==418)&&b.b==b.t+30)summon_hud=true;
             // The countdown is drawn before the command hand. Its last
             // digit advances the hand's depth, even as the colon blinks.
-            if(q->p[0]>=520&&q->p[0]<=606&&q->p[2]>=.001f&&q->p[2]<.00125f&&
-               q[0].uv[0][1]==.625f&&flat_rect(q,b)&&b.t==36&&b.b==68&&b.r==606&&b.l==574){
+            if(countdown_glyph(q,b)&&b.r==606){
+                countdown_hud=true;
                 constexpr float depth_step=.0005f/31;
                 menu_cursor_depth=q->p[2]+depth_step;
             }
+            // The status panels for Shot and Duel replace the HP rows, so
+            // their shared "Time" label identifies the active corner HUD.
+            if(limit_hud==LimitHud::none&&(q->p[1]==366||q->p[1]==416)&&
+               q->uv[0][0]==.8125f&&q->uv[0][1]==0.f&&hud_vertex(*q)&&flat_rect(q,b)&&
+               b.r-b.l==48&&b.b-b.t==16){
+                if(b.l==512&&b.t==416)limit_hud=LimitHud::shot;
+                if(b.l==518&&b.t==366)limit_hud=LimitHud::duel;
+                if(limit_hud!=LimitHud::none)limit_hud_depth=q->p[2];
+            }
+            if(!duel_menu&&(q->p[0]==24||q->p[0]==40)&&(q->p[1]==344||q->p[1]==360)&&q->uv[0][0]==.1875f&&
+               q->uv[0][1]==0.f&&hud_vertex(*q)&&flat_rect(q,b)&&
+               b.l==24&&b.r==40&&b.t==344&&b.b==360)duel_menu=true;
         }
     }
     int clipped_hud_side(const State& s) const {
@@ -294,7 +323,8 @@ struct WideView {
     }
 
     bool hud_draw(const Op& op) const {
-        return corner_hud&&horizontal<1&&outer_width&&op.target&&op.mode==GL_TRIANGLES&&
+        return (corner_hud||countdown_hud||limit_hud!=LimitHud::none)&&horizontal<1&&outer_width&&
+               op.target&&op.mode==GL_TRIANGLES&&
                !op.vertices.empty()&&op.vertices.size()%6==0&&std::abs(op.vertices.front().p[3]-1.f)<=.002f&&
                op.state.viewport[2]==scene_width&&op.state.viewport[3]==scene_height&&
                std::abs(op.state.projection[0]-2.f/640)<=.00001f;
@@ -303,7 +333,7 @@ struct WideView {
     int clipped_hud_side(const Op& op) const {
         const auto& s=op.state;
         const int known=clipped_hud_side(s);
-        if(known||!s.scissor_on||s.scissor[2]<=0||s.scissor[2]>=scene_width||!hud_draw(op))
+        if(known||!corner_hud||!s.scissor_on||s.scissor[2]<=0||s.scissor[2]>=scene_width||!hud_draw(op))
             return known;
         const int x=int(std::lround(640.*s.scissor[0]/scene_width));
         const int end=int(std::lround(640.*(s.scissor[0]+s.scissor[2])/scene_width));
@@ -322,7 +352,7 @@ struct WideView {
     }
 
     int sprite_side(const Vertex* q,int clip_side) const {
-        if(!corner_hud)return 0;
+        if(!corner_hud&&limit_hud==LimitHud::none)return 0;
         float l=q->p[0],r=l,t=q->p[1],b=t;
         for(int i=0;i<6;i++){
             const float* p=q[i].p;
@@ -335,6 +365,15 @@ struct WideView {
             const float* p=q[i].p;
             if((p[0]!=l&&p[0]!=r)||(p[1]!=t&&p[1]!=b))return 0;
         }
+        if(limit_hud!=LimitHud::none&&std::abs(q->p[2]-limit_hud_depth)<=.00024f){
+            if(limit_hud==LimitHud::shot&&l>=498&&r<=626&&t>=368&&b<=444)return 1;
+            if(limit_hud==LimitHud::duel&&l>=518&&r<=616&&t>=366&&b<=452)return 1;
+        }
+        // Duel draws its command frame, text and controller icons at
+        // consecutive UI depths before the right-hand timer.
+        if(limit_hud==LimitHud::duel&&duel_menu&&l>=24&&r<=508&&t>=344&&b<=448&&
+           q->p[2]>=.001f&&q->p[2]<limit_hud_depth)return -1;
+        if(!corner_hud)return 0;
         if(clip_side)return clip_side;
         // The floating target hand uses the same artwork as the command
         // hand, at a different depth. Keep it on the battler.
@@ -356,14 +395,18 @@ struct WideView {
         // Some submissions batch several windows or text styles in one draw.
         // Classify complete original sprites before translating the live pose.
         for(size_t i=0;i<op.vertices.size();i+=6){
-            const int side=sprite_side(op.vertices.data()+i,clip_side);
-            if(!side)continue;
+            const auto* quad=op.vertices.data()+i;
+            Bounds bounds;
+            const bool countdown=countdown_hud&&countdown_glyph(quad,bounds);
+            // The timer atlas has more right padding than the status bars.
+            // Align the visible digits with the bars, including that padding.
+            const float offset=countdown?distance+18.f:sprite_side(quad,clip_side)*distance;
+            if(!offset)continue;
             if(vertices!=buffer.data()){buffer=op.vertices;vertices=buffer.data();}
-            for(size_t j=i;j<i+6;j++)buffer[j].p[0]+=side*distance;
+            for(size_t j=i;j<i+6;j++)buffer[j].p[0]+=offset;
         }
         return vertices;
     }
-    struct Bounds { float l,r,t,b; };
     static bool flat_rect(const Vertex* q,Bounds& box,int n=6){
         box={q[0].p[0],q[0].p[0],q[0].p[1],q[0].p[1]};
         for(int i=1;i<n;i++){
