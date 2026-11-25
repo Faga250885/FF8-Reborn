@@ -62,7 +62,8 @@ static Frame::Opening opening_screen(const Frame& f){
 static void resolve_menu_layout(Frame& f,const Frame& prior){
     f.layout_override=-1;f.menu_edge=0;
     f.menu_top=28;f.menu_bottom=448;f.menu_half_width=282;
-    f.opening=opening_screen(f);
+    f.opening=f.field_movie?Frame::Opening::none:opening_screen(f);
+    if(f.field_movie)return;
     if(f.opening==Frame::Opening::white_title){f.menu_top=40;f.menu_bottom=440;}
     // The Remaster also composites a small footer below the native menu rows.
     else if(f.opening==Frame::Opening::black_title){f.menu_top=16;f.menu_bottom=458;}
@@ -152,7 +153,7 @@ struct WideView {
     std::vector<std::pair<const Op*,const Op*>> battle_screen_meshes;
     explicit WideView(const Frame& frame,bool requested):drawable_width(frame.w),drawable_height(frame.h),battle(frame.layout()==3){
         const int mode=frame.layout();
-        if(!requested||(!gameplay_layout(mode)&&mode!=6)||frame.w<1||frame.h<1)return;
+        if(!requested||frame.field_movie||(!gameplay_layout(mode)&&mode!=6)||frame.w<1||frame.h<1)return;
         if(mode==6){
             int top=frame.menu_top,bottom=frame.menu_bottom,half_width=frame.menu_half_width;
             if(frame.mode==after_battle_mode){
@@ -273,6 +274,23 @@ struct WideView {
     }
 
     struct Bounds { float l,r,t,b; };
+    static bool movie_canvas(const Frame& f){
+        if(f.mode!=1||!f.valid)return false;
+        for(const auto& op:f.ops){
+            const auto& s=op.state;
+            if(!op.target||op.clear||op.mode!=GL_TRIANGLES||op.vertices.size()!=6||
+               s.depth||!s.texture[0].id||!s.scissor_on||
+               std::abs(s.projection[0]-2.f/640)>.00001f)continue;
+            const auto* q=op.vertices.data();
+            Bounds b;
+            // The decoder submits the whole 448-line plate at the far
+            // plane. Actors and masks may be drawn in the same field swap.
+            if(q->p[2]==1.f&&q->p[3]==1.f&&flat_rect(q,b)&&
+               b.l==0&&b.r==640&&b.t==16&&b.b==464)return true;
+        }
+        return false;
+    }
+
     static bool countdown_glyph(const Vertex* q,Bounds& b){
         return (q->p[1]==36||q->p[1]==68)&&q->p[0]>=500&&q->p[0]<=606&&
                q->p[2]>=.001f&&q->p[2]<.00125f&&q->uv[0][1]==.625f&&
@@ -839,10 +857,24 @@ struct WideView {
 // load, including swaps without a captured draw. Keep the last confirmed
 // scene's fit until the next scene supplies its own projection.
 static bool resolve_travel_layout(Frame& f,const Frame& prior,const WideView& view){
+    if(f.field_movie)return false;
     const int layout=f.layout();
     if((layout==1||layout==2)&&view.scene_width&&view.outer_width&&!view.full_map){
         f.travel=Frame::Travel::scene;
         return false;
+    }
+    if(layout==3&&!view.outer_width&&f.valid&&prior.travel==Frame::Travel::scene&&
+       (prior.layout()==1||prior.layout()==2)){
+        // A scripted encounter can set battle mode while still compositing
+        // the outgoing field or world. Use its fit until battle draws arrive.
+        const int old_override=f.layout_override;
+        f.layout_override=prior.layout();
+        const WideView outgoing(f,true);
+        if(outgoing.scene_width&&outgoing.outer_width&&!outgoing.full_map){
+            f.travel=Frame::Travel::scene;
+            return true;
+        }
+        f.layout_override=old_override;
     }
     if(prior.travel==Frame::Travel::none||view.full_map||layout==6||
        (f.mode!=0&&f.mode!=-1&&f.mode!=1&&f.mode!=2))return false;

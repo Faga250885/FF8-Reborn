@@ -73,6 +73,33 @@ static void check_partial_copy(){
     release(output);
 }
 
+static void check_battle_handoff(int w,int h){
+    const int native=int(std::lround(h*4./3));
+    for(int scene_mode:{1,2}){
+        Frame prior=field(w,h,(w-native)/2,native);
+        prior.mode=scene_mode;
+        prior.travel=Frame::Travel::scene;
+        const WideView old_view(prior,true);
+        Frame first=prior;first.mode=3;first.travel=Frame::Travel::none;
+        demand(!WideView(first,true).outer_width,"early battle flag cannot identify the outgoing canvas");
+        demand(resolve_travel_layout(first,prior,WideView(first,true)),"retain the outgoing scene's verified layout");
+        const WideView held(first,true);
+        demand(first.layout()==scene_mode&&first.travel==Frame::Travel::scene&&
+               held.outer_width==old_view.outer_width&&held.outer_height==old_view.outer_height,
+               "outgoing image shrank as battle began");
+
+        Frame battle=prior;battle.mode=3;battle.travel=Frame::Travel::none;
+        battle.ops.front().state.scissor[3]=864;
+        demand(!resolve_travel_layout(battle,first,WideView(battle,true))&&battle.layout()==3&&
+               WideView(battle,true).outer_width==w,"the actual battle canvas takes over immediately");
+
+        Frame movie=prior;movie.mode=3;movie.travel=Frame::Travel::none;
+        movie.ops.erase(movie.ops.begin());
+        demand(!resolve_travel_layout(movie,prior,WideView(movie,true))&&movie.layout()==3,
+               "a copy without the outgoing scene must not inherit its layout");
+    }
+}
+
 int main(){
     HWND window=CreateWindowA("STATIC","Field edges",WS_POPUP,0,0,256,256,nullptr,nullptr,
                               GetModuleHandleA(nullptr),nullptr);
@@ -86,5 +113,7 @@ int main(){
     check(1280,720,160,960);
     check(2560,1440,320,1920);
     check_partial_copy();
-    puts("Prerendered field joins match on both sides at 800p, 720p and 1440p.");
+    check_battle_handoff(1280,800);
+    check_battle_handoff(1920,1080);
+    puts("Prerendered side joins and the outgoing layout on battle entry are preserved.");
 }

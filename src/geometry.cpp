@@ -665,7 +665,7 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     int menu_top=28,menu_bottom=448,menu_half_width=282;
     int layout()const{return layout_override<0?mode:layout_override;}
     StrideFollow stride_follow;float stride_dt=1.f/30;
-    bool reactive_sides=false,camera_cut=false;
+    bool reactive_sides=false,camera_cut=false,field_movie=false;
     GLuint native_field_target=0;
     bool field_layout_only=false;};
 static Frame building,previous,current;static Surface test_target,backup,reference_target,sample_a,sample_b;
@@ -2062,12 +2062,13 @@ static BOOL WINAPI swap_hook(HDC handle){
             RECT r{};if(GetClientRect(WindowFromDC(handle),&r)){building.w=r.right;building.h=r.bottom;}
         }
         publish();published=true;
+        current.field_movie=WideView::movie_canvas(current);
         if(display_settings.wide&&!(direct_complete&&mode==2))resolve_menu_layout(current,previous);
         else {current.layout_override=-1;current.menu_edge=0;current.opening=Frame::Opening::none;}
         WideView transition(current,display_settings.wide);
         // Title and memory-card pages are complete 2D compositions, even
         // when the game reports the same mode as a moving field scene.
-        if(current.opening!=Frame::Opening::none)candidate=false;
+        if(current.opening!=Frame::Opening::none||current.field_movie)candidate=false;
         current.travel=Frame::Travel::none;
         if(display_settings.wide&&resolve_travel_layout(current,previous,transition))
             transition=WideView(current,true);

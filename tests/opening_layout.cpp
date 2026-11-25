@@ -30,6 +30,19 @@ static void check(int w,int h){
  Frame field=save;auto scenery=rect(0,128,0,64,.00155f);for(auto& v:scenery.vertices)v.p[3]=1.f/3;
  field.ops.insert(field.ops.begin(),scenery);resolve_menu_layout(field,Frame{});
  demand(field.opening==Frame::Opening::none&&field.layout()==1,"field scenery cannot be classified as save menu");
+ auto plate=rect(0,640,16,464,1);
+ plate.state.texture[0].id=99;
+ plate.state.scissor_on=true;
+ Frame outgoing=field;outgoing.travel=Frame::Travel::scene;
+ Frame mixed=frame(w,h,1,{plate,scenery,rect(44,300,50,95)});
+ mixed.field_movie=WideView::movie_canvas(mixed);
+ demand(mixed.field_movie,"recognize the video behind separately submitted models and dialogue");
+ resolve_menu_layout(mixed,outgoing);
+ WideView movie_view(mixed,true);
+ demand(!movie_view.outer_width&&!resolve_travel_layout(mixed,outgoing,movie_view)&&
+        mixed.travel==Frame::Travel::none,"preserve the movie and its layers at the native fit on the first frame");
+ mixed.ops.front().state.depth=true;
+ demand(!WideView::movie_canvas(mixed),"an ordinary depth-tested scene plane stays eligible for widescreen");
  Surface target;resize(target,w,h,false,true);pBindFramebuffer(GL_FRAMEBUFFER,target.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
  glDisable(GL_SCISSOR_TEST);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
  glEnable(GL_SCISSOR_TEST);const int sx=(w-int(std::lround(h*4./3)))/2;
