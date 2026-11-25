@@ -40,6 +40,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
+- **Battle camera cuts.** Windows 1.4.23 keeps the original cut between shots during battle intros. Continuous camera movement still interpolates. The mod also checks for small gaps at the bottom of the arena in widescreen.
 - **Widescreen transitions and movies.** Scripted encounters keep the outgoing view until the battle canvas arrives. Movie scenes use the native composition for video, models and masks.
 - **Widescreen battle HUD.** The countdown lines up with the turn gauges on the right. Shot's ammo counter and timer stay on the right, and Duel's combo list and timer use their respective edges.
 - **Widescreen battle menus.** Names stay readable while the Blue Magic list slides between pages. The Windows test run covered all 16 Blue Magic spells and all 8 ammo types.

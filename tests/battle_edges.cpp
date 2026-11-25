@@ -55,6 +55,26 @@ int main(){
     faces={{0,0,0,0}};
     demand(protect_battle_edges(faces,faces).empty(),"authored prior face changed shape");
 
+    // A cut from a low shot to an overhead view changes both visibility
+    // and depth. A smooth orbit and independent actor motion still blend.
+    std::vector<BoneSample> shot,orbit,cut;
+    for(unsigned i=0;i<12;++i){
+        const auto address=0x0a082000+6*i;
+        const auto x=int16_t(400+100*i);
+        shot.push_back({5,address,x,880,1000,battle_stage_sample});
+        orbit.push_back({5,address,int16_t(x+130),920,1050,battle_stage_sample});
+        cut.push_back({5,address,int16_t(x-1700),1160,2400,battle_stage_sample});
+    }
+    const auto actor=0x0a088000u;
+    shot.push_back({0,actor,600,1000,900,0});
+    orbit.push_back({0,actor,2200,240,2500,0});
+    demand(!battle_shot_changed(shot,orbit),"continuous camera orbit treated as a cut");
+    demand(battle_shot_changed(shot,cut),"camera cut missed when the old stage leaves view");
+    for(auto& p:cut)p.x+=1700;
+    demand(battle_shot_changed(shot,cut),"camera cut missed when screen position stayed centered");
+    demand(battle_shot_changed({},shot),"stage projection appeared at the camera cut");
+    demand(!battle_shot_changed({},{}),"empty capture marked as a cut");
+
     // One projected point shared by two source addresses is ambiguous if the
     // next frame separates them. Both directions must reject that trajectory.
     std::vector<BoneSample> before{{1,1,400,400,1000,0},{2,2,400,400,1000,0},{3,3,600,400,1000,0}};
@@ -98,6 +118,22 @@ int main(){
     battle.ops.front().vertices[4].p[1]=432;
     battle.ops.front().vertices[5].p[1]=432;
     demand(!battle_loses_lower_edge(battle,{}),"native floor framing was treated as an interpolation error");
+
+    const auto patch=[&](float left,float right){
+        auto strip=floor;
+        strip.vertices={vertex(left,420),vertex(right,456),vertex(right,420),
+                        vertex(left,420),vertex(left,456),vertex(right,456)};
+        for(unsigned v=0;v<strip.vertices.size();++v)
+            memcpy(strip.prior_positions[v].data(),strip.vertices[v].p,sizeof(Vertex::p));
+        return strip;
+    };
+    battle.ops={patch(-120,210),patch(210,240),patch(240,760),composite};
+    for(auto& p:battle.ops[1].prior_positions)
+        if(p[1]==456)p[1]=455;
+    demand(battle_loses_lower_edge(battle,{}),"narrow wedge missed at the edge of the battle viewport");
+    for(auto& v:battle.ops[1].vertices)
+        if(v.p[1]==456)v.p[1]=455;
+    demand(!battle_loses_lower_edge(battle,{}),"pre-existing narrow gap changed battle cadence");
 
     puts("battle edge continuity passed");
 }

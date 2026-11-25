@@ -92,7 +92,14 @@ static void __cdecl projected(void*cpu){
     calls++;
     if(valid&&!overflow)try{
         if(pending.size()+count>64000)overflow=true;
-        else {for(unsigned i=0;i<count;i++){auto p=raw[i];pending.push_back({tag,source+2+6*i,p.x,p.y,p.z,p.flags});}accepted++;}
+        else {
+            for(unsigned i=0;i<count;i++){
+                const auto& p=raw[i];
+                const auto flags=uint16_t((p.flags&~battle_stage_sample)|(stage_drawing?battle_stage_sample:0));
+                pending.push_back({tag,source+2+6*i,p.x,p.y,p.z,flags});
+            }
+            accepted++;
+        }
     }catch(...){overflow=true;}
     ReleaseSRWLockExclusive(&lock);
     service_at(5);

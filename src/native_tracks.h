@@ -3,6 +3,8 @@
 // fixed 24-pixel Y offset is part of the remaster's battle viewport.
 struct BoneSample{uint32_t group,address;int16_t x,y;uint16_t z,flags;};
 static_assert(sizeof(BoneSample)==16);
+// Reserved in the captured copy. The game's projection flags are untouched.
+static constexpr uint16_t battle_stage_sample=0x8000;
 struct BonePoint{int16_t x=0,y=0;uint16_t z=0;
     uint64_t key()const{return uint16_t(x)|(uint64_t(uint16_t(y))<<16)|(uint64_t(z)<<32);}
     bool operator==(const BonePoint&other)const{return key()==other.key();}
@@ -16,26 +18,44 @@ static bool from_gl(const float*p,BonePoint&v){
     if(x!=(int)x||y!=(int)y||p[3]!=1.f/z)return false;
     v={(int16_t)x,(int16_t)y,(uint16_t)z};return true;
 }
-// The battle viewport is 640 units wide and the projector stores quarter pixels.
-// Distinguish a change of shot from a continuous pan using the same indexed
-// stage vertices on both sides, before triangle culling or material sorting.
+// Compare the stage across game ticks to distinguish a continuous orbit
+// from a cut. A cut can move most of the visible stage out of shot, or
+// change its depth sharply even when points stay near the screen center.
 static bool battle_shot_changed(const std::vector<BoneSample>& before,const std::vector<BoneSample>& after){
-    if(before.empty()||after.empty())return false;
-    auto stage=[](const BoneSample& p){
-        return p.group<4 && p.address>=0x0a080000 && p.address<0x0a100000 && !(p.flags&2);
+    const auto tagged=[](const BoneSample& p){return (p.flags&battle_stage_sample)!=0;};
+    const bool labeled=std::any_of(before.begin(),before.end(),tagged)||
+                       std::any_of(after.begin(),after.end(),tagged);
+    const auto stage=[&](const BoneSample& p){
+        // Captures recorded before stage tagging used this address range.
+        return p.z>10&&!(p.flags&6)&&
+            (labeled?tagged(p):p.group<4&&p.address>=0x0a080000&&p.address<0x0a100000);
     };
-    std::unordered_map<uint64_t,BonePoint> prior;
-    for(const auto& p:before)if(stage(p))
-        prior.emplace((uint64_t(p.group)<<32)|p.address,BonePoint{p.x,p.y,p.z});
-    unsigned visible=0,displaced=0;
-    for(const auto& p:after){
-        if(!stage(p)||p.x<0||p.x>2560||p.y<0||p.y>1728)continue;
-        auto f=prior.find((uint64_t(p.group)<<32)|p.address);if(f==prior.end())continue;
-        double dx=p.x-f->second.x,dy=p.y-f->second.y;
-        ++visible;if(dx*dx+dy*dy>1280.*1280.)++displaced;
+    const auto visible=[](const BoneSample& p){
+        return p.x>=0&&p.x<=2560&&p.y>=0&&p.y<=1728;
+    };
+    const auto key=[](const BoneSample& p){return (uint64_t(p.group)<<32)|p.address;};
+    std::unordered_map<uint64_t,const BoneSample*> prior;
+    unsigned before_visible=0,after_visible=0,seen=0,displaced=0;
+    for(const auto& p:before)if(stage(p)){
+        if(prior.emplace(key(p),&p).second&&visible(p))++before_visible;
     }
-    return visible>=8 && displaced*3>=visible*2;
+    for(const auto& p:after)if(stage(p)){
+        if(visible(p))++after_visible;
+        const auto found=prior.find(key(p));
+        if(found==prior.end())continue;
+        const auto& old=*found->second;
+        if(!visible(old)&&!visible(p))continue;
+        ++seen;
+        const double dx=p.x-old.x,dy=p.y-old.y;
+        if(dx*dx+dy*dy>640.*640.||2*std::max(p.z,old.z)>3*std::min(p.z,old.z))
+            ++displaced;
+    }
+    if(seen>=8)return displaced*4>=seen*3;
+    // The game can change its projection pass between shots and provide
+    // stage samples on just one side of the cut.
+    return labeled&&((before_visible>=8&&after.empty())||(after_visible>=8&&before.empty()));
 }
+
 // Each input sample contributes at most one key. The four temporary bone
 // indices can therefore use bounded, contiguous storage with no node allocation.
 class BoneLinks {
