@@ -40,6 +40,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 
 ## Novedades
 
+- **Bordes verticales al mover la cámara.** Windows 1.4.24 comprueba los bordes superior e inferior del mapamundi y de las batallas durante la interpolación. Si un cuadro intermedio abriría un hueco, el mod muestra el cuadro del juego durante ese intervalo.
 - **Cortes de cámara en batalla.** Windows 1.4.23 conserva los cambios de plano de las entradas de batalla y mantiene la interpolación durante los giros continuos. También detecta huecos pequeños en el borde inferior del escenario en pantalla ancha.
 - **Transiciones y cinemáticas en pantalla ancha.** La vista anterior conserva su encuadre hasta que empieza a dibujarse la batalla. Las cinemáticas mantienen el encuadre nativo del vídeo, los modelos y las máscaras.
 - **Interfaz de batalla en pantalla ancha.** El cronómetro queda alineado con las barras de turno a la derecha. El contador de munición y la barra de tiempo de Disparo también van a la derecha. El menú de combos de Duelo va a la izquierda y su cronómetro a la derecha.

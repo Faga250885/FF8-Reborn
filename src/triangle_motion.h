@@ -70,6 +70,7 @@ struct MatchInput {
 #include "outgoing_motion.h"
 #include "surface_motion.h"
 #include "battle_visibility.h"
+#include "scene_visibility.h"
 #include "triangle_depth.h"
 #include "world_actor.h"
 #include "world_visible_actor.h"
@@ -348,6 +349,6 @@ static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
         if(identical&&op.actor_mid.empty()&&op.depth_bias.empty()&&op.front_face.empty())op.match=-1;
         moving_draws+=moving;
     }
-    if(mode==3&&display_settings.wide&&!current.camera_cut)
-        current.camera_cut=battle_loses_lower_edge(current,outgoing_draws);
+    if((mode==2||mode==3)&&display_settings.wide&&!current.camera_cut)
+        current.camera_cut=scene_loses_vertical_edge(current,outgoing_draws);
 }

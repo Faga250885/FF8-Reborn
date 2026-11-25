@@ -5,7 +5,7 @@ namespace update_version {
 constexpr char channel[]="deck", tag[]="v1.4.0-deck.25";
 constexpr unsigned build=1040025;
 #else
-constexpr char channel[]="windows", tag[]="v1.4.23";
-constexpr unsigned build=1042300;
+constexpr char channel[]="windows", tag[]="v1.4.24";
+constexpr unsigned build=1042400;
 #endif
 }

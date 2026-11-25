@@ -101,7 +101,7 @@ int main(){
     retain_battle_outgoing({{0,0,0}},{},destinations,{});
     demand(outgoing_triangles==1,"legitimate turning face discarded");
     Frame battle;
-    battle.w=1280;battle.h=720;
+    battle.w=1280;battle.h=720;battle.mode=3;
     auto floor=mesh({vertex(-90,420),vertex(730,456),vertex(730,420),
                      vertex(-90,420),vertex(-90,456),vertex(730,456)});
     floor.target=1;floor.match=0;floor.state.depth_mask=true;
@@ -110,14 +110,14 @@ int main(){
     composite.state.viewport[0]=160;
     composite.state.viewport[2]=960;composite.state.viewport[3]=720;
     battle.ops={floor,composite};
-    demand(!battle_loses_lower_edge(battle,{}),"continuous floor rejected");
+    demand(!scene_loses_vertical_edge(battle,{}),"continuous floor rejected");
     for(auto& p:battle.ops.front().prior_positions)p[1]-=28;
-    demand(battle_loses_lower_edge(battle,{}),"interpolation exposed a strip beneath the floor");
-    demand(!battle_loses_lower_edge(battle,{{floor,0}}),"departing floor already covers the strip");
+    demand(scene_loses_vertical_edge(battle,{}),"interpolation exposed a strip beneath the floor");
+    demand(!scene_loses_vertical_edge(battle,{{floor,0}}),"departing floor already covers the strip");
     battle.ops.front().vertices[1].p[1]=432;
     battle.ops.front().vertices[4].p[1]=432;
     battle.ops.front().vertices[5].p[1]=432;
-    demand(!battle_loses_lower_edge(battle,{}),"native floor framing was treated as an interpolation error");
+    demand(!scene_loses_vertical_edge(battle,{}),"native floor framing was treated as an interpolation error");
 
     const auto patch=[&](float left,float right){
         auto strip=floor;
@@ -130,10 +130,44 @@ int main(){
     battle.ops={patch(-120,210),patch(210,240),patch(240,760),composite};
     for(auto& p:battle.ops[1].prior_positions)
         if(p[1]==456)p[1]=455;
-    demand(battle_loses_lower_edge(battle,{}),"narrow wedge missed at the edge of the battle viewport");
+    demand(scene_loses_vertical_edge(battle,{}),"narrow wedge missed at the edge of the battle viewport");
     for(auto& v:battle.ops[1].vertices)
         if(v.p[1]==456)v.p[1]=455;
-    demand(!battle_loses_lower_edge(battle,{}),"pre-existing narrow gap changed battle cadence");
+    demand(!scene_loses_vertical_edge(battle,{}),"pre-existing narrow gap changed battle cadence");
+
+    // The same narrow wedge can open above the arena during an overhead cut.
+    battle.ops={patch(-120,210),patch(210,240),patch(240,760),composite};
+    for(unsigned i=0;i<3;++i){
+        for(auto& v:battle.ops[i].vertices)v.p[1]=480-v.p[1];
+        for(auto& p:battle.ops[i].prior_positions)p[1]=480-p[1];
+    }
+    for(auto& p:battle.ops[1].prior_positions)
+        if(p[1]==24)p[1]=25;
+    demand(scene_loses_vertical_edge(battle,{}),"narrow wedge missed at the top of the battle viewport");
+    for(auto& v:battle.ops[1].vertices)
+        if(v.p[1]==24)v.p[1]=25;
+    demand(!scene_loses_vertical_edge(battle,{}),"pre-existing sky opening changed battle cadence");
+
+    battle.mode=2;
+    battle.ops={patch(-120,210),patch(210,240),patch(240,760),composite};
+    for(unsigned i=0;i<3;++i){
+        for(auto& v:battle.ops[i].vertices)v.p[1]=472-v.p[1];
+        for(auto& p:battle.ops[i].prior_positions)p[1]=472-p[1];
+    }
+    for(auto& p:battle.ops[1].prior_positions)
+        if(p[1]==16)p[1]=20;
+    demand(scene_loses_vertical_edge(battle,{}),"world tilt exposed the top edge");
+    for(auto& p:battle.ops[1].prior_positions)
+        if(p[1]==20)p[1]=16;
+    demand(!scene_loses_vertical_edge(battle,{}),"complete world viewport rejected");
+    for(unsigned i=0;i<3;++i){
+        for(auto& v:battle.ops[i].vertices)v.p[1]=480-v.p[1];
+        for(auto& p:battle.ops[i].prior_positions)p[1]=480-p[1];
+    }
+    for(auto& p:battle.ops[1].prior_positions)
+        if(p[1]==464)p[1]=460;
+    demand(scene_loses_vertical_edge(battle,{}),"world tilt exposed the bottom edge");
+
 
     puts("battle edge continuity passed");
 }
