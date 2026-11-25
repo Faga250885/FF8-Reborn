@@ -60,5 +60,24 @@ int main(){
     tip[0]=110;
     retain_battle_outgoing({{0,0,0}},{},destinations,{});
     demand(outgoing_triangles==1,"legitimate turning face discarded");
+    Frame battle;
+    battle.w=1280;battle.h=720;
+    auto floor=mesh({vertex(-90,420),vertex(730,456),vertex(730,420),
+                     vertex(-90,420),vertex(-90,456),vertex(730,456)});
+    floor.target=1;floor.match=0;floor.state.depth_mask=true;
+    floor.state.projection[0]=2.f/640;floor.state.projection[5]=-2.f/480;
+    auto composite=mesh({a,b,c,a,b,c});
+    composite.state.viewport[0]=160;
+    composite.state.viewport[2]=960;composite.state.viewport[3]=720;
+    battle.ops={floor,composite};
+    demand(!battle_loses_lower_edge(battle,{}),"continuous floor rejected");
+    for(auto& p:battle.ops.front().prior_positions)p[1]-=28;
+    demand(battle_loses_lower_edge(battle,{}),"interpolation exposed a strip beneath the floor");
+    demand(!battle_loses_lower_edge(battle,{{floor,0}}),"departing floor already covers the strip");
+    battle.ops.front().vertices[1].p[1]=432;
+    battle.ops.front().vertices[4].p[1]=432;
+    battle.ops.front().vertices[5].p[1]=432;
+    demand(!battle_loses_lower_edge(battle,{}),"native floor framing was treated as an interpolation error");
+
     puts("battle edge continuity passed");
 }

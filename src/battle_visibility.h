@@ -63,3 +63,74 @@ static void retain_battle_outgoing(const std::vector<Primitive>&old,const std::v
         outgoing_triangles++;
     }
 }
+
+// A fast tilt can leave the old ground outside the current list of triangles.
+// When the reconstructed floor loses a whole strip filled by the native
+// endpoint, use that endpoint for the pair, including its actors and effects.
+static bool battle_loses_lower_edge(const Frame& frame,const std::vector<OutgoingDraw>& departing){
+    if(frame.ops.empty())return false;
+    const auto& end=frame.ops.back();
+    const float width=std::round(end.state.viewport[2]*480.f/432);
+    if(width<=0||width>=frame.w||!centered_menu_composite(end,frame.w,frame.h))return false;
+    constexpr unsigned columns=21;
+    constexpr unsigned all=(1u<<columns)-1;
+    constexpr std::array<float,3> phases={1.f,.15f,.5f};
+    constexpr std::array<float,2> rows={449.f,454.f};
+    std::array<std::array<unsigned,rows.size()>,phases.size()> coverage{};
+    const float step=640.f*frame.w/(width*columns);
+    const float left=320.f-step*(columns-1)/2;
+    auto collect=[&](const Op& op,bool leaving){
+        if(!op.target||!opaque_projected(op)||!op.state.depth_mask||
+           std::abs(op.state.projection[0]-2.f/640)>.00001f||
+           std::abs(op.state.projection[5]+2.f/480)>.00001f)return;
+        for(size_t phase=leaving?1:0;phase<phases.size();++phase){
+            auto& mask=coverage[phase];
+            if(mask[0]==all&&mask[1]==all)continue;
+            for(size_t i=0;i+2<op.vertices.size();i+=3){
+                float x[3],y[3];
+                bool projected=true;
+                for(size_t corner=0;corner<3;++corner){
+                    const size_t v=i+corner;
+                    const auto* p=op.vertices[v].p;
+                    if(p[3]<=0||p[3]>=.1f){projected=false;break;}
+                    x[corner]=p[0];y[corner]=p[1];
+                    if(phase&&op.match>=0&&op.motion_valid[v]){
+                        const auto& before=op.prior_positions[v];
+                        x[corner]=before[0]+phases[phase]*(p[0]-before[0]);
+                        y[corner]=before[1]+phases[phase]*(p[1]-before[1]);
+                    }
+                }
+                if(!projected||std::max({y[0],y[1],y[2]})<rows.front()||
+                   std::min({y[0],y[1],y[2]})>rows.back())continue;
+                auto edge=[&](size_t a,size_t b,float px,float py){
+                    return (x[b]-x[a])*(py-y[a])-(y[b]-y[a])*(px-x[a]);
+                };
+                const float area=edge(0,1,x[2],y[2]);
+                if(std::abs(area)<.001f||(phase&&i/3<op.front_face.size()&&op.front_face[i/3]&&area>0))continue;
+                const float min_x=std::min({x[0],x[1],x[2]}),max_x=std::max({x[0],x[1],x[2]});
+                for(size_t row=0;row<rows.size();++row){
+                    if(mask[row]==all)continue;
+                    for(unsigned col=0;col<columns;++col){
+                        const unsigned bit=1u<<col;
+                        const float px=left+step*col;
+                        if((mask[row]&bit)||px<min_x||px>max_x)continue;
+                        if((edge(0,1,px,rows[row])>=0)==(area>0)&&
+                           (edge(1,2,px,rows[row])>=0)==(area>0)&&
+                           (edge(2,0,px,rows[row])>=0)==(area>0))mask[row]|=bit;
+                    }
+                }
+            }
+        }
+    };
+    for(const auto& op:frame.ops)collect(op,false);
+    for(const auto& draw:departing)collect(draw.op,true);
+    for(size_t row=0;row<rows.size();++row){
+        const unsigned endpoint=coverage[0][row];
+        if(std::bitset<columns>(endpoint).count()<columns-1)continue;
+        for(size_t i=1;i<phases.size();++i){
+            const unsigned lost=endpoint&~coverage[i][row];
+            if(lost&(lost>>1))return true;
+        }
+    }
+    return false;
+}

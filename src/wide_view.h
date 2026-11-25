@@ -143,6 +143,7 @@ struct WideView {
     bool summon_hud=false;
     float menu_cursor_depth=.001f;
     GLuint battle_backdrop_target=0;
+    GLuint battle_capture_plane_target=0;
     std::vector<std::pair<const Op*,const Op*>> battle_screen_meshes;
     explicit WideView(const Frame& frame,bool requested):drawable_width(frame.w),drawable_height(frame.h),battle(frame.layout()==3){
         const int mode=frame.layout();
@@ -393,6 +394,19 @@ struct WideView {
             return v.p[3]==1.f&&v.p[2]==first.p[2]&&v.p[0]>=-2.f&&v.p[0]<=642.f;
         });
     }
+    bool capture_plane_draw(const Op& op) const {
+        const auto& s=op.state;
+        if(!s.depth||s.cull||!s.blend||s.src_rgb!=GL_ONE||s.eq_rgb!=GL_FUNC_ADD||
+           (s.dst_rgb!=GL_ONE&&s.dst_rgb!=GL_ZERO)||!battle_canvas_draw(op))return false;
+        // The battle engine projects captured screen tiles and their opaque
+        // masks at a fixed reciprocal depth. Treat them as one effect plane.
+        const auto& first=op.vertices.front();
+        constexpr float capture_rhw=1.f/512.f;
+        if(first.p[3]!=capture_rhw||first.p[2]<=.1f)return false;
+        return std::all_of(op.vertices.begin(),op.vertices.end(),[&](const Vertex& v){
+            return v.p[3]==capture_rhw&&v.p[2]==first.p[2];
+        });
+    }
     struct BattleCoverage {
         static constexpr int rows=7;
         std::array<unsigned,3> covered{};
@@ -443,8 +457,21 @@ struct WideView {
         // Replacement scenery may be interleaved with actors. Coverage must
         // reach across the picture before widening the additive backdrop.
         BattleCoverage backdrop;
+        Bounds capture={INFINITY,-INFINITY,INFINITY,-INFINITY};
+        size_t capture_vertices=0;
+        bool capture_mask=false,capture_texture=false;
         for(auto i=first+1;i!=last;){
             if(backdrop_draw(*i))backdrop.add(*i);
+            if(capture_plane_draw(*i)){
+                const bool textured=uses_texture(i->state);
+                capture_texture|=textured;
+                capture_mask|=!textured&&i->state.depth_mask&&i->state.dst_rgb==GL_ZERO;
+                capture_vertices+=i->vertices.size();
+                for(const auto& v:i->vertices){
+                    capture.l=std::min(capture.l,v.p[0]);capture.r=std::max(capture.r,v.p[0]);
+                    capture.t=std::min(capture.t,v.p[1]);capture.b=std::max(capture.b,v.p[1]);
+                }
+            }
             if(!screen_mesh_draw(*i)){++i;continue;}
 
             // One screen distortion can submit many adjacent texture pages.
@@ -463,9 +490,15 @@ struct WideView {
             if(mesh.fills_picture())battle_screen_meshes.emplace_back(&*begin,&*(i-1));
         }
         if(backdrop.fills_picture())battle_backdrop_target=clear->target;
+        // Shattering removes interior pixels by design, so validate the
+        // combined extent and the presence of both the tiles and the mask.
+        if(capture_mask&&capture_texture&&capture_vertices>=192&&
+           capture.l<=32&&capture.r>=608&&capture.t<=44&&capture.b>=436)
+            battle_capture_plane_target=clear->target;
     }
     bool fitted_battle_layer(const Op& op) const {
         if(battle_backdrop_target&&op.target==battle_backdrop_target&&backdrop_draw(op))return true;
+        if(battle_capture_plane_target&&op.target==battle_capture_plane_target&&capture_plane_draw(op))return true;
         const std::less<const Op*> less;
         return std::any_of(battle_screen_meshes.begin(),battle_screen_meshes.end(),[&](const auto& range){
             return !less(&op,range.first)&&!less(range.second,&op);

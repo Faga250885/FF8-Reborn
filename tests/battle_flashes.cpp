@@ -144,6 +144,28 @@ int main(){
     assert(!changed(view,incomplete_mesh[1],out));
     assert(!changed(view,incomplete_mesh[2],out));
 
+    auto fragments=packet(GL_TRIANGLES);
+    fragments.state.blend=fragments.state.depth=true;
+    fragments.state.eq_rgb=GL_FUNC_ADD;
+    fragments.state.src_rgb=fragments.state.dst_rgb=GL_ONE;
+    fragments.state.texture[0].enabled=true;
+    for(int y=24;y<456;y+=12)rect(fragments,18,float(y),640,float(y+12),1.f/512);
+    for(auto& v:fragments.vertices)v.p[2]=.378331f;
+    auto shatter_mask=fragments;
+    shatter_mask.state.texture[0].enabled=false;
+    shatter_mask.state.depth_mask=true;
+    shatter_mask.state.dst_rgb=GL_ZERO;
+    const std::vector<Op> shatter={clear,shatter_mask,fragments,effect};
+    WideView shatter_view(frame,false);
+    shatter_view.scene_width=view.scene_width;shatter_view.scene_height=view.scene_height;
+    shatter_view.horizontal=view.horizontal;
+    shatter_view.find_battle_backdrop({clear,fragments});
+    assert(!changed(shatter_view,fragments,out));
+    shatter_view.find_battle_backdrop(shatter);
+    assert(changed(shatter_view,shatter[1],out));
+    assert(changed(shatter_view,shatter[2],out));
+    assert(!changed(shatter_view,shatter[3],out));
+
     view.battle=view.corner_hud=true;
     auto timer=packet(GL_TRIANGLES);
     rect(timer,574,36,606,68);

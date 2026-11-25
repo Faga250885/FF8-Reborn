@@ -1,6 +1,6 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.21/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.22/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
 > **120 FPS and Widescreen are experimental.** Some scenes or effects can still show visual artifacts or miss the target frame rate. The original 4:3 framing and frame rate are available in the **Display** settings.
@@ -40,6 +40,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
+- **Battle limits and flashes.** Camera moves keep the arena covered when an intermediate frame would expose a seam. Full-screen shatter effects reach the widescreen edges. We checked the battle limits of all eleven playable characters on Windows.
 - **Battle widescreen fixes.** The command cursor stays beside its text in timed battles. A charging GF's name, HP panel and gauge stay aligned, and full-screen flashes, distorted overlays and summon backgrounds extend to both edges. [Issue #2](https://github.com/Faga250885/FF8-Reborn/issues/2)
 - **More Windows frame rate options.** **Display → Frame rate** now offers Original, 30, 60, 90 and 120 FPS. The 120 FPS mode is experimental.
 - **Full language support.** Windows **v1.4.14** and Steam Deck **v1.4.0-deck.20** localize all three menu sections, filter labels, confirmations and on-screen notices. In Windows testing, F8 opened in all six languages and switching between widescreen and 4:3 took effect live on the world map. [View the language gallery](docs/GALLERY.md#menu-languages)
@@ -83,11 +84,11 @@ In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 sub
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.21/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.22/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.21/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.22/FF8-Reborn-Deck.pyz) is also available.
 
 If a release has just appeared and the menu says **Up to date**, compare **Display → Installed version** with the Deck release linked above. GitHub can take a few minutes to show the new release to the game. Select **Check for updates** again. When the row changes to **Download update**, press **A** again to download it. You can also close FFVIII and choose **Update or repair** in the Desktop Mode installer to update while keeping your settings.
 

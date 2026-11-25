@@ -348,4 +348,6 @@ static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
         if(identical&&op.actor_mid.empty()&&op.depth_bias.empty()&&op.front_face.empty())op.match=-1;
         moving_draws+=moving;
     }
+    if(mode==3&&display_settings.wide&&!current.camera_cut)
+        current.camera_cut=battle_loses_lower_edge(current,outgoing_draws);
 }
