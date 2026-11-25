@@ -1,4 +1,4 @@
-// The supported EFIGS renderer submits framebuffer changes through GLEW's
+// The supported renderers submit framebuffer changes through GLEW's
 // EXT dispatch entries. Observe changes there, including late mod startup.
 // If another renderer owns an entry, use the ordinary GL query on each draw.
 namespace world_bindings {
@@ -23,7 +23,6 @@ template<class Fn> static bool observe(size_t rva,Fn expected,Fn callback,Fn& or
 }
 static PFNGLBINDFRAMEBUFFERPROC original_bind;
 static PFNGLDELETEFRAMEBUFFERSPROC original_delete;
-static constexpr size_t bind_slot=0x178c654,delete_slot=0x178c66c;
 static bool installed=false;
 static void binding_changed(GLenum target){
     if(target==GL_FRAMEBUFFER||target==GL_DRAW_FRAMEBUFFER)cached_target=-1;
@@ -38,14 +37,16 @@ static void APIENTRY erase(GLsizei count,const GLuint* ids){
 }
 static void install(){
     tracked=installed=false;cached_target=-1;
-    observed_engine=GetModuleHandleW(L"FFVIII_EFIGS.dll");
-    if(!engine||observed_engine!=engine){observed_engine=nullptr;return;}
+    observed_engine=engine;
+    if(!engine)return;
     const auto bind_ext=reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(wglGetProcAddress("glBindFramebufferEXT"));
     const auto delete_ext=reinterpret_cast<PFNGLDELETEFRAMEBUFFERSPROC>(wglGetProcAddress("glDeleteFramebuffersEXT"));
-    installed=observe(bind_slot,bind_ext,bind,original_bind)&&observe(delete_slot,delete_ext,erase,original_delete);
+    installed=observe(engine_layout->framebuffer_bind,bind_ext,bind,original_bind)&&
+        observe(engine_layout->framebuffer_delete,delete_ext,erase,original_delete);
 }
 static void begin_frame(){
-    tracked=installed&&slot_is(bind_slot,bind)&&slot_is(delete_slot,erase);
+    tracked=installed&&slot_is(engine_layout->framebuffer_bind,bind)&&
+        slot_is(engine_layout->framebuffer_delete,erase);
     cached_target=-1;
 }
 static GLuint draw_target(){

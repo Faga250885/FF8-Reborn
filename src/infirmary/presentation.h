@@ -3,11 +3,11 @@ namespace infirmary {
 static constexpr int panel=40, atlasWidth=2*panel, atlasHeight=240;
 static Surface sheets[3];
 
-// Same guest word used by the field transition dispatcher at 4706B0+21C.
+// Same guest word used by the field transition dispatcher.
 static int field_id(){
     if(!engine)return -1;
-    constexpr unsigned address=0x1cd2fc0;
-    const auto slot=(const uint32_t*)((BYTE*)engine+0x188edd0)+(address>>12);
+    const unsigned address=engine_layout->field;
+    const auto slot=(const uint32_t*)((BYTE*)engine+engine_layout->guest_pages)+(address>>12);
     if(!readable(slot,4)||!*slot)return -1;
     auto word=(const uint16_t*)(uintptr_t)(*slot+(address&4095));
     if(!readable(word,2))return -1;

@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <atomic>
 #include "update_version.h"
+#include "engine_layout.h"
 #ifdef GEO_NATIVE_CAPTURE
 #include <winhttp.h>
 #include "update_feed.h"
@@ -1853,8 +1854,8 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
 // The installed main-loop callback (game object + B40) distinguishes them.
 static constexpr int encounter_transition=3003;
 static int game_mode(){
-    if(!engine)return -1;const unsigned guest=0x1cd8fc6;
-    auto entry=(const unsigned*)((BYTE*)engine+0x188edd0+(guest>>12)*4);
+    if(!engine)return -1;const unsigned guest=engine_layout->mode;
+    auto entry=(const unsigned*)((BYTE*)engine+engine_layout->guest_pages+(guest>>12)*4);
     if(!readable(entry,4))return -1;const void*p=(const void*)(uintptr_t)(*entry+(guest&4095));
     if(!readable(p,2))return -1;unsigned short value;memcpy(&value,p,2);
 #ifdef GEO_NATIVE_CAPTURE
@@ -1862,8 +1863,8 @@ static int game_mode(){
     // Only that ambiguous word needs an extra lookup on the native 4:3 path.
     if(display_settings.wide||(deck_fixed_rate()&&value==3)){
         uint32_t obj=0,loop=0;
-        if(native_pose::fetch(0x1a79d88,&obj,4)&&obj&&obj<0x10000000&&
-           native_pose::fetch(obj+0xb40,&loop,4)&&loop==0x559890)return encounter_transition;
+        if(native_pose::fetch(engine_layout->main_object,&obj,4)&&obj&&obj<0x10000000&&
+           native_pose::fetch(obj+0xb40,&loop,4)&&loop==engine_layout->encounter_loop)return encounter_transition;
     }
 #endif
     return value;
@@ -2104,7 +2105,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             int lines=480;
 #ifdef GEO_NATIVE_CAPTURE
             int region=0;
-            if(native_pose::fetch(0x204db24,&region,4)&&(region==448||region==224))lines=448;
+            if(native_pose::fetch(engine_layout->display_region,&region,4)&&(region==448||region==224))lines=448;
 #endif
             RECT area{};
             if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
@@ -2463,7 +2464,7 @@ static void __cdecl draw_within_delay(unsigned milliseconds){
 }
 static bool install_game_delay(){
     auto base=(BYTE*)engine;
-    BYTE* site=base+0x15926c6;auto target=base+0x597c0;
+    BYTE* site=base+engine_layout->delay_call;auto target=base+engine_layout->delay_target;
     const BYTE before[]={0x8b,0x45,0x08,0x50},after[]={0x83,0xc4,0x04,0x5d,0xc3};
     int32_t rel;memcpy(&rel,site+1,4);
     if(memcmp(site-4,before,4)||*site!=0xe8||site+5+rel!=target||memcmp(site+5,after,sizeof(after)))return false;
@@ -2477,7 +2478,7 @@ static bool install_game_delay(){
 #endif
 static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
     if(GetCurrentThreadId()!=thread||!engine||!loaded||inside||!can_present||wglGetCurrentContext()!=context||
-       handle!=*(HANDLE*)((BYTE*)engine+0x1c94680))return real_wait(handle,timeout);
+       handle!=*(HANDLE*)((BYTE*)engine+engine_layout->timer_handle))return real_wait(handle,timeout);
     waits++;present_reason=8;qa_stage(8);double start=now();
     const double end=start+timeout*.001;
     DeckIdleBackup idle_backup;
@@ -2590,7 +2591,16 @@ static DWORD WINAPI initialize(void* module){
 #ifdef GEO_NATIVE_CAPTURE
     if(update_slots::load_newer(static_cast<HMODULE>(module),update_version::channel,update_version::build))return 0;
 #endif
-    for(int i=0;i<200&&!engine;i++){engine=GetModuleHandleA("FFVIII_EFIGS.dll");if(!engine)Sleep(50);}
+    for(int i=0;i<200&&!engine;i++){
+        for(const auto& layout:engine_layouts){
+            if(const HMODULE found=GetModuleHandleW(layout.file)){
+                engine_layout=&layout;
+                engine=found;
+                break;
+            }
+        }
+        if(!engine)Sleep(50);
+    }
     FILE*f=fopen("FF8_geometry.log","w");if(f){
         fputs(deck_renderer?"FF8 Reborn Steam Deck - Original / 30 FPS, F8 opens live settings\n":
             "FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);
@@ -2599,7 +2609,12 @@ static DWORD WINAPI initialize(void* module){
 #ifdef GEO_NATIVE_CAPTURE
     log("FF8 Reborn ");log(update_version::channel);log(" ");log(update_version::tag);log("\n");
 #endif
-    if(!engine)return 0;
+    if(!engine){log("FF8 Reborn inactive: game engine did not load.\n");return 0;}
+    log("Game engine: ");log(engine_layout->label);log("\n");
+    if(!matches_engine(reinterpret_cast<const BYTE*>(engine),*engine_layout)){
+        log("FF8 Reborn inactive: unsupported engine build.\n");
+        return 0;
+    }
     SteamLicense license=steam_license();
     for(int retry=0;license==SteamLicense::waiting&&retry<240;++retry){
         Sleep(250);license=steam_license();
@@ -2628,9 +2643,6 @@ static DWORD WINAPI initialize(void* module){
     accessibility_test=GetFileAttributesA("FF8_geometry_test_input.enabled")!=INVALID_FILE_ATTRIBUTES;
     // An explicitly armed capture runs for this launch only.
     stride_trace::enabled=DeleteFileA("FF8_geometry_stride_test.enabled")!=FALSE;
-    // Version guard before installing the import hooks and the guarded battle observer.
-    const BYTE expected[]={0x55,0x8b,0xec,0x83,0xe4,0xf8,0x83,0xec,0x2c};
-    if(memcmp((BYTE*)engine+0x59560,expected,sizeof(expected))){log("unsupported engine timer signature; no hooks installed\n");return 0;}
 #ifdef GEO_NATIVE_CAPTURE
     log(install_game_delay()?"native delay budget enabled\n":"native delay unchanged\n");
     log(native_pose::install()?"native battle projection observer enabled\n":"native projection call unrecognized; observer disabled\n");

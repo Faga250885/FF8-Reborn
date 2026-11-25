@@ -20,7 +20,7 @@ static void (__cdecl *world_original)(void*);
 static void (__cdecl *foot_original)(void*);
 static void* writable_guest(uint32_t address,size_t size){
     if(!address||size>4096-(address&4095))return nullptr;
-    const auto slot=(const uint32_t*)((BYTE*)engine+0x188edd0)+(address>>12);
+    const auto slot=(const uint32_t*)((BYTE*)engine+engine_layout->guest_pages)+(address>>12);
     if(!readable(slot,4)||!*slot)return nullptr;
     auto ptr=(BYTE*)(uintptr_t)(*slot)+(address&4095);
     MEMORY_BASIC_INFORMATION info{};
@@ -31,7 +31,7 @@ static bool fetch(uint32_t addr,void*out,size_t length){
     if(!addr||length>65536||uint64_t(addr)+length>0x100000000ULL)return false;
     auto dest=(BYTE*)out;
     while(length){
-        const auto slot=(const uint32_t*)((BYTE*)engine+0x188edd0)+(addr>>12);
+        const auto slot=(const uint32_t*)((BYTE*)engine+engine_layout->guest_pages)+(addr>>12);
         if(!readable(slot,4)||!*slot)return false;
         const auto ptr=(const BYTE*)(uintptr_t)(*slot)+(addr&4095);
         size_t n=std::min(length,size_t(4096-(addr&4095)));
@@ -59,12 +59,13 @@ static void __cdecl projected(void*cpu){
     original(cpu);
     if(expanded){clip[0]=left;clip[2]=span;}
     if(!track_pose&&!stage_drawing)return;
-    // This marker is populated by EFIGS immediately before/after this call.
-    memcpy(&tag,(BYTE*)engine+0x1771cd4,4);
+    if(engine_layout->battle_marker)
+        memcpy(&tag,(BYTE*)engine+engine_layout->battle_marker,4);
     // EDI of the body caller is the actor row. Only accept exact bank
     // alignment, otherwise duplicate asset instances are rejected later.
-    if(frame_ok && tag<0x10000 && saved[0]>=0x1d972c0 && saved[0]<0x1d972c0+7*156 &&
-       (saved[0]-0x1d972c0)%156==0)tag|=(1u+(saved[0]-0x1d972c0)/156)<<16;
+    const uint32_t actor_offset=saved[0]-engine_layout->actors;
+    if(frame_ok&&engine_layout->actors&&tag<0x10000&&actor_offset<7*156&&actor_offset%156==0)
+        tag|=(1u+actor_offset/156)<<16;
     struct Raw {int16_t x,y;uint16_t z,flags;};static_assert(sizeof(Raw)==8);
     thread_local std::array<Raw,4096> raw;
     uint32_t advanced=0;
@@ -109,7 +110,7 @@ static int world_margin(){
 // static .data. Remember the table's location, never the pages it points to.
 static const uint32_t* terrain_page_table=nullptr;
 static void identify_terrain_page_table(){
-    const auto table=reinterpret_cast<const uint32_t*>((BYTE*)engine+0x188edd0);
+    const auto table=reinterpret_cast<const uint32_t*>((BYTE*)engine+engine_layout->guest_pages);
     const uintptr_t begin=reinterpret_cast<uintptr_t>(table),end=begin+4u*(1u<<20);
     terrain_page_table=nullptr;
     if(end<=begin)return;
@@ -155,9 +156,9 @@ static void __cdecl foot_projected(void* cpu){
     uint32_t sp,instance_slot,args[4]{},instance=0,player=0;
     memcpy(&sp,(BYTE*)cpu+0x2c,4);memcpy(&instance_slot,(BYTE*)cpu+0x30,4);
     bool capture=enabled&&!native_rate_for_mode(2)&&sp<=UINT32_MAX-20&&fetch(sp+4,args,sizeof(args))&&
-        fetch(instance_slot,&instance,4)&&instance&&fetch(0x25030d8,&player,4)&&instance==player&&
-        args[3]>0&&args[3]<=1024&&args[1]>=0x24fef48&&args[1]-0x24fef48<=16384&&
-        args[2]==0x250315c+(args[1]-0x24fef48)/2;
+        fetch(instance_slot,&instance,4)&&instance&&fetch(engine_layout->world_player,&player,4)&&instance==player&&
+        args[3]>0&&args[3]<=1024&&args[1]>=engine_layout->foot_xy&&args[1]-engine_layout->foot_xy<=16384&&
+        args[2]==engine_layout->foot_depth+(args[1]-engine_layout->foot_xy)/2;
     foot_original(cpu);
     if(!capture)return;
     thread_local std::array<std::array<int16_t,2>,1024> xy;
@@ -172,14 +173,16 @@ static void __cdecl foot_projected(void* cpu){
     ReleaseSRWLockExclusive(&lock);
 }
 static bool install_foot(){
-    BYTE* sites[]={(BYTE*)engine+0xd771ce,(BYTE*)engine+0xd77455};
-    BYTE* projector=(BYTE*)engine+0xd7f4a0;
-    for(auto site:sites){
+    BYTE* base=(BYTE*)engine;
+    BYTE* projector=base+engine_layout->foot_target;
+    for(auto rva:engine_layout->foot_calls){
+        BYTE* site=base+rva;
         int32_t offset;memcpy(&offset,site+1,4);
         if(site[0]!=0xe8||site[-1]!=0xfc||site+5+offset!=projector)return false;
     }
     foot_original=(void(__cdecl*)(void*))projector;
-    for(auto site:sites){
+    for(auto rva:engine_layout->foot_calls){
+        BYTE* site=base+rva;
         DWORD old,unused;
         if(!VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&old))return false;
         uint32_t offset=(uint32_t)(uintptr_t)&foot_projected-(uint32_t)(uintptr_t)(site+5);
@@ -196,7 +199,7 @@ static void __cdecl world_projected(void*cpu){
     const int margin=world_margin()+int(std::ceil(4*turn_guard(width,height,448)));
     ReadableRegion writable;
     for(uint32_t i=0;i<count;){
-        const uint32_t addr=0x1f9dc40u+8*i;
+        const uint32_t addr=engine_layout->terrain_points+8*i;
         const uint32_t n=std::min(count-i,(4096u-(addr&4095u))/8u);
         auto point=deck_renderer?terrain_points(addr,8*n,writable):(int16_t*)writable_guest(addr,8*n);
         if(!point||!n)break;
@@ -211,7 +214,7 @@ static void (__cdecl *sky_original)(void*);
 static void __cdecl wide_sky(void*cpu){
     uint32_t sp,packet=0;memcpy(&sp,(BYTE*)cpu+0x2c,4);
     if(enabled&&display_settings.wide&&sp<=UINT32_MAX-12&&fetch(sp+8,&packet,4)&&
-        (packet==0x204b390||packet==0x204b3b4)){
+        (packet==engine_layout->sky_packets[0]||packet==engine_layout->sky_packets[1])){
         auto q=(int16_t*)writable_guest(packet+8,28);
         if(q&&q[0]==0&&q[4]==2560&&q[8]==0&&q[12]==2560){
             const int margin=world_margin();
@@ -223,36 +226,36 @@ static void __cdecl wide_sky(void*cpu){
 static bool install_world(){
     // 53BB90 submits terrain; 53C750 projects the second block pass into
     // the same guest buffer. Both have two traversal paths.
-    BYTE* sites[]={(BYTE*)engine+0x8acf0c,(BYTE*)engine+0x8ae977,
-                   (BYTE*)engine+0x8afbdc,(BYTE*)engine+0x8b16b3};
-    BYTE* target=(BYTE*)engine+0x79120;
-    for(auto s:sites){int32_t rel;memcpy(&rel,s+1,4);
+    BYTE* base=(BYTE*)engine;
+    BYTE* target=base+engine_layout->terrain_target;
+    for(auto rva:engine_layout->terrain_calls){
+        BYTE* s=base+rva;int32_t rel;memcpy(&rel,s+1,4);
         if(s[0]!=0xe8||s+5+rel!=target||s[-1]!=0xfc||s[5]!=0x8b||s[6]!=0x4e)return false;}
     world_original=(void(__cdecl*)(void*))target;
-    BYTE* sky_sites[]={(BYTE*)engine+0x91764b,(BYTE*)engine+0x917853};
-    BYTE* sky=(BYTE*)engine+0x21e390;
-    for(auto s:sky_sites){int32_t rel;memcpy(&rel,s+1,4);if(s[0]!=0xe8||s+5+rel!=sky)return false;}
+    BYTE* sky=base+engine_layout->sky_target;
+    for(auto rva:engine_layout->sky_calls){
+        BYTE* s=base+rva;int32_t rel;memcpy(&rel,s+1,4);
+        if(s[0]!=0xe8||s+5+rel!=sky)return false;
+    }
     sky_original=(void(__cdecl*)(void*))sky;
     // Disassembly of guest 53d3c0+3a2/+3a8 and 5513a0+1d9:
     // skip the old horizontal rejection only. Vertical/depth branches follow.
-    struct Branch{size_t rva;BYTE bytes[6];};
-    const Branch legacy[]={{0x8b30e0,{0x0f,0x85,0x4a,1,0,0}},
-        {0x8b3151,{0x0f,0x84,0xd9,0,0,0}},{0x906189,{0x0f,0x84,0x1b,0x15,0,0}}};
+    const auto& legacy=engine_layout->terrain_branches;
     for(auto&b:legacy)if(memcmp((BYTE*)engine+b.rva,b.bytes,6))return false;
     if(deck_renderer)identify_terrain_page_table();
     for(auto&b:legacy){auto p=(BYTE*)engine+b.rva;DWORD old,tmp;
         if(!VirtualProtect(p,6,PAGE_EXECUTE_READWRITE,&old))return false;
         memset(p,0x90,6);FlushInstructionCache(GetCurrentProcess(),p,6);VirtualProtect(p,6,old,&tmp);}
-    for(auto s:sky_sites){DWORD old,tmp;if(!VirtualProtect(s,5,PAGE_EXECUTE_READWRITE,&old))return false;
+    for(auto rva:engine_layout->sky_calls){BYTE* s=base+rva;DWORD old,tmp;if(!VirtualProtect(s,5,PAGE_EXECUTE_READWRITE,&old))return false;
         uint32_t rel=(uint32_t)(uintptr_t)&wide_sky-(uint32_t)(uintptr_t)(s+5);
         memcpy(s+1,&rel,4);FlushInstructionCache(GetCurrentProcess(),s,5);VirtualProtect(s,5,old,&tmp);}
-    for(auto s:sites){DWORD prot;if(!VirtualProtect(s,5,PAGE_EXECUTE_READWRITE,&prot))return false;
+    for(auto rva:engine_layout->terrain_calls){BYTE* s=base+rva;DWORD prot;if(!VirtualProtect(s,5,PAGE_EXECUTE_READWRITE,&prot))return false;
         uint32_t rel=(uint32_t)(uintptr_t)&world_projected-(uint32_t)(uintptr_t)(s+5);
         memcpy(s+1,&rel,4);FlushInstructionCache(GetCurrentProcess(),s,5);DWORD ignored;VirtualProtect(s,5,prot,&ignored);}
     return true;
 }
 static bool install(){
-    BYTE*site=(BYTE*)engine+0x7f9675;BYTE*target=(BYTE*)engine+0x811710;
+    BYTE*site=(BYTE*)engine+engine_layout->battle_call;BYTE*target=(BYTE*)engine+engine_layout->battle_target;
     // Fail closed if either the original direct call or its surrounding
     // translated instructions differ. No executable on disk is changed.
     const BYTE suffix[]={0x6a,0xff,0xe8};int32_t old=0;
@@ -266,8 +269,8 @@ static bool install(){
     DWORD ignored;VirtualProtect(site,5,prot,&ignored);return true;
 }
 static bool install_stage(){
-    BYTE* site=(BYTE*)engine+0x7d5543;
-    BYTE* target=(BYTE*)engine+0x7f9310;
+    BYTE* site=(BYTE*)engine+engine_layout->stage_call;
+    BYTE* target=(BYTE*)engine+engine_layout->stage_target;
     int32_t displacement;memcpy(&displacement,site+1,4);
     const BYTE suffix[]={0x83,0x46,0x2c,0x14};
     if(site[-1]!=0xfc||site[0]!=0xe8||site+5+displacement!=target||
