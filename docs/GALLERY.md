@@ -124,6 +124,20 @@ The menu uses the native game timing for presentation.
 
 ## Settings menu
 
+<a name="menu-languages"></a>
+
+### All six game languages
+
+The F8 menu follows the language selected in the Steam launcher. These captures show FF8 Reborn v1.4.14 running on Windows on the save selection screen in each language.
+
+![Animated carousel of the live F8 menu in six languages](images/menu-languages.gif)
+
+**Full-size screenshots at 1280 × 720**
+
+[English](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/en.png) · [Español](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/es.png) · [Français](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/fr.png) · [Deutsch](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/de.png) · [Italiano](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/it.png) · [日本語](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/jp.png)
+
+### Menu controls and notifications
+
 Use **Display** for screen options and updates, **Screen filter** for the picture profile and **Menu settings** to resize the overlay or change controller shortcuts. These 1280 × 800 previews show the street outside the Galbadia Hotel.
 
 Press **Up** on the first setting to move the hand to the sections above. Choose a section with **Left / Right** and press **A / Enter** to open it. From the settings list, **L1 / R1** switch sections immediately. **B / Esc** returns to the setting you were editing. [View the section selector](images/settings-sections.png)

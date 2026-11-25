@@ -7,13 +7,19 @@
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 60 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas.
 
-El menú de Reborn y sus avisos usan el idioma elegido en el lanzador de Steam. Están disponibles en inglés, español, francés, alemán, italiano y japonés. Si F8 no abre al jugar en japonés con una versión anterior, ejecuta el instalador actual para actualizar.
+**Compatibilidad con los seis idiomas del juego en Steam.** El menú de Reborn y sus avisos en pantalla siguen automáticamente el idioma del lanzador. [Inglés, español, francés, alemán, italiano y japonés](docs/GALERIA.md#menu-languages)
+
+Si F8 no abre al jugar en japonés con una versión anterior, ejecuta el instalador actual para actualizar.
 
 **En desarrollo.** Si encuentras un fallo, [abre un reporte en GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) o añade tus observaciones a una incidencia existente. Puedes escribir en español.
 
 ## El menú durante la partida
 
 Abre el menú con **F8** o **Select + Start** y cambia los ajustes mientras juegas. La sección activa permanece resaltada y la manito recorre las opciones y las secciones superiores. Haz clic en cualquier imagen para abrirla a tamaño completo.
+
+[![El menú de Reborn recorre los seis idiomas del juego](docs/images/menu-languages.gif)](docs/GALERIA.md#menu-languages)
+
+[Abrir las capturas individuales del juego a tamaño completo](docs/GALERIA.md#menu-languages)
 
 **Display**
 
@@ -31,6 +37,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 
 ## Novedades
 
+- **Soporte completo de idiomas.** Windows **v1.4.14** y Steam Deck **v1.4.0-deck.20** traducen las tres secciones del menú, los filtros, las confirmaciones y los avisos en pantalla. En Windows probamos F8 en los seis idiomas y comprobamos que el cambio entre panorámico y 4:3 se aplica en vivo en el mapamundi. [Ver la galería de idiomas](docs/GALERIA.md#menu-languages)
 - **Menú clásico.** Las tres secciones están arriba y la activa permanece resaltada. Pulsa arriba desde la primera opción para llevar la manito a las secciones, elige con izquierda o derecha y abre con A o Intro. Al recorrer las opciones, L1 y R1 cambian de sección inmediatamente. La ayuda muestra iconos de la cruceta y los botones.
 - **Resolución automática del filtro.** Cada perfil elige la resolución de su señal según la ventana del juego. Izquierda o derecha la ajustan de 5 en 5 líneas. Intro o A vuelve a Auto. Los nueve controles de porcentaje se ajustan de 10 en 10.
 - **Difuminado lateral.** Se corrigió la línea oscura que aparecía entre el margen izquierdo y el escenario prerenderizado a 1280×800. El difuminado ahora se alinea con el borde que dibuja el juego.

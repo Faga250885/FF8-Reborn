@@ -124,6 +124,20 @@ El ajuste Original presenta los cuadros a la cadencia del juego.
 
 ## Menú de configuración
 
+<a name="menu-languages"></a>
+
+### Los seis idiomas del juego
+
+El menú F8 sigue el idioma seleccionado en el lanzador de Steam. Las capturas muestran FF8 Reborn v1.4.14 en Windows, con el menú abierto sobre la pantalla de carga en cada idioma.
+
+![Carrusel de capturas del menú F8 en los seis idiomas](images/menu-languages.gif)
+
+**Capturas a tamaño completo de 1280 × 720**
+
+[English](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/en.png) · [Español](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/es.png) · [Français](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/fr.png) · [Deutsch](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/de.png) · [Italiano](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/it.png) · [日本語](https://raw.githubusercontent.com/Faga250885/FF8-Reborn/main/docs/images/menu-languages/jp.png)
+
+### Controles y avisos del menú
+
 En **Display** puedes ajustar la pantalla y buscar actualizaciones. En **Screen filter** eliges el perfil de imagen y en **Menu settings** puedes ajustar el tamaño del menú o cambiar los atajos del mando. Estas vistas a 1280 × 800 muestran la calle frente al Hotel Galbadia.
 
 Pulsa **arriba** desde la primera opción para llevar la manito a las secciones superiores. Elige con **izquierda / derecha** y abre con **A / Intro**. Desde la lista de opciones, **L1 / R1** cambian de sección inmediatamente. Con **B / Esc** vuelves al ajuste que estabas editando. [Ver el selector de secciones](images/settings-sections.png)

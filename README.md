@@ -7,13 +7,19 @@
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 FPS on Steam Deck and 60 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
-The in-game Reborn menu and notices follow the language selected in the Steam launcher. English, Spanish, French, German, Italian and Japanese are available. If F8 is unavailable in an older build when playing in Japanese, run the current installer to update.
+**All six Steam game languages are supported.** The Reborn menu and its on-screen notices automatically follow the Steam launcher's language selection. [English, Español, Français, Deutsch, Italiano and 日本語](docs/GALLERY.md#menu-languages)
+
+If F8 is unavailable in an older build when playing in Japanese, run the current installer to update.
 
 **In active development.** If you find a bug, [report it on GitHub](https://github.com/Faga250885/FF8-Reborn/issues/new?template=bug.yml) or add a comment to an existing issue. Reports in English or Spanish are welcome.
 
 ## The in-game menu
 
 Open the menu with **F8** or **Select + Start** and adjust settings while you play. The active section stays highlighted, and the pointing hand navigates the settings and the sections above. Click any image to open it at full size.
+
+[![The Reborn menu cycling through all six game languages](docs/images/menu-languages.gif)](docs/GALLERY.md#menu-languages)
+
+[Open the individual in-game screenshots at full size](docs/GALLERY.md#menu-languages)
 
 **Display**
 
@@ -31,6 +37,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
+- **Full language support.** Windows **v1.4.14** and Steam Deck **v1.4.0-deck.20** localize all three menu sections, filter labels, confirmations and on-screen notices. In Windows testing, F8 opened in all six languages and switching between widescreen and 4:3 took effect live on the world map. [View the language gallery](docs/GALLERY.md#menu-languages)
 - **Classic settings menu.** The three sections sit across the top, with the active section highlighted. Press Up on the first option to move the hand to the section row, then Left or Right to choose and A or Enter to open. While navigating settings, L1 and R1 switch sections immediately. The controls panel shows directional-pad and button icons.
 - **Automatic filter resolution.** Each preset chooses its signal resolution for the current game window. Use Left or Right to adjust it by 5 lines, or Enter / A to return to Auto. The nine percentage sliders move in 10-point steps.
 - **Blurred sidebars.** Fixed a thin dark line where the left sidebar met the picture in prerendered fields at 1280×800. The mod now aligns the blur with the edge drawn by the game.
