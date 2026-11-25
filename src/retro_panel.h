@@ -450,13 +450,13 @@ static void handle_key(UINT key,const wchar_t* path,RetroSettings& s){
         if(row==FPS){
             const auto* rates=DisplaySettings::frame_rates;
             constexpr int count=DisplaySettings::frame_rate_count;
-            const auto* current=std::find(rates,rates+count,display_settings.fps);
+            const auto* current=std::find(rates,rates+count,display_settings.fps_setting);
             value=rates[(current-rates+count+step)%count];
         }else value=row==Map?!display_settings.atlas:row==Aspect?!display_settings.wide:!display_settings.field_sides;
         if(!persist(path,s,active_profile,-1,row,value))return;
         if(row==Map)display_settings.atlas=value!=0;
         if(row==Aspect)display_settings.wide=value!=0;
-        if(row==FPS){display_settings.fps=value;display_settings.automatic_fps=false;}
+        if(row==FPS)display_settings.select_fps(value);
         if(row==Sides)display_settings.field_sides=value!=0;
         can_present=false;
         return;

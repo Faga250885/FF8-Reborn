@@ -45,7 +45,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 - **Menús de batalla en pantalla ancha.** Los nombres se leen durante el cambio de página en Magia Azul. Las pruebas en Windows cubrieron los 16 hechizos de Magia Azul y los 8 tipos de munición.
 - **Límites y destellos de batalla.** Los giros de cámara conservan la cobertura del escenario si un cuadro intermedio dejaría un hueco. Los efectos de fragmentación que ocupan toda la pantalla llegan a ambos bordes panorámicos. Probamos el límite de cada uno de los once personajes jugables en Windows.
 - **Correcciones en batallas panorámicas.** El cursor queda junto al comando en batallas con cronómetro. El nombre, los PV y la barra de carga del GF quedan alineados, y los destellos, las distorsiones y los fondos de invocación que cubren la pantalla se extienden a ambos bordes. [Incidencia #2](https://github.com/Faga250885/FF8-Reborn/issues/2)
-- **Más opciones de FPS en Windows.** En **Display → Frame rate** puedes elegir Original, 30, 60, 90 y 120 FPS. El modo de 120 FPS es experimental.
+- **FPS automáticos en Windows.** En **Pantalla → Velocidad de cuadros** puedes elegir Auto, Original, 30, 60, 90 y 120 FPS. El objetivo de 120 FPS es experimental tanto en Auto como en modo manual.
 - **Soporte completo de idiomas.** Windows **v1.4.14** y Steam Deck **v1.4.0-deck.20** traducen las tres secciones del menú, los filtros, las confirmaciones y los avisos en pantalla. En Windows probamos F8 en los seis idiomas y comprobamos que el cambio entre panorámico y 4:3 se aplica en vivo en el mapamundi. [Ver la galería de idiomas](docs/GALERIA.md#menu-languages)
 - **Menú clásico.** Las tres secciones están arriba y la activa permanece resaltada. Pulsa arriba desde la primera opción para llevar la manito a las secciones, elige con izquierda o derecha y abre con A o Intro. Al recorrer las opciones, L1 y R1 cambian de sección inmediatamente. La ayuda muestra iconos de la cruceta y los botones.
 - **Resolución automática del filtro.** Cada perfil elige la resolución de su señal según la ventana del juego. Izquierda o derecha la ajustan de 5 en 5 líneas. Intro o A vuelve a Auto. Los nueve controles de porcentaje se ajustan de 10 en 10.
@@ -122,7 +122,7 @@ FF8 Reborn aún no tiene una GPU mínima medida para 60 o 120 FPS. A 120 FPS, la
 
 [Ver el menú actual, los avisos y las pantallas de actualización](docs/GALERIA.md#settings-menu).
 
-En una instalación nueva de Windows, el mod apunta a **60 FPS** si el monitor del juego está configurado a 60 Hz o menos, y a **120 FPS** si Windows informa más de 60 Hz. Si Windows no informa la frecuencia, usa 60 FPS. Puedes elegir otra cadencia en el menú.
+**Auto** es el ajuste predeterminado en una instalación nueva de Windows. Apunta a **30 FPS** por debajo de 60 Hz, **60 FPS** a partir de 60 Hz, **90 FPS** a partir de 90 Hz y **120 FPS** a partir de 120 Hz. Si Windows informa 59, 89 o 119 Hz, se toma la frecuencia nominal correspondiente. Por ejemplo, en un monitor de 75 Hz verás **Auto · 60 FPS** y en uno de 144 Hz, **Auto · 120 FPS**. Cuando Windows no informa la frecuencia, Auto usa 60 FPS. Auto sigue el monitor donde está abierto el juego. Se conserva la selección manual que ya tengas guardada y puedes elegir 120 FPS manualmente desde el menú.
 
 Windows 1.4.1 aprovecha una mejora de Steam Deck que evita repetir ajustes de OpenGL al dibujar el juego. En nueve grabaciones de ciudades, mapamundi y batallas, los 324 cuadros comparados coincidieron en color, profundidad y esténcil. En una batalla a 1080p con una GeForce RTX 5070, el tiempo mediano para volver a dibujar un cuadro con un búfer de vértices bajó de 2,95 a 2,73 ms. La prueba de batalla a 60 FPS mantuvo su objetivo. A 120 FPS, las batallas usan la ruta de renderizado anterior porque dio un ritmo más estable en pruebas repetidas.
 
@@ -130,7 +130,7 @@ Windows 1.4.1 aprovecha una mejora de Steam Deck que evita repetir ajustes de Op
 
 | Opción del menú | Para qué sirve |
 | --- | --- |
-| Frame rate | Elige **Original**, **30**, **60**, **90** o **120 (experimental)** en Windows, y **Original** o **30** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
+| Frame rate | Elige **Auto**, **Original**, **30**, **60**, **90** o **120 (experimental)** en Windows, y **Original** o **30** en Deck. El mod dibuja cuadros intermedios para los movimientos compatibles. Se mantienen los tiempos de animación y de entrada en combate. Algunos cuadros pueden mostrarse a su cadencia original. |
 | FPS counter | Muestra los FPS arriba a la izquierda con tipografía pixelada. Elige **Off** (predeterminado), **Small**, **Medium** o **Large**. Cuenta los cuadros que presenta el juego, incluidos los intermedios, y actualiza la cifra aproximadamente dos veces por segundo. |
 | Aspect ratio | **Widescreen (experimental)** amplía la cámara de batallas y mapamundi. **Original (4:3)** recupera el encuadre original. |
 | Blurred sidebars | Disponible en todos los escenarios prerenderizados en pantalla ancha. Rellena los márgenes con colores de la escena, incluidos los personajes cerca de los bordes. Deling se muestra como ejemplo. |

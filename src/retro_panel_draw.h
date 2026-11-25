@@ -3,7 +3,7 @@
 namespace retro_panel_draw {
 #include "ffvi_menu_canvas.h"
 static Surface panel;
-static std::array<int,51> last_state{};
+static std::array<int,52> last_state{};
 static unsigned last_update_revision=0;
 static bool painted=false;
 constexpr int display_width=256,filter_width=256,side_width=126;
@@ -153,7 +153,10 @@ static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,U
 static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter,const std::wstring& available){
     using namespace retro_panel;
     const wchar_t* counter_sizes[]={menu_locale::text(L"Off"),menu_locale::text(L"Small"),menu_locale::text(L"Medium"),menu_locale::text(L"Large")};
-    const std::wstring fps=display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":menu_locale::text(L"Original");
+    wchar_t automatic_fps[32];
+    swprintf(automatic_fps,std::size(automatic_fps),menu_locale::text(L"Auto · %d FPS"),display_settings.fps);
+    const std::wstring fps=display_settings.fps_setting==DisplaySettings::auto_fps?automatic_fps:
+        display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":menu_locale::text(L"Original");
     const wchar_t* labels[]={menu_locale::text(L"Full-screen map"),menu_locale::text(L"Aspect ratio"),menu_locale::text(L"Frame rate"),menu_locale::text(L"Blurred sidebars"),menu_locale::text(L"FPS counter")};
     const wchar_t* values[]={display_settings.atlas?L"Reborn":menu_locale::text(L"Original"),display_settings.wide?menu_locale::text(L"Widescreen"):menu_locale::text(L"Original (4:3)"),
         fps.c_str(),display_settings.field_sides?menu_locale::text(L"On"):menu_locale::text(L"Off"),counter_sizes[display_settings.fps_counter]};
@@ -270,7 +273,7 @@ static std::wstring help(int selected,const RetroSettings& s,retro_panel::Update
         case MenuShortcut:case PreviousFilterShortcut:case NextFilterShortcut:
             return menu_locale::text(L"Enter / A records a shortcut. Left restores its default.");
         case Aspect:return menu_locale::text(L"Set the game screen format.");
-        case FPS:return menu_locale::text(L"Set the presentation frame rate.");
+        case FPS:return menu_locale::text(deck_renderer?L"Set the presentation frame rate.":L"Auto selects a target for the current display.");
         case Map:return menu_locale::text(L"Choose the artwork for the full-screen map.");
         case Sides:return menu_locale::text(L"Blend the sides of pre-rendered scenes.");
         case Counter:return menu_locale::text(L"Set the size of the FPS counter.");
@@ -423,7 +426,7 @@ static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,
     const decltype(last_state) state={pw,ph,selected,bypass,failed,settings.mode,settings.lines,settings.pixelation,
                                     settings.scanlines,settings.mask,settings.glow,settings.dither,settings.edge_softness,settings.ps1_raster,retro_panel::active_profile,retro_panel::dirty,settings.phosphors,display_settings.fps,display_settings.atlas,display_settings.wide,display_settings.field_sides,retro_panel::custom_exists,retro_panel::custom_base,settings.tv_screen,settings.phosphor_strength,settings.phosphor_sharpness,display_settings.fps_counter,update,
                                     settings.motion_blur,w,h,settings.auto_lines,int(page),settings.tv_enabled,display_settings.menu_scale,retro_panel::confirm_close,int(retro_panel::close_choice),retro_panel::choosing_section,int(retro_panel::pending_section),
-                                    int(display_settings.menu_shortcut),int(display_settings.previous_filter_shortcut),int(display_settings.next_filter_shortcut),retro_panel::recording_shortcut,retro_panel::shortcut_target,int(retro_panel::shortcut_candidate),retro_panel::shortcut_progress,retro_panel::shortcut_too_many,retro_panel::shortcut_conflict,retro_panel::update_choice_open,retro_panel::close_update_now,retro_panel::update_close_failed};
+                                    int(display_settings.menu_shortcut),int(display_settings.previous_filter_shortcut),int(display_settings.next_filter_shortcut),retro_panel::recording_shortcut,retro_panel::shortcut_target,int(retro_panel::shortcut_candidate),retro_panel::shortcut_progress,retro_panel::shortcut_too_many,retro_panel::shortcut_conflict,retro_panel::update_choice_open,retro_panel::close_update_now,retro_panel::update_close_failed,display_settings.fps_setting};
     UpdateMeter meter=last_meter;
     unsigned update_revision=0;
 #ifdef GEO_NATIVE_CAPTURE

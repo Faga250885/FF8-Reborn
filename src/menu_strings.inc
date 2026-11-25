@@ -8,6 +8,8 @@
     {L"Already used by another shortcut.", L"Ya se usa en otro atajo.", L"Déjà utilisé par un autre raccourci.", L"Bereits durch ein anderes Kürzel belegt.", L"Già usato da un’altra scorciatoia.", L"別のショートカットに登録済みです。"},
     {L"Aspect ratio", L"Formato de pantalla", L"Format d’écran", L"Bildformat", L"Formato schermo", L"画面比率"},
     {L"Auto · %d lines", L"Auto · %d líneas", L"Auto · %d lignes", L"Auto · %d Zeilen", L"Auto · %d linee", L"自動 · %dライン"},
+    {L"Auto · %d FPS", L"Auto · %d FPS", L"Auto · %d FPS", L"Auto · %d FPS", L"Auto · %d FPS", L"自動 · %d FPS"},
+    {L"Auto selects a target for the current display.", L"Auto ajusta los FPS al monitor del juego.", L"Auto adapte la cible à l’écran utilisé.", L"Auto passt die Zielbildrate an den Monitor an.", L"Auto adatta gli FPS allo schermo in uso.", L"自動で使用中の画面に合わせた目標FPSを選びます。"},
     {L"Available version: {}", L"Versión disponible: {}", L"Version disponible : {}", L"Verfügbare Version: {}", L"Versione disponibile: {}", L"利用可能なバージョン: {}"},
     {L"Back", L"Volver", L"Retour", L"Zurück", L"Indietro", L"戻る"},
     {L"Based on {}", L"Basado en {}", L"D’après {}", L"Basiert auf {}", L"Basato su {}", L"元の設定: {}"},

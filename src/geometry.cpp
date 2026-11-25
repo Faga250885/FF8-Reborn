@@ -66,34 +66,46 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 #include "retro_settings.h"
 #include "controller_bindings.h"
 struct DisplaySettings {
-    static constexpr int frame_rates[]={0,30,60,90,120};
+    static constexpr int auto_fps=-1;
+    static constexpr int frame_rates[]={0,30,60,90,120,auto_fps};
     static constexpr int frame_rate_count=deck_renderer?2:int(std::size(frame_rates));
     int fps=deck_renderer?0:60;
+    int fps_setting=deck_renderer?0:auto_fps;
+    int monitor_target=60;
     int fps_counter=0;
     static constexpr int min_menu_scale=70, max_menu_scale=150, menu_scale_step=10;
     int menu_scale=100;
     std::atomic<int> menu_shortcut{controller_bindings::menu};
     std::atomic<int> previous_filter_shortcut{controller_bindings::previous};
     std::atomic<int> next_filter_shortcut{controller_bindings::next};
-    bool automatic_fps=false;
     bool wide=true,atlas=true,field_sides=true;
     RetroSettings retro;
+    void select_fps(int setting){
+        fps_setting=setting;
+        fps=setting==auto_fps?monitor_target:setting;
+    }
+    void monitor_refresh(unsigned hz){
+        // Integer refresh reports can round 59.94, 89.9 and 119.88 Hz down.
+        if(hz>=119)monitor_target=120;
+        else if(hz>=89)monitor_target=90;
+        else if(hz>=59||hz<=1)monitor_target=60;
+        else monitor_target=30;
+        if(fps_setting==auto_fps)fps=monitor_target;
+    }
     void load(const wchar_t* path);
 } static display_settings;
 static bool deck_fixed_rate(){return deck_renderer&&display_settings.fps==30;}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
 void DisplaySettings::load(const wchar_t* path){
-    const int value=GetPrivateProfileIntW(L"Display",L"FPS",-1,path);
+    const int value=GetPrivateProfileIntW(L"Display",L"FPS",auto_fps,path);
     if(deck_renderer){
         const bool legacy=value==60||value==90||value==120;
-        fps=value==30||legacy?30:0;
-        automatic_fps=false;
+        select_fps(value==30||legacy?30:0);
         if(legacy)retro_panel::persist(path,retro,0,-1,retro_panel::FPS,30);
     }else{
         const auto end=std::end(frame_rates);
-        automatic_fps=std::find(std::begin(frame_rates),end,value)==end;
-        fps=automatic_fps?60:value;
+        select_fps(std::find(std::begin(frame_rates),end,value)==end?auto_fps:value);
     }
     wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
     atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
@@ -1437,11 +1449,10 @@ static void track_display_refresh(HDC handle,double time){
     MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);
     HMONITOR nearest=MonitorFromWindow(WindowFromDC(handle),MONITOR_DEFAULTTONEAREST);
     DEVMODEW mode{};mode.dmSize=sizeof(mode);
-    if(GetMonitorInfoW(nearest,&monitor)&&EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)&&mode.dmDisplayFrequency>1){
-        presentation_clock.refresh_period=1./mode.dmDisplayFrequency;
-        if(display_settings.automatic_fps)display_settings.fps=mode.dmDisplayFrequency>60?120:60;
-    }
-    else presentation_clock.refresh_period=0;
+    const unsigned hz=GetMonitorInfoW(nearest,&monitor)&&EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)?
+        mode.dmDisplayFrequency:0;
+    presentation_clock.refresh_period=hz>1?1./hz:0;
+    display_settings.monitor_refresh(hz);
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nullptr){
     if(drawn_notice)*drawn_notice=0;
@@ -1504,8 +1515,6 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         if(f){fprintf(f,"%.9f,%u,%d,%.6f,%.6f,%.6f,%d,%d\n",began,sources,present_reason,alpha,began-next_output,maximum_gap,gap_from,gap_to);
             if(++rows%120==0)fflush(f);if(rows==9000){fclose(f);f=nullptr;}}}
     maximum_gap=0;qa_stage(12);
-    // The Deck's fixed 30 Hz target has the same period on LCD and OLED.
-    if(!deck_renderer)track_display_refresh(handle,began);
     const bool probed=deck_fixed_rate()&&current.mode==3&&deck_output_diagnostics&&
         deck_output.before_swap(alpha,began,outer_restores,native_replayed);
     const double swap_start=(deck_fixed_rate()||alpha>=0)?now():0;
@@ -2028,6 +2037,7 @@ static void present_encounter(int w,int h,int lines){
 static BOOL WINAPI swap_hook(HDC handle){
     if(inside||!wglGetCurrentContext()||(!loaded&&!initialize_gl())||
        GetCurrentThreadId()!=thread||wglGetCurrentContext()!=context)return real_swap(handle);
+    if(!deck_renderer)track_display_refresh(handle,now());
     const bool direct_world=deck_renderer&&deck_world.active;
     const bool direct_complete=direct_world&&deck_world.scene&&deck_world.output;
     retro_panel::poll(WindowFromDC(handle),retro_ini_path.c_str(),display_settings.retro);

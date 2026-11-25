@@ -45,7 +45,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 - **Widescreen battle menus.** Names stay readable while the Blue Magic list slides between pages. The Windows test run covered all 16 Blue Magic spells and all 8 ammo types.
 - **Battle limits and flashes.** Camera moves keep the arena covered when an intermediate frame would expose a seam. Full-screen shatter effects reach the widescreen edges. We checked the battle limits of all eleven playable characters on Windows.
 - **Battle widescreen fixes.** The command cursor stays beside its text in timed battles. A charging GF's name, HP panel and gauge stay aligned, and full-screen flashes, distorted overlays and summon backgrounds extend to both edges. [Issue #2](https://github.com/Faga250885/FF8-Reborn/issues/2)
-- **More Windows frame rate options.** **Display → Frame rate** now offers Original, 30, 60, 90 and 120 FPS. The 120 FPS mode is experimental.
+- **Automatic frame rate on Windows.** **Display → Frame rate** offers Auto, Original, 30, 60, 90 and 120 FPS. The 120 FPS target is experimental in both Auto and manual mode.
 - **Full language support.** Windows **v1.4.14** and Steam Deck **v1.4.0-deck.20** localize all three menu sections, filter labels, confirmations and on-screen notices. In Windows testing, F8 opened in all six languages and switching between widescreen and 4:3 took effect live on the world map. [View the language gallery](docs/GALLERY.md#menu-languages)
 - **Classic settings menu.** The three sections sit across the top, with the active section highlighted. Press Up on the first option to move the hand to the section row, then Left or Right to choose and A or Enter to open. While navigating settings, L1 and R1 switch sections immediately. The controls panel shows directional-pad and button icons.
 - **Automatic filter resolution.** Each preset chooses its signal resolution for the current game window. Use Left or Right to adjust it by 5 lines, or Enter / A to return to Auto. The nine percentage sliders move in 10-point steps.
@@ -122,7 +122,7 @@ FF8 Reborn has no measured minimum GPU for 60 or 120 FPS. The 120 FPS target giv
 
 [See the current menu, notifications and update screens](docs/GALLERY.md#settings-menu).
 
-On a fresh Windows install, the game targets **60 FPS** when its monitor runs at 60 Hz or below and **120 FPS** when Windows reports more than 60 Hz. If the refresh rate is unavailable it defaults to 60 FPS. Choose another target in the live menu at any time.
+**Auto** is the default on a fresh Windows install. It targets **30 FPS** below 60 Hz, **60 FPS** from 60 Hz, **90 FPS** from 90 Hz and **120 FPS** from 120 Hz. A report of 59, 89 or 119 Hz counts as the corresponding nominal refresh rate. For example, a 75 Hz screen gets **Auto · 60 FPS** and a 144 Hz screen gets **Auto · 120 FPS**. If Windows cannot report the refresh rate, Auto uses 60 FPS. Auto follows the monitor the game is on. Existing manual choices stay saved, and you can select 120 FPS manually from the live menu.
 
 Windows 1.4.1 uses a Steam Deck optimization that skips redundant OpenGL state changes when redrawing gameplay. Across nine recorded field, world-map and battle scenes, all 324 compared images matched in color, depth and stencil. In one 1080p battle on a GeForce RTX 5070, the median time to redraw a frame with a vertex buffer fell from 2.95 ms to 2.73 ms. The 60 FPS battle replay held its target. Battles at 120 FPS use the previous rendering path because it delivered steadier timing in repeated tests.
 
@@ -130,7 +130,7 @@ Windows 1.4.1 uses a Steam Deck optimization that skips redundant OpenGL state c
 
 | Setting | What it does |
 | --- | --- |
-| Frame rate | **Original**, **30**, **60**, **90** or **120 (experimental)** on Windows, and **Original** or **30** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
+| Frame rate | **Auto**, **Original**, **30**, **60**, **90** or **120 (experimental)** on Windows, and **Original** or **30** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
 | FPS counter | Show a pixel-font counter in the upper-left corner. Choose **Off** (default), **Small**, **Medium** or **Large**. It counts completed game-window swaps, including intermediate frames, and updates about twice per second. |
 | Aspect ratio | **Widescreen (experimental)** expands the camera in battle and on the world map. **Original (4:3)** restores the original framing. |
 | Blurred sidebars | Available across all prerendered fields in widescreen. Fills the side margins with diffuse colors from the current scene, including characters near the edges. Deling City is shown as an example. |
