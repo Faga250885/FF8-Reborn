@@ -30,6 +30,26 @@ int main(){
     auto near_a=vertex(320,240,200),near_b=vertex(520,240,200);
     demand(!battle_edge_stretches(center.p,horizontal.p,near_a.p,near_b.p),"legitimate zoom");
 
+    // A camera dolly shifts one rigid edge with two different camera depths.
+    // Screen-space interpolation alone incorrectly changes its 3D length.
+    const auto project=[](float x,float y,float z){return vertex(320+1024*x/z,240+1024*y/z,z);};
+    const auto prior_u=project(-60,20,240),prior_v=project(80,40,540);
+    const auto current_u=project(50,55,120),current_v=project(190,75,420);
+    const auto sample=[](const Vertex& from,const Vertex& to,float phase){
+        std::array<float,4> point;
+        interpolate_battle_point(from.p,to.p,phase,point.data());
+        return view_point(point);
+    };
+    for(float phase:{0.f,.125f,.25f,.5f,.75f,.875f,1.f}){
+        const auto u=sample(prior_u,current_u,phase),v=sample(prior_v,current_v,phase);
+        const Point3 expected={-60+110*phase,20+35*phase,240-120*phase};
+        for(unsigned axis=0;axis<3;++axis){
+            demand(std::abs(u[axis]-expected[axis])<.0002,"camera-space trajectory");
+            constexpr Point3 rigid_edge={140,20,300};
+            demand(std::abs(v[axis]-u[axis]-rigid_edge[axis])<.0002,"dolly stretched a rigid edge");
+        }
+    }
+
     current.ops={mesh({a,b,c})};previous.ops={mesh({vertex(270,100),b,c})};
     for(unsigned v=0;v<3;++v)memcpy(current.ops[0].prior_positions[v].data(),previous.ops[0].vertices[v].p,sizeof(Vertex::p));
     faces={{0,0,0,0}};

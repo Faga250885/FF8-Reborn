@@ -1,3 +1,19 @@
+// The engine supplies projected XY and reciprocal camera depth. Interpolating
+// those independently moves corners at different physical speeds in a zoom.
+// Interpolate the camera-space point, then project it into the current view.
+static void interpolate_battle_point(const float* prior,const float* current,float alpha,float* point){
+    const float before=prior[3],after=current[3];
+    float fraction=alpha;
+    point[3]=before+alpha*(after-before);
+    if(alpha>0&&alpha<1&&before!=after&&before>0&&before<.1f&&after>0&&after<.1f){
+        const float inverse=1.f/((1-alpha)*after+alpha*before);
+        fraction=alpha*before*inverse;
+        point[3]=before*after*inverse;
+    }
+    for(int axis=0;axis<2;++axis)point[axis]=prior[axis]+fraction*(current[axis]-prior[axis]);
+    point[2]=prior[2]+alpha*(current[2]-prior[2]);
+}
+
 // Battle vertices have already been projected into the game's 640-unit view.
 // An edge can grow in screen space during a zoom or turn and still represent
 // the same rigid edge. Use reciprocal depth to check that case before

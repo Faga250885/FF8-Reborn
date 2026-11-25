@@ -1163,8 +1163,12 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     auto prepare=[&](const Op&op,GLsizei& vertex_count){
         const Vertex* vertices=op.vertices.data();
         if(!op.clear&&op.match>=0&&alpha<1){scratch=op.vertices;
-            for(size_t i=0;i<scratch.size();i++)if(op.motion_valid[i])for(int k=0;k<4;k++)
-                scratch[i].p[k]=op.prior_positions[i][k]+alpha*(op.vertices[i].p[k]-op.prior_positions[i][k]);
+            const bool battle_projection=current.mode==3&&projected_geometry(op);
+            for(size_t i=0;i<scratch.size();i++)if(op.motion_valid[i]){
+                const auto& before=op.prior_positions[i];const auto* point=op.vertices[i].p;
+                if(battle_projection)interpolate_battle_point(before.data(),point,alpha,scratch[i].p);
+                else for(int k=0;k<4;k++)scratch[i].p[k]=before[k]+alpha*(point[k]-before[k]);
+            }
             for(size_t i=0;i<op.color_valid.size();i++)if(op.color_valid[i])for(int k=0;k<4;k++)
                 scratch[i].c[k]=op.prior_colors[i][k]+alpha*(op.vertices[i].c[k]-op.prior_colors[i][k]);
             for(size_t i=0;i<op.actor_mid.size();i++)if(op.actor_mid[i].position[3]>0)

@@ -96,8 +96,9 @@ static bool battle_loses_lower_edge(const Frame& frame,const std::vector<Outgoin
                     x[corner]=p[0];y[corner]=p[1];
                     if(phase&&op.match>=0&&op.motion_valid[v]){
                         const auto& before=op.prior_positions[v];
-                        x[corner]=before[0]+phases[phase]*(p[0]-before[0]);
-                        y[corner]=before[1]+phases[phase]*(p[1]-before[1]);
+                        float point[4];
+                        interpolate_battle_point(before.data(),p,phases[phase],point);
+                        x[corner]=point[0];y[corner]=point[1];
                     }
                 }
                 if(!projected||std::max({y[0],y[1],y[2]})<rows.front()||
