@@ -20,6 +20,7 @@
 #include <string>
 #include <cstddef>
 #include <atomic>
+#include <limits>
 #include "update_version.h"
 #include "engine_layout.h"
 #include "menu_locale.h"
@@ -67,7 +68,8 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 #include "controller_bindings.h"
 struct DisplaySettings {
     static constexpr int auto_fps=-1;
-    static constexpr int frame_rates[]={0,30,60,90,120,auto_fps};
+    static constexpr int unlimited_fps=-2;
+    static constexpr int frame_rates[]={0,30,60,90,120,unlimited_fps,auto_fps};
     static constexpr int frame_rate_count=deck_renderer?2:int(std::size(frame_rates));
     int fps=deck_renderer?0:60;
     int fps_setting=deck_renderer?0:auto_fps;
@@ -95,6 +97,9 @@ struct DisplaySettings {
     void load(const wchar_t* path);
 } static display_settings;
 static bool deck_fixed_rate(){return deck_renderer&&display_settings.fps==30;}
+static bool unlimited_rendering(){
+    return !deck_renderer&&display_settings.fps==DisplaySettings::unlimited_fps;
+}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
 void DisplaySettings::load(const wchar_t* path){
@@ -329,9 +334,9 @@ static void release(Surface&s){
     if(s.color){if(s.texture)glDeleteTextures(1,&s.color);else pDeleteRenderbuffers(1,&s.color);}
     if(s.depth)pDeleteRenderbuffers(1,&s.depth);s=Surface{};
 }
-static void resize(Surface&s,int w,int h,bool depth=true,bool texture=false,GLenum format=GL_RGBA8,int stencil=-1) {
+static bool resize(Surface&s,int w,int h,bool depth=true,bool texture=false,GLenum format=GL_RGBA8,int stencil=-1) {
     bool packed=depth&&(stencil<0?stencil_bits>0:stencil!=0);
-    if(s.w==w&&s.h==h&&s.has_depth==depth&&s.has_stencil==packed&&s.format==format)return;
+    if(s.w==w&&s.h==h&&s.has_depth==depth&&s.has_stencil==packed&&s.format==format)return false;
     GLint r,d,b,tex;
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&r);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&d);glGetIntegerv(GL_RENDERBUFFER_BINDING,&b);
     glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex);
@@ -353,6 +358,7 @@ static void resize(Surface&s,int w,int h,bool depth=true,bool texture=false,GLen
     bool complete=pCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE;
     pBindFramebuffer(GL_READ_FRAMEBUFFER,r);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,d);pBindRenderbuffer(GL_RENDERBUFFER,b);glBindTexture(GL_TEXTURE_2D,tex);
     demand(complete,"framebuffer creation failed");s.w=w;s.h=h;s.has_depth=depth;s.has_stencil=packed;s.format=format;
+    return true;
 }
 static void blit(GLuint from,GLuint to,int w,int h,int tw,int th,GLbitfield bits,int inset_x=0,int inset_y=0,int dest_y=0,int dest_x=0) {
     GLint r,d,rb,db;glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&r);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&d);
@@ -724,9 +730,9 @@ static Surface previous_reference;
 static std::unordered_map<GLuint,Surface> replay_targets;
 // Sample the depth produced by this replay, not a frozen copy from an earlier
 // foreground layer. FFVIII clears and reuses these textures within one frame.
-struct ReplayDepth {GLuint texture=0;int w=0,h=0;bool stencil=false;};
+struct ReplayDepth {GLuint texture=0,attachment=0;int w=0,h=0;bool stencil=false;};
 static std::unordered_map<GLuint,ReplayDepth> replay_depth;
-static void attach_replay_depth(GLuint key,Surface& surface,const Target& target,GLuint native_depth){
+static void attach_replay_depth(GLuint key,Surface& surface,const Target& target,GLuint native_depth,bool resized){
     auto found=replay_depth.find(key);
     if(!native_depth){
         if(found!=replay_depth.end()){
@@ -740,6 +746,7 @@ static void attach_replay_depth(GLuint key,Surface& surface,const Target& target
     auto& depth=replay_depth[key];
     if(!depth.texture)glGenTextures(1,&depth.texture);
     if(depth.w!=target.w||depth.h!=target.h||depth.stencil!=target.stencil){
+        depth.attachment=0;
         glBindTexture(GL_TEXTURE_2D,depth.texture);
         real_tex_image(GL_TEXTURE_2D,0,target.stencil?GL_DEPTH24_STENCIL8:GL_DEPTH_COMPONENT24,target.w,target.h,0,
                        target.stencil?GL_DEPTH_STENCIL:GL_DEPTH_COMPONENT,target.stencil?GL_UNSIGNED_INT_24_8:GL_UNSIGNED_INT,nullptr);
@@ -749,10 +756,15 @@ static void attach_replay_depth(GLuint key,Surface& surface,const Target& target
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
         depth.w=target.w;depth.h=target.h;depth.stencil=target.stencil;
     }
-    pBindFramebuffer(GL_FRAMEBUFFER,surface.fbo);
-    pFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,depth.texture,0);
-    if(target.stencil)pFramebufferTexture2D(GL_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,GL_TEXTURE_2D,depth.texture,0);
-    demand(pCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"replayed depth texture incomplete");
+    // A resize restores the surface's renderbuffer. Otherwise the private
+    // depth texture stays attached across replays of the same scene.
+    if(resized||depth.attachment!=surface.fbo){
+        pBindFramebuffer(GL_FRAMEBUFFER,surface.fbo);
+        pFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,depth.texture,0);
+        if(target.stencil)pFramebufferTexture2D(GL_FRAMEBUFFER,GL_STENCIL_ATTACHMENT,GL_TEXTURE_2D,depth.texture,0);
+        demand(pCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"replayed depth texture incomplete");
+        depth.attachment=surface.fbo;
+    }
     replay_textures[native_depth]=depth.texture;
 }
 static GLuint capture_target=0;
@@ -1139,9 +1151,11 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
         auto existing=current.targets.find(it->first);
         if(existing==current.targets.end()||!existing->second.active){release(it->second);it=replay_targets.erase(it);}else ++it;}
     for(auto&entry:current.targets){auto&t=entry.second;if(!t.active)continue;GLuint dest=target;
-        if(entry.first){auto&copy=replay_targets[entry.first];resize(copy,t.w,t.h,t.depth,true,t.format,t.stencil);dest=copy.fbo;
+        if(entry.first){auto&copy=replay_targets[entry.first];
+            const bool resized=resize(copy,t.w,t.h,t.depth,true,t.format,t.stencil);
+            dest=copy.fbo;
             auto depth=current.depth_texture_for_target.find(entry.first);
-            attach_replay_depth(entry.first,copy,t,depth==current.depth_texture_for_target.end()?0:depth->second);
+            attach_replay_depth(entry.first,copy,t,depth==current.depth_texture_for_target.end()?0:depth->second,resized);
             replay_textures[t.texture]=copy.color;glBindTexture(GL_TEXTURE_2D,copy.color);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,t.min_filter);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,t.mag_filter);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,t.wrap_s);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,t.wrap_t);}
@@ -1258,7 +1272,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     // time for the 15 Hz simulation, even when a cached replay alone is cheaper.
     const bool reuse_draw_state=!view.full_map&&(deck_renderer?deck_gameplay:
         gameplay&&!current.menu_edge&&current.travel!=Frame::Travel::fade&&
-        (current.mode!=3||display_settings.fps!=120));
+        (current.mode!=3||(display_settings.fps!=120&&!unlimited_rendering())));
     const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
     SamplerState replay_samplers;
     auto draw_op=[&](const Op&op){
@@ -1370,9 +1384,12 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
 }
 static int game_mode();
 static int presentation_mode=-1;
+static Surface composed_screen;
+static bool composed_presenting=false;
 static std::vector<OutgoingDraw> checkpoint_outgoing;
 #include "presentation_clock.h"
 static double output_period(){
+    if(unlimited_rendering())return 0.;
     const double requested=1./std::max(display_settings.fps,1);
     return deck_renderer?std::max(requested,presentation_clock.refresh_period):requested;
 }
@@ -1389,6 +1406,11 @@ static unsigned displayed_source=0;
 static float replay_presentation(GLuint target,bool force_previous=false){
     double t=now();bool old=force_previous||(prepared_previous&&t<origin);
     presentation_clock.draw_started=t;
+    if(composed_presenting){
+        blit(composed_screen.fbo,target,width,height,width,height,GL_COLOR_BUFFER_BIT);
+        displayed_source=sources;
+        return 1;
+    }
     if(field_prefix.active){
         const double same_pair_end=old?std::min(origin,previous_origin+previous_period):origin+period;
         field_prefix.next(same_pair_end,output_period(),presentation_clock.replay_cost);
@@ -1405,7 +1427,7 @@ static void finish_generated_output(){
     next_output=presentation_clock.next_slot(next_output,now(),output_period());
 }
 static void matching_pump(){
-    if(deck_source_budget.busy||deck_needs_native_swap)return;
+    if(unlimited_rendering()||deck_source_budget.busy||deck_needs_native_swap)return;
     present_reason=6;qa_stage(6);
     // Publish is pending: previous still contains the fully prepared pair
     // shown on the preceding tick. Temporarily replay it at CPU checkpoints.
@@ -2048,6 +2070,8 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
     qa_stage(7);
     double t=now(),dt=last_swap?t-last_swap:0;last_swap=t;sources++;bool was_presenting=can_present;can_present=false;bool saved=false;
+    const bool was_composed=composed_presenting&&was_presenting;
+    composed_presenting=false;
     if(deck_renderer)deck_source_budget.outputs_at_tick=outputs;
     const double pair_work_start=deck_renderer?matching_seconds+parity_seconds:0;
     previous_origin=origin;previous_period=period;prepared_previous=false;
@@ -2074,7 +2098,8 @@ static BOOL WINAPI swap_hook(HDC handle){
         publish();published=true;
         current.field_movie=WideView::movie_canvas(current);
         if(display_settings.wide&&!(direct_complete&&mode==2))resolve_menu_layout(current,previous);
-        else {current.layout_override=-1;current.menu_edge=0;current.opening=Frame::Opening::none;}
+        else {current.layout_override=-1;current.menu_edge=0;
+              current.opening=current.field_movie?Frame::Opening::none:opening_screen(current);}
         WideView transition(current,display_settings.wide);
         // Title and memory-card pages are complete 2D compositions, even
         // when the game reports the same mode as a moving field scene.
@@ -2269,6 +2294,34 @@ static BOOL WINAPI swap_hook(HDC handle){
         }
         catch(const std::exception& e){log(e.what());log("\n");}
     }
+    // These screens are already composed by the game. Reusing their color
+    // buffer gives them the same presentation setting without interpolating
+    // text, card reveals, or other authored 2D animation.
+    if(!deck_renderer&&enabled&&display_settings.fps&&published&&!can_present&&!hold_display&&
+       !current.field_movie&&(current.opening!=Frame::Opening::none||current.mode==after_battle_mode||
+       current.mode==6||current.mode==card_transition::mode||
+       (current.mode==2&&native_atlas_possible()))){
+        try{
+            RECT area{};
+            if(GetClientRect(WindowFromDC(handle),&area)&&area.right>0&&area.bottom>0&&
+               area.right<=8192&&area.bottom<=8192){
+                width=area.right;height=area.bottom;
+                resize(composed_screen,width,height,false);
+                blit(0,composed_screen.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
+                if(!was_composed||presentation_mode!=current.mode||previous.opening!=current.opening){
+                    next_output=t;
+                    if(unlimited_rendering())presentation_clock.replay_cost=PresentationClock{}.replay_cost;
+                }
+                presentation_mode=current.mode;
+                prepared_previous=false;
+                origin=t;period=dt>=.004&&dt<=.10?dt:1./60.;
+                composed_presenting=can_present=true;
+                output_due=now()>=next_output;
+                displayed_alpha=1;
+            }
+        }catch(const std::exception& e){log("2D presentation fallback: ");log(e.what());log("\n");}
+    }
+    if(!composed_presenting&&composed_screen.fbo)release(composed_screen);
     const bool unpaced=deck_renderer?deck_interval.keep(deck_scene,current.w,current.h,can_present,t):can_present;
     if((uintptr_t)set_interval>3&&(uintptr_t)set_interval!=UINTPTR_MAX){
         if(unpaced==interval_changed){
@@ -2300,10 +2353,10 @@ static BOOL WINAPI swap_hook(HDC handle){
             const double finished=now();
             deck_wait_recovery.source(presentation_clock,finished,finished-source_replay_start,source_backup_time);
         }
-        if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
         if(saved&&deck_needs_native_swap)blit(backup.fbo,0,width,height,width,height,all_buffers());
         if(can_present&&result)finish_generated_output();
     }
+    if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
     deck_native_layout_wait=native_deck_rate&&!can_present&&
         display_settings.wide&&(native_endpoint||native_scaled)&&(current.mode>=1&&current.mode<=3||current.mode==6);
     if(deck_native_layout_wait)
@@ -2314,7 +2367,8 @@ static BOOL WINAPI swap_hook(HDC handle){
         native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds+
             (direct_complete&&current.mode==2?deck_world.wait_credit:0.),true);
     else {
-        native_frame_wait.start(presentation_mode,t,dt,now()-t,can_present&&prepared_previous);
+        native_frame_wait.start(composed_presenting?6:presentation_mode,t,dt,now()-t,
+                                can_present&&(prepared_previous||(composed_presenting&&was_composed)));
         // The limiter delay belongs to this tick. The previous tick may have
         // been punctual even if today's matching/validation used most of the
         // budget. Only the portion that overruns this tick's deadline can be
@@ -2324,6 +2378,9 @@ static BOOL WINAPI swap_hook(HDC handle){
             native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
         }
     }
+    if(unlimited_rendering())
+        uncapped_source.observe(dt,native_frame_wait.period,can_present&&
+            (prepared_previous||(composed_presenting&&was_composed)));
     if(measure_world||(direct_complete&&dt>0&&dt<.25)){
         auto& w=world_frame_stats;
         ++w.frames;w.direct_frames+=direct_complete;w.draws+=direct_complete?deck_world.draws:unsigned(current.ops.size());w.intervals+=dt;
@@ -2360,30 +2417,70 @@ static BOOL WINAPI retro_only_swap(HDC handle){
 struct IdleBackbuffer {
     static inline thread_local IdleBackbuffer* active=nullptr;
     IdleBackbuffer* parent=active;
-    bool saved=false;
-    IdleBackbuffer(){active=this;}
+    bool saved=false,dirty=false;
+    GLbitfield planes=0;
+    IdleBackbuffer(){
+        if(parent)parent->restore();
+        active=this;
+    }
+    void restore(){
+        if(!dirty)return;
+        blit(backup.fbo,0,width,height,width,height,planes);
+        dirty=false;
+    }
     ~IdleBackbuffer(){
+        restore();
         if(parent&&saved)parent->saved=false;
         active=parent;
     }
+    static bool reinitializes_drawable(const Frame& frame){
+        const auto target=frame.targets.find(0);
+        return target!=frame.targets.end()&&target->second.active&&frame.w==width&&frame.h==height;
+    }
 };
+static bool uncapped_source_fits(double time){
+    // Complete 2D pages can be resubmitted even when the engine issues its
+    // first draw just after the preceding tick's deadline. The observed
+    // source budget still limits those copies and backs off on slow ticks.
+    const double deadline=composed_presenting?std::numeric_limits<double>::infinity():
+        native_frame_wait.arrival+native_frame_wait.period;
+    return uncapped_source.fits(time,presentation_clock.replay_cost,deadline);
+}
 static bool present_during_wait(bool force_previous){
     // Snapshot and restore the entire native BACK buffer (including depth),
     // so extra swaps never become input to incremental game rendering.
+    auto window=IdleBackbuffer::active;
     if(deck_needs_native_swap)return false;
     const double started=now();
-    auto window=IdleBackbuffer::active;
+    const bool spend_uncapped=unlimited_rendering()&&!window;
+    if(spend_uncapped&&!uncapped_source_fits(started))return false;
+    // Each replay seeds its own drawable before drawing. During a native idle
+    // window restore the game's buffer once, immediately before it resumes.
+    const bool seeded=composed_presenting||(IdleBackbuffer::reinitializes_drawable(current)&&
+        (!(force_previous||prepared_previous)||IdleBackbuffer::reinitializes_drawable(previous)));
+    const bool defer_restore=window&&!deck_renderer&&seeded;
+    const GLbitfield planes=composed_presenting?GL_COLOR_BUFFER_BIT:all_buffers();
+    if(window&&!defer_restore)window->restore();
     if(!window||!window->saved){
-        resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());
-        if(window)window->saved=true;
+        resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,planes);
+        if(window){window->planes=planes;window->saved=true;}
     }
     BOOL swapped=FALSE;
+    if(defer_restore)window->dirty=true;
     try{float alpha=replay_presentation(0,force_previous);swapped=timed_swap(dc,alpha,true);}
-    catch(...){blit(backup.fbo,0,width,height,width,height,all_buffers());throw;}
-    blit(backup.fbo,0,width,height,width,height,all_buffers());
+    catch(...){
+        if(defer_restore)window->restore();
+        else blit(backup.fbo,0,width,height,width,height,planes);
+        throw;
+    }
+    if(!defer_restore)blit(backup.fbo,0,width,height,width,height,planes);
     if(!swapped)return false;
     const double finished=now(),elapsed=finished-started;
     presentation_clock.measured_replay(elapsed);
+    if(spend_uncapped){
+        uncapped_source.spent+=elapsed;
+        native_frame_wait.draw_credit+=elapsed;
+    }
     if(deck_fixed_rate())deck_wait_recovery.extra(finished,elapsed);
     finish_generated_output();
     return true;
@@ -2397,7 +2494,8 @@ static void pump_due(double earliest){
     catch(const std::exception&e){can_present=false;log("mid-frame presentation fallback: ");log(e.what());log("\n");}
 }
 static void service_at(int reason,double earliest){
-    if(GetCurrentThreadId()!=thread||!loaded||inside)return;
+    if(GetCurrentThreadId()!=thread||!loaded||inside||!can_present)return;
+    if(unlimited_rendering()&&reason!=4&&!uncapped_source_fits(now()))return;
     const bool busy=deck_source_budget.busy&&reason!=4;
     if(busy){
         if(!deck_fixed_rate()||presentation_mode!=3||!can_present)return;
@@ -2411,6 +2509,7 @@ static BOOL WINAPI counter_hook(LARGE_INTEGER*value){
     BOOL result=real_counter(value);
     if(!result||GetCurrentThreadId()!=thread||!can_present||inside||pacing_callback||
        value->QuadPart<double(frequency.QuadPart)*next_output)return result;
+    if(unlimited_rendering()&&!uncapped_source_fits(double(value->QuadPart)/frequency.QuadPart))return result;
     pacing_callback=true;unsigned prior=outputs;service_at(3);clock_presents+=outputs-prior;pacing_callback=false;
     return real_counter(value);
 }
@@ -2447,6 +2546,7 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         unsigned prior=outputs;service_at(4,slot);sleep_presents+=outputs-prior;
         if(prior==outputs)break;
     }
+    idle_backup.restore();
     // An early or late timer wake can leave less than one Windows Sleep tick.
     // Use the existing high resolution timer for that tail whenever possible.
     double remaining=end-now();if(remaining>0){
@@ -2505,6 +2605,20 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
     IdleBackbuffer idle_backup;
     auto remaining_ms=[&]()->DWORD{return timeout==INFINITE?INFINITE:
         (DWORD)std::max(0.,std::ceil((end-now())*1000.));};
+    if(unlimited_rendering()){
+        while(can_present&&now()-origin<=period*1.5&&
+              (timeout==INFINITE||presentation_clock.fits_wait(now(),end))){
+            const DWORD ready=real_wait(handle,0);
+            if(ready!=WAIT_TIMEOUT)return ready;
+            try{if(!present_during_wait())break;}
+            catch(const std::exception& e){
+                log("idle presentation fallback: ");log(e.what());log("\n");
+                can_present=false;break;
+            }
+        }
+        idle_backup.restore();
+        return real_wait(handle,remaining_ms());
+    }
     if(output_timer){
         HANDLE handles[]={handle,output_timer};
         for(;;){double t=now();DWORD remaining=INFINITE;
@@ -2544,7 +2658,8 @@ static void forget_deleted_context(){
     fps_counter::forget();
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
-    deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
+    composed_screen={};composed_presenting=false;
+    deck_source_budget={};uncapped_source={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
     deck_cadence={};deck_black={};deck_output={};deck_needs_native_swap=false;
@@ -2624,7 +2739,7 @@ static DWORD WINAPI initialize(void* module){
     }
     FILE*f=fopen("FF8_geometry.log","w");if(f){
         fputs(deck_renderer?"FF8 Reborn Steam Deck - Original / 30 FPS, F8 opens live settings\n":
-            "FFVIII 120 FPS - indexed geometry, verified native source frames; F8 opens live settings\n",f);
+            "FFVIII - indexed geometry, verified native source frames; F8 opens live settings\n",f);
         fclose(f);
     }
 #ifdef GEO_NATIVE_CAPTURE

@@ -16,6 +16,10 @@ struct PresentationClock {
     }
 
     double next_slot(double due,double finished,double tick) {
+        if(tick==0){
+            slot=scheduled=recovery=0;
+            return finished;
+        }
         // Keep the ideal grid independent of wake-up jitter. A delayed draw
         // represents the latest elapsed slot; older slots are no longer useful.
         if (due!=scheduled || slot==0){slot=due;recovery=0;}
@@ -175,3 +179,34 @@ struct NativeFrameWait {
     }
 };
 static NativeFrameWait native_frame_wait;
+
+// Use spare source-tick time for uncapped presentations between native
+// draws. Idle waits have their own deadlines and don't consume this budget.
+struct UncappedSourceBudget {
+    double allowance=0,spent=0,relative_period=1;
+    unsigned steady_ticks=0;
+
+    void observe(double interval,double native_period,bool continuous){
+        if(!continuous||!(interval>0)||interval>=native_period*2){
+            *this={};
+            return;
+        }
+        spent=0;
+        // A scheduler wake can alternate between short and long source
+        // intervals without losing any simulation ticks. Reserve the CPU
+        // on sustained drift or a genuine stall.
+        relative_period+=.08*(interval/native_period-relative_period);
+        if(relative_period>1.035||interval>native_period*1.5){
+            allowance*=.60;
+            steady_ticks=0;
+        }else if(relative_period<=1.015&&++steady_ticks==4){
+            allowance=std::min(allowance+.00075,native_period*.5);
+            steady_ticks=0;
+        }
+    }
+
+    bool fits(double start,double cost,double deadline)const{
+        return spent+cost<=allowance&&start+cost+.00075<deadline;
+    }
+};
+static UncappedSourceBudget uncapped_source;

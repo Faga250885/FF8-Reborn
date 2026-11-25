@@ -39,12 +39,20 @@ static bool battle_edge_stretches(const float* a,const float* b,const float* pas
 
 using HeldBattlePoints=std::unordered_set<uint64_t>;
 static HeldBattlePoints protect_battle_edges(const std::vector<Primitive>& old,const std::vector<Primitive>& faces){
+    // Textured additive passes can draw the visible surface of an actor
+    // with depth testing but without depth writes. Check those meshes too.
+    // Untextured flashes and overlays without depth testing stay on their
+    // original effect path.
+    const auto mesh=[](const Op& op){
+        return opaque_projected(op)||(projected_geometry(op)&&op.state.depth&&
+            (op.state.depth_mask||(op.state.texture[0].id&&op.state.src_rgb==GL_ONE&&op.state.dst_rgb==GL_ONE)));
+    };
     std::vector<unsigned> rejected;
-    unsigned last=UINT_MAX;bool opaque=false;
+    unsigned last=UINT_MAX;bool checked=false;
     for(unsigned i=0;i<faces.size();++i){
         const auto& face=faces[i];const auto& op=current.ops[face.op];
-        if(face.op!=last){last=face.op;opaque=opaque_projected(op);}
-        if(!opaque||!(op.motion_valid[face.start]||op.motion_valid[face.start+1]||op.motion_valid[face.start+2]))continue;
+        if(face.op!=last){last=face.op;checked=mesh(op);}
+        if(!checked||!(op.motion_valid[face.start]||op.motion_valid[face.start+1]||op.motion_valid[face.start+2]))continue;
         const auto* vertex=op.vertices.data()+face.start;
         const float* past[3];
         for(unsigned v=0;v<3;++v)past[v]=op.motion_valid[face.start+v]?op.prior_positions[face.start+v].data():vertex[v].p;
@@ -72,8 +80,8 @@ static HeldBattlePoints protect_battle_edges(const std::vector<Primitive>& old,c
     last=UINT_MAX;uint64_t state=0;
     for(unsigned i=0;i<faces.size();++i){
         const auto& face=faces[i];const auto& op=current.ops[face.op];
-        if(face.op!=last){last=face.op;opaque=opaque_projected(op);if(opaque)state=surface_state_key(op);}
-        if(!opaque)continue;
+        if(face.op!=last){last=face.op;checked=mesh(op);if(checked)state=surface_state_key(op);}
+        if(!checked)continue;
         for(unsigned v=0;v<3;++v){
             const auto* p=op.vertices[face.start+v].p;
             if(!(p[3]>0&&p[3]<.1f))continue;

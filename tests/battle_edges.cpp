@@ -24,6 +24,22 @@ int main(){
     for(auto op:{0,1})for(auto valid:current.ops[op].motion_valid)demand(!valid,"material seam split");
     for(auto valid:current.ops[2].motion_valid)demand(valid,"enemy lost its motion");
 
+    // Captured in the Fire Cavern orbit. The textured wing uses additive
+    // blending with depth testing. A prior corner belongs to the second bat.
+    current.ops={mesh({vertex(-16.25f,143.25f,7220),vertex(-22.25f,139.5f,7196),
+                       vertex(-21.5f,144.25f,7207)})};
+    auto& wing=current.ops[0];
+    wing.state.blend=wing.state.depth=true;wing.state.depth_mask=false;
+    wing.state.texture[0].id=1;
+    wing.state.src_rgb=wing.state.dst_rgb=GL_ONE;
+    wing.prior_positions={{-83.25f,143.f,0,1.f/7084},{-89.25f,138.75f,0,1.f/7055},
+                          {5.5f,163.25f,0,1.f/9603}};
+    const std::vector<Primitive> bat{{0,0,0}};
+    demand(!protect_battle_edges({},bat).empty(),"additive bat linked to another actor");
+    for(auto valid:wing.motion_valid)demand(!valid,"additive mesh lost coherency");
+    wing.state.depth=false;wing.motion_valid.assign(3,1);
+    demand(protect_battle_edges({},bat).empty(),"full-screen effect classified as an actor mesh");
+
     // Foreshortening alone can make a rigid edge shrink almost to a point.
     auto horizontal=vertex(360,240),center=vertex(320,240),toward=vertex(320,240,1125);
     demand(!battle_edge_stretches(center.p,horizontal.p,center.p,toward.p),"legitimate rotation");

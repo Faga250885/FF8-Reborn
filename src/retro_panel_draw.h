@@ -156,7 +156,7 @@ static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,
     wchar_t automatic_fps[32];
     swprintf(automatic_fps,std::size(automatic_fps),menu_locale::text(L"Auto · %d FPS"),display_settings.fps);
     const std::wstring fps=display_settings.fps_setting==DisplaySettings::auto_fps?automatic_fps:
-        display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":menu_locale::text(L"Original");
+        unlimited_rendering()?menu_locale::text(L"Unlimited"):display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":menu_locale::text(L"Original");
     const wchar_t* labels[]={menu_locale::text(L"Full-screen map"),menu_locale::text(L"Aspect ratio"),menu_locale::text(L"Frame rate"),menu_locale::text(L"Blurred sidebars"),menu_locale::text(L"FPS counter")};
     const wchar_t* values[]={display_settings.atlas?L"Reborn":menu_locale::text(L"Original"),display_settings.wide?menu_locale::text(L"Widescreen"):menu_locale::text(L"Original (4:3)"),
         fps.c_str(),display_settings.field_sides?menu_locale::text(L"On"):menu_locale::text(L"Off"),counter_sizes[display_settings.fps_counter]};
@@ -273,7 +273,8 @@ static std::wstring help(int selected,const RetroSettings& s,retro_panel::Update
         case MenuShortcut:case PreviousFilterShortcut:case NextFilterShortcut:
             return menu_locale::text(L"Enter / A records a shortcut. Left restores its default.");
         case Aspect:return menu_locale::text(L"Set the game screen format.");
-        case FPS:return menu_locale::text(deck_renderer?L"Set the presentation frame rate.":L"Auto selects a target for the current display.");
+        case FPS:return menu_locale::text(unlimited_rendering()?L"Generate frames as rendering time allows.":
+            deck_renderer?L"Set the presentation frame rate.":L"Auto selects a target for the current display.");
         case Map:return menu_locale::text(L"Choose the artwork for the full-screen map.");
         case Sides:return menu_locale::text(L"Blend the sides of pre-rendered scenes.");
         case Counter:return menu_locale::text(L"Set the size of the FPS counter.");

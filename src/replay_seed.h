@@ -40,11 +40,11 @@ struct ReplaySeedPlan {
         GLbitfield planes=GL_COLOR_BUFFER_BIT|(target.depth?GL_DEPTH_BUFFER_BIT:0)|
                           (target.stencil?GL_STENCIL_BUFFER_BIT:0);
         unsigned last_safe=key?first_outgoing:first_default_outgoing;
-        // Deck postprocessing often clears several large scratch textures in
+        // Postprocessing often clears several large scratch textures in
         // turn. Only a draw into this attachment or a sampler of its live
         // contents can observe its seed before that clear. Outgoing faces
         // execute *after* their anchor, so a clear at the anchor is safe.
-        if(deck_fixed_rate()&&key){
+        if(key&&(!deck_renderer||deck_fixed_rate())){
             constexpr GLbitfield bits[]={GL_COLOR_BUFFER_BIT,GL_DEPTH_BUFFER_BIT,GL_STENCIL_BUFFER_BIT};
             const auto it=frame.depth_texture_for_target.find(key);
             const GLuint depth=it==frame.depth_texture_for_target.end()?0:it->second;
