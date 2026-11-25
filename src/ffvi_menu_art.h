@@ -1,5 +1,5 @@
 // Reactor7 by Caveras, derived from Final Fantasy VII; CC BY-NC-SA 3.0.
-struct Glyph { wchar_t code; uint8_t width,advance; uint16_t rows[11]; };
+struct Glyph { wchar_t code; uint8_t width,advance; uint16_t rows[12]; };
 static constexpr Glyph glyphs[]={
     {0x0020,3,3,{0,0,0,0,0,0,0,0,0,0,0}},
     {0x0021,6,6,{0,8,8,8,8,8,0,8,8,0,0}},

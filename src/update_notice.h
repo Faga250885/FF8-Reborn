@@ -24,11 +24,11 @@ static void after_swap(unsigned drawn_build,bool swapped){
 }
 
 static Surface tile;
-constexpr wchar_t title[]=L"FF8 Reborn update available";
-constexpr wchar_t hint[]=L"Open the FF8 Reborn menu for details.";
+static const wchar_t* title(){return menu_locale::text(L"FF8 Reborn update available");}
+static const wchar_t* hint(){return menu_locale::text(L"Open the FF8 Reborn menu for details.");}
 constexpr int height=39;
 static int width(){
-    static const int logical_width=18+std::max(retro_panel_draw::text_width(title),retro_panel_draw::text_width(hint));
+    static const int logical_width=18+std::max(retro_panel_draw::text_width(title()),retro_panel_draw::text_width(hint()));
     return logical_width;
 }
 struct Placement { int x,y,w,h; };
@@ -49,8 +49,8 @@ static bool draw(GLuint target,Placement p,float alpha){
         Canvas c(w,height,w);
         if(!c.pixels)return false;
         c.window(0,0,w-1,height-2);
-        c.label(title,9,4,w-8,18,0,ink);
-        c.label(hint,9,19,w-8,34,0,mint);
+        c.label(title(),9,4,w-8,18,0,ink);
+        c.label(hint(),9,19,w-8,34,0,mint);
         if(!upload(tile,c))return false;
     }
     return retro_panel_draw::blit(tile,target,p.x,p.y,p.w,p.h,alpha);
@@ -62,11 +62,15 @@ using update_notice::Placement;
 constexpr int height=24;
 static Surface tile;
 static int cached_profile=-1;
+static int prefix_width(){
+    return retro_panel_draw::text_width(menu_locale::text(L"Filter:"))+
+        retro_panel_draw::text_width(L" ");
+}
 static int width(int id){
     static const auto widths=[](){
         std::array<int,retro_panel::profile_count> result{};
-        const int inset=18+retro_panel_draw::text_width(L"Filter: ");
-        for(int i=0;i<retro_panel::profile_count;++i)result[i]=inset+retro_panel_draw::text_width(retro_panel::names[i]);
+        const int inset=18+prefix_width();
+        for(int i=0;i<retro_panel::profile_count;++i)result[i]=inset+retro_panel_draw::text_width(retro_panel::profile_name(i));
         return result;
     }();
     return widths[id];
@@ -83,9 +87,9 @@ static bool draw(GLuint target,Placement p,int id,float alpha){
         Canvas c(w,height,w);
         if(!c.pixels)return false;
         c.window(0,0,w-1,height-2);
-        const int value_x=9+text_width(L"Filter: ");
-        c.label(L"Filter:",9,3,value_x,height-5,0,mint);
-        c.label(retro_panel::names[id],value_x,3,w-7,height-5,0,ink);
+        const int value_x=9+prefix_width();
+        c.label(menu_locale::text(L"Filter:"),9,3,value_x,height-5,0,mint);
+        c.label(retro_panel::profile_name(id),value_x,3,w-7,height-5,0,ink);
         if(!upload(tile,c))return false;
         cached_profile=id;
     }

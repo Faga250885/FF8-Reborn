@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <memory_resource>
 #include <windows.h>
+#include <shellapi.h>
 #include <commctrl.h>
 #include <xinput.h>
 #include <GL/glew.h>
@@ -20,6 +21,7 @@
 #include <atomic>
 #include "update_version.h"
 #include "engine_layout.h"
+#include "menu_locale.h"
 #ifdef GEO_NATIVE_CAPTURE
 #include <winhttp.h>
 #include "update_feed.h"
@@ -2615,6 +2617,7 @@ static DWORD WINAPI initialize(void* module){
         log("FF8 Reborn inactive: unsupported engine build.\n");
         return 0;
     }
+    menu_locale::initialize(engine_layout==&engine_layouts[1]);
     SteamLicense license=steam_license();
     for(int retry=0;license==SteamLicense::waiting&&retry<240;++retry){
         Sleep(250);license=steam_license();

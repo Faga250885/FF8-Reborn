@@ -134,6 +134,7 @@ static void start_recording(int target){
 static const wchar_t* const names[]={L"Off",L"PS1 Digital",L"Soft CRT",L"PS1 · RGB Monitor",L"PS1 Backgrounds",
     L"PS1 · CRT TV",L"PS1 Sharp",L"HD Blend",L"FF8 Reborn (recommended)",L"Sony Trinitron KV-27FS100",
     L"RCA Precision In-Line",L"RCA CT-100",L"Custom"};
+static const wchar_t* profile_name(int id){return menu_locale::text(names[id]);}
 static int active_profile=8,custom_base=8;
 static bool custom_exists=false,migrate_custom=false;
 static int migrated_slot=-1;

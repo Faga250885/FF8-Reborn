@@ -94,7 +94,7 @@ static DWORD WINAPI work(void*){
     try{
         if(status()==retro_panel::update_checking){
             if(update_slots::pending(renderer,update_version::channel,update_version::build)){
-                say(retro_panel::update_ready,L"Reopen FFVIII to use your update.");return 0;
+                say(retro_panel::update_ready,menu_locale::text(L"Reopen FFVIII to use your update."));return 0;
             }
             const auto bytes=fetch(L"raw.githubusercontent.com",
                 L"/Faga250885/FF8-Reborn/main/updates/"+wide(update_version::channel)+L".txt",512);
@@ -102,7 +102,7 @@ static DWORD WINAPI work(void*){
             if(!update_feed::parse({reinterpret_cast<const char*>(bytes.data()),bytes.size()},update_version::channel,latest))
                 throw std::runtime_error("Invalid release information");
             if(latest.build<=update_version::build){
-                say(retro_panel::update_current,L"Installed: "+wide(update_version::tag));return 0;
+                say(retro_panel::update_current,menu_locale::text(L"Installed: ")+wide(update_version::tag));return 0;
             }
             offered=std::move(latest);
             const auto tag=wide(offered.tag);
@@ -114,16 +114,16 @@ static DWORD WINAPI work(void*){
             const std::wstring path=L"/Faga250885/FF8-Reborn/releases/download/"+wide(offered.tag)+
                 L"/FF8-Reborn-"+wide(update_version::channel)+L".dll";
             const auto bytes=fetch(L"github.com",path,32*1024*1024,true);
-            say(retro_panel::update_verifying,L"Checking the downloaded file and its checksum.");
+            say(retro_panel::update_verifying,menu_locale::text(L"Checking the downloaded file and its checksum."));
             update_slots::stage(renderer,update_version::channel,update_version::build,offered.build,offered.sha256,bytes,
-                [](){say(retro_panel::update_saving,L"Preparing the verified update for the next launch.");});
-            say(retro_panel::update_ready,L"Reopen FFVIII to use "+wide(offered.tag)+L".");
+                [](){say(retro_panel::update_saving,menu_locale::text(L"Preparing the verified update for the next launch."));});
+            say(retro_panel::update_ready,menu_locale::format(L"Reopen FFVIII to use {}.",wide(offered.tag)));
         }
     }catch(const std::exception& error){
         log("Update: ");log(error.what());log("\n");
         say(retro_panel::update_error,wide(error.what()));
     }catch(...){
-        say(retro_panel::update_error,L"Update failed. You can try again.");
+        say(retro_panel::update_error,menu_locale::text(L"Update failed. You can try again."));
     }
     return 0;
 }
@@ -133,18 +133,18 @@ static void action(){
         retro_panel::update_choice_seen=false;
         received_bytes.store(0,std::memory_order_relaxed);
         total_bytes.store(0,std::memory_order_relaxed);
-        say(retro_panel::update_downloading,L"Downloading "+wide(offered.tag)+L"…");
+        say(retro_panel::update_downloading,menu_locale::format(L"Downloading {}…",wide(offered.tag)));
     }
     else if(before==retro_panel::update_idle||before==retro_panel::update_current||before==retro_panel::update_error){
         AcquireSRWLockExclusive(&detail_lock);
         available_tag[0]=0;
         ReleaseSRWLockExclusive(&detail_lock);
-        say(retro_panel::update_checking,L"Checking GitHub for updates…");
+        say(retro_panel::update_checking,menu_locale::text(L"Checking GitHub for updates…"));
     }
     else return;
     HANDLE worker=CreateThread(nullptr,0,work,nullptr,0,nullptr);
     if(worker)CloseHandle(worker);
-    else say(retro_panel::update_error,L"Could not start the update check.");
+    else say(retro_panel::update_error,menu_locale::text(L"Could not start the update check."));
 }
 // Ask only the game window which owns this panel to close normally. GLFW
 // receives WM_CLOSE through its original window procedure and handles exit.
@@ -155,7 +155,7 @@ static bool close_for_update(){
     if(!window||retro_panel::current!=&display_settings.retro||
        GetWindowThreadProcessId(window,&owner)!=GetCurrentThreadId()||owner!=GetCurrentProcessId())return false;
     if(!update_slots::pending(renderer,update_version::channel,update_version::build)){
-        say(retro_panel::update_error,L"Staged update unavailable. Check for updates again.");
+        say(retro_panel::update_error,menu_locale::text(L"Staged update unavailable. Check for updates again."));
         return false;
     }
     return PostMessageW(window,WM_CLOSE,0,0)!=FALSE;
@@ -173,7 +173,7 @@ static void on_first_present(){
 }
 static void setup(HMODULE self){
     renderer=self;
-    say(retro_panel::update_idle,L"Installed: "+wide(update_version::tag));
+    say(retro_panel::update_idle,menu_locale::text(L"Installed: ")+wide(update_version::tag));
     retro_panel::update_action=action;
     retro_panel::update_status=status;
     retro_panel::update_detail=detail;

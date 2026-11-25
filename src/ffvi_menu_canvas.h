@@ -4,11 +4,17 @@
 constexpr COLORREF ink=RGB(248,248,239),mint=RGB(162,245,255),secondary=ink;
 constexpr COLORREF muted=RGB(181,180,206),warning=RGB(255,208,147),track=RGB(28,28,74);
 constexpr COLORREF text_shadow=RGB(16,16,42);
+static constexpr Glyph localized_glyphs[]={
+#include "menu_glyphs.inc"
+};
 
 static const Glyph& glyph(wchar_t ch){
     auto it=std::lower_bound(std::begin(glyphs),std::end(glyphs),ch,
                              [](const Glyph& g,wchar_t key){return g.code<key;});
-    return it!=std::end(glyphs)&&it->code==ch?*it:glyphs[L'?'-L' '];
+    if(it!=std::end(glyphs)&&it->code==ch)return *it;
+    const auto localized=std::lower_bound(std::begin(localized_glyphs),std::end(localized_glyphs),ch,
+                                          [](const Glyph& g,wchar_t key){return g.code<key;});
+    return localized!=std::end(localized_glyphs)&&localized->code==ch?*localized:glyphs[L'?'-L' '];
 }
 static int text_width(const wchar_t* text){
     int width=0;
@@ -97,7 +103,7 @@ struct Canvas {
             int pen=start;
             for(const wchar_t* p=str;*p;++p){
                 const Glyph& g=glyph(*p);
-                for(int row=0;row<11;++row){
+                for(int row=0;row<int(std::size(g.rows));++row){
                     for(int i=0;i<g.width;++i)if(g.rows[row]&(1u<<(g.width-1-i)))
                         box(pen+i+dx,top+row+dy,pen+i+dx+1,top+row+dy+1,col);
                 }

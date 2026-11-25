@@ -97,7 +97,7 @@ static UpdateMeter update_meter(retro_panel::UpdateState update,ULONGLONG tick){
     return meter;
 }
 struct UpdateText {const wchar_t* action;const wchar_t* status;const wchar_t* hint;};
-static constexpr UpdateText update_text[]={
+static const UpdateText english_update_text[]={
     {L"Check for updates",L"",L"Check GitHub for a newer version."},
     {L"Checking for updates…",L"",L"You can keep playing while the check runs."},
     {L"Check for updates",L"Up to date",L"You have the latest version for this platform."},
@@ -108,6 +108,10 @@ static constexpr UpdateText update_text[]={
     {L"Verifying update…",L"",L"Checking the downloaded file and its checksum."},
     {L"Saving update…",L"",L"Preparing the verified update for the next launch."}
 };
+static UpdateText update_message(retro_panel::UpdateState update){
+    const auto& message=english_update_text[update];
+    return {menu_locale::text(message.action),menu_locale::text(message.status),menu_locale::text(message.hint)};
+}
 static void row_label(Canvas& c,int id,int selected,int y,int height,const wchar_t* title,
                       const wchar_t* value,int right,COLORREF title_colour=ink,COLORREF value_colour=ink,int indent=0){
     if(id==selected&&(!retro_panel::choosing_section||retro_panel::confirm_close||retro_panel::update_choice_open))
@@ -122,7 +126,7 @@ static void row_label(Canvas& c,int id,int selected,int y,int height,const wchar
 }
 static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter,const std::wstring& available){
     using namespace retro_panel;
-    const auto& message=update_text[update];
+    const auto message=update_message(update);
     const int y=row_top(ModUpdate,false),right=display_width-9;
     wchar_t progress[32]{};
     if(update==update_downloading){
@@ -135,7 +139,7 @@ static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,U
     row_label(c,ModUpdate,selected,y,display_row,message.action,tag_fits?available.c_str():progress[0]?progress:message.status,
               right,update_actionable(update)?ink:muted,update==update_error?warning:ink);
     static const std::wstring installed(update_version::tag,update_version::tag+sizeof(update_version::tag)-1);
-    row_label(c,InstalledVersion,selected,row_top(InstalledVersion,false),display_row,L"Installed version",installed.c_str(),right);
+    row_label(c,InstalledVersion,selected,row_top(InstalledVersion,false),display_row,menu_locale::text(L"Installed version"),installed.c_str(),right);
     if(update==update_downloading||update==update_verifying||update==update_saving||update==update_ready){
         const int top=y+display_row-3;
         c.box(left,top,right,top+3,track);
@@ -148,11 +152,11 @@ static void draw_update(Canvas& c,int selected,retro_panel::UpdateState update,U
 }
 static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,UpdateMeter meter,const std::wstring& available){
     using namespace retro_panel;
-    static constexpr const wchar_t* counter_sizes[]={L"Off",L"Small",L"Medium",L"Large"};
-    const std::wstring fps=display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":L"Original";
-    const wchar_t* labels[]={L"Full-screen map",L"Aspect ratio",L"Frame rate",L"Blurred sidebars",L"FPS counter"};
-    const wchar_t* values[]={display_settings.atlas?L"Reborn":L"Original",display_settings.wide?L"Widescreen":L"Original (4:3)",
-        fps.c_str(),display_settings.field_sides?L"On":L"Off",counter_sizes[display_settings.fps_counter]};
+    const wchar_t* counter_sizes[]={menu_locale::text(L"Off"),menu_locale::text(L"Small"),menu_locale::text(L"Medium"),menu_locale::text(L"Large")};
+    const std::wstring fps=display_settings.fps?std::to_wstring(display_settings.fps)+L" FPS":menu_locale::text(L"Original");
+    const wchar_t* labels[]={menu_locale::text(L"Full-screen map"),menu_locale::text(L"Aspect ratio"),menu_locale::text(L"Frame rate"),menu_locale::text(L"Blurred sidebars"),menu_locale::text(L"FPS counter")};
+    const wchar_t* values[]={display_settings.atlas?L"Reborn":menu_locale::text(L"Original"),display_settings.wide?menu_locale::text(L"Widescreen"):menu_locale::text(L"Original (4:3)"),
+        fps.c_str(),display_settings.field_sides?menu_locale::text(L"On"):menu_locale::text(L"Off"),counter_sizes[display_settings.fps_counter]};
     for(int i=Map;i<=Counter;++i)
         row_label(c,i,selected,row_top(i,false),display_row,labels[i-Map],values[i-Map],display_width-9);
     draw_update(c,selected,update,meter,available);
@@ -160,16 +164,16 @@ static void draw_display(Canvas& c,int selected,retro_panel::UpdateState update,
 static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int h,int footer){
     using namespace retro_panel;
     const bool restore=can_restore(s);
-    const wchar_t* labels[]={L"Profile",L"Vertical resolution",L"Pixelation",L"Scanlines",L"RGB mask",L"Glow",
-        L"PS1 dithering",L"Edge smoothing",L"Motion blur"};
-    static constexpr const wchar_t* screens[]={L"",L"Trinitron grille",L"RCA slot mask",L"RCA dot mask"};
+    const wchar_t* labels[]={menu_locale::text(L"Profile"),menu_locale::text(L"Vertical resolution"),menu_locale::text(L"Pixelation"),menu_locale::text(L"Scanlines"),menu_locale::text(L"RGB mask"),menu_locale::text(L"Glow"),
+        menu_locale::text(L"PS1 dithering"),menu_locale::text(L"Edge smoothing"),menu_locale::text(L"Motion blur")};
+    const wchar_t* screens[]={L"",menu_locale::text(L"Trinitron grille"),menu_locale::text(L"RCA slot mask"),menu_locale::text(L"RCA dot mask")};
     const int values[]={0,s.effective_lines(w,h,base_profile()),s.pixelation,s.scanlines,s.mask,s.glow,s.dither,s.edge_softness,s.motion_blur};
     const int right=filter_width-9;
     wchar_t output[72];
     swprintf(output,std::size(output),L"%d×%d",w,h);
     const auto view=filter_page(selected,restore,footer);
     if(!view.offset){
-        c.label(L"Output tuning",left,tuning_top,108,tuning_top+output_height,0,muted);
+        c.label(menu_locale::text(L"Output tuning"),left,tuning_top,right-text_width(output)-5,tuning_top+output_height,0,muted);
         c.label(output,110,tuning_top,right,tuning_top+output_height,0,secondary,true);
     }
     if(view.offset||view.more)
@@ -185,19 +189,19 @@ static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int 
         int percentage=-1;
         if(id<=MotionBlur){
             title=labels[id];
-            if(id==Profile)value=dirty?L"Custom (preview)":names[active_profile];
+            if(id==Profile)value=dirty?menu_locale::text(L"Custom (preview)"):profile_name(active_profile);
             else if(id==Lines){
-                swprintf(formatted,std::size(formatted),s.auto_lines?L"Auto · %d lines":L"%d lines",values[id]);value=formatted;
+                swprintf(formatted,std::size(formatted),s.auto_lines?menu_locale::text(L"Auto · %d lines"):menu_locale::text(L"%d lines"),values[id]);value=formatted;
             }else percentage=values[id];
-        }else if(id==TVSimulation){title=L"TV simulation";value=s.tv_active()?L"On":L"Off";}
-        else if(id==TVScreen){title=L"Screen pattern";value=screens[s.selected_tube()];}
-        else if(id==PhosphorStrength){title=L"Pattern strength";percentage=s.phosphor_strength;}
-        else if(id==PhosphorSharpness){title=L"Pattern sharpness";percentage=s.phosphor_sharpness;}
-        else if(id==Restore)title=L"Restore filter defaults";
-        else title=active_profile==custom?L"Save my changes":custom_exists?L"Save to my custom profile":L"Create a custom copy";
-        if(!active)value=L"Off";
+        }else if(id==TVSimulation){title=menu_locale::text(L"TV simulation");value=s.tv_active()?menu_locale::text(L"On"):menu_locale::text(L"Off");}
+        else if(id==TVScreen){title=menu_locale::text(L"Screen pattern");value=screens[s.selected_tube()];}
+        else if(id==PhosphorStrength){title=menu_locale::text(L"Pattern strength");percentage=s.phosphor_strength;}
+        else if(id==PhosphorSharpness){title=menu_locale::text(L"Pattern sharpness");percentage=s.phosphor_sharpness;}
+        else if(id==Restore)title=menu_locale::text(L"Restore filter defaults");
+        else title=active_profile==custom?menu_locale::text(L"Save my changes"):custom_exists?menu_locale::text(L"Save to my custom profile"):menu_locale::text(L"Create a custom copy");
+        if(!active)value=menu_locale::text(L"Off");
         else if(percentage>=0){
-            if(id==MotionBlur&&!percentage)value=L"Off";
+            if(id==MotionBlur&&!percentage)value=menu_locale::text(L"Off");
             else{swprintf(formatted,std::size(formatted),L"%d%%",percentage);value=formatted;}
         }
         const int indent=id==TVScreen||id==PhosphorStrength||id==PhosphorSharpness?6:0;
@@ -205,14 +209,14 @@ static void draw_filter(Canvas& c,const RetroSettings& s,int selected,int w,int 
     }
 }
 static const wchar_t* shortcut_action(int id){
-    if(id==retro_panel::PreviousFilterShortcut)return L"Previous filter";
-    if(id==retro_panel::NextFilterShortcut)return L"Next filter";
-    return L"Open menu";
+    if(id==retro_panel::PreviousFilterShortcut)return menu_locale::text(L"Previous filter");
+    if(id==retro_panel::NextFilterShortcut)return menu_locale::text(L"Next filter");
+    return menu_locale::text(L"Open menu");
 }
 static void draw_menu_settings(Canvas& c,int selected){
     using namespace retro_panel;
     const std::wstring value=std::to_wstring(display_settings.menu_scale)+L"%";
-    row_label(c,MenuSize,selected,first_y,display_row,L"Menu size",value.c_str(),display_width-9);
+    row_label(c,MenuSize,selected,first_y,display_row,menu_locale::text(L"Menu size"),value.c_str(),display_width-9);
     const auto bind=[&](Row id,unsigned buttons){
         row_label(c,id,selected,row_top(id,false),display_row,shortcut_action(id),shortcut_label(buttons).c_str(),display_width-9);
     };
@@ -224,73 +228,73 @@ static void draw_shortcut_capture(Canvas& c,int mw){
     using namespace retro_panel;
     const int right=mw-10;
     c.label(shortcut_action(shortcut_target),10,first_y,right,first_y+16,0,mint);
-    c.paragraph(L"Hold one or two buttons together for 1 second.",10,first_y+18,right,2,ink);
+    c.paragraph(menu_locale::text(L"Hold one or two buttons together for 1 second."),10,first_y+18,right,2,ink);
     const auto candidate=shortcut_candidate_label();
-    c.label(candidate.empty()?L"Waiting for input…":candidate.c_str(),10,first_y+47,right,first_y+66,0,mint);
+    c.label(candidate.empty()?menu_locale::text(L"Waiting for input…"):candidate.c_str(),10,first_y+47,right,first_y+66,0,mint);
     const int bar_y=first_y+69;
     c.box(10,bar_y,right,bar_y+4,track);
     if(shortcut_progress>0&&!shortcut_too_many&&!shortcut_conflict)c.box(10,bar_y,10+(right-10)*shortcut_progress/10,bar_y+4,mint);
 }
 static const wchar_t* draw_close_prompt(Canvas& c,int right){
     using namespace retro_panel;
-    const wchar_t* choices[]={custom_exists?L"Replace saved Custom":L"Save as Custom",L"Discard changes",L"Keep editing"};
+    const wchar_t* choices[]={custom_exists?menu_locale::text(L"Replace saved Custom"):menu_locale::text(L"Save as Custom"),menu_locale::text(L"Discard changes"),menu_locale::text(L"Keep editing")};
     for(int i=0;i<3;++i)
         row_label(c,i,int(close_choice),first_y+i*display_row,display_row,choices[i],nullptr,right);
-    if(save_failed())return L"Couldn't save Custom. Try again or keep editing.";
+    if(save_failed())return menu_locale::text(L"Couldn't save Custom. Try again or keep editing.");
     switch(close_choice){
-    case CloseChoice::Save:return custom_exists?L"Replace your saved custom filter and close.":L"Save these settings as your custom filter and close.";
-    case CloseChoice::Discard:return L"Close using your last saved filter settings.";
-    default:return L"Return to the menu with your preview.";
+    case CloseChoice::Save:return custom_exists?menu_locale::text(L"Replace your saved custom filter and close."):menu_locale::text(L"Save these settings as your custom filter and close.");
+    case CloseChoice::Discard:return menu_locale::text(L"Close using your last saved filter settings.");
+    default:return menu_locale::text(L"Return to the menu with your preview.");
     }
 }
 static void draw_update_prompt(Canvas& c,int right){
     using namespace retro_panel;
-    c.paragraph(L"Save your game before closing. The update applies at the next launch.",10,first_y,right,3,ink);
+    c.paragraph(menu_locale::text(L"Save your game before closing. The update applies at the next launch."),10,first_y,right,3,ink);
     const int first=first_y+41;
     const int selected=close_update_now?0:1;
-    row_label(c,0,selected,first,display_row,L"Close game now",nullptr,right);
-    row_label(c,1,selected,first+display_row,display_row,L"Later",nullptr,right);
+    row_label(c,0,selected,first,display_row,menu_locale::text(L"Close game now"),nullptr,right);
+    row_label(c,1,selected,first+display_row,display_row,menu_locale::text(L"Later"),nullptr,right);
 }
 static std::wstring help(int selected,const RetroSettings& s,retro_panel::UpdateState update,bool failed,const std::wstring& available){
     using namespace retro_panel;
-    if(failed)return L"Couldn’t save your changes. Try again.";
+    if(failed)return menu_locale::text(L"Couldn’t save your changes. Try again.");
     if(selected==ModUpdate){
         wchar_t detail[96]{};
         if(update_detail)update_detail(detail,std::size(detail));
         detail[std::size(detail)-1]=0;
-        return detail[0]?detail:update_text[update].hint;
+        return detail[0]?detail:update_message(update).hint;
     }
-    if(selected==InstalledVersion)return available.empty()?L"Version of FF8 Reborn currently installed.":L"Available version: "+available;
+    if(selected==InstalledVersion)return available.empty()?menu_locale::text(L"Version of FF8 Reborn currently installed."):menu_locale::format(L"Available version: {}",available);
     switch(selected){
-        case MenuSize:return L"Adjust the menu size. Enter / A resets it to 100%.";
+        case MenuSize:return menu_locale::text(L"Adjust the menu size. Enter / A resets it to 100%.");
         case MenuShortcut:case PreviousFilterShortcut:case NextFilterShortcut:
-            return L"Enter / A records a shortcut. Left restores its default.";
-        case Aspect:return L"Set the game screen format.";
-        case FPS:return L"Set the presentation frame rate.";
-        case Map:return L"Choose the artwork for the full-screen map.";
-        case Sides:return L"Blend the sides of pre-rendered scenes.";
-        case Counter:return L"Set the size of the FPS counter.";
-        case Lines:return L"Adjust by 5 lines. Enter / A enables Auto.";
-        case TVSimulation:return L"Show the phosphor pattern of a CRT television.";
-        case TVScreen:return L"Choose the pattern of the TV's red, green and blue phosphors.";
-        case PhosphorStrength:return L"Set how visible the phosphor pattern is.";
-        case PhosphorSharpness:return L"Adjust how sharply the phosphor edges appear.";
-        case Restore:return L"Preview the original settings for this filter.";
-        case SaveCustom:return custom_exists?L"Replace your saved custom filter.":L"Save a custom copy of this filter.";
+            return menu_locale::text(L"Enter / A records a shortcut. Left restores its default.");
+        case Aspect:return menu_locale::text(L"Set the game screen format.");
+        case FPS:return menu_locale::text(L"Set the presentation frame rate.");
+        case Map:return menu_locale::text(L"Choose the artwork for the full-screen map.");
+        case Sides:return menu_locale::text(L"Blend the sides of pre-rendered scenes.");
+        case Counter:return menu_locale::text(L"Set the size of the FPS counter.");
+        case Lines:return menu_locale::text(L"Adjust by 5 lines. Enter / A enables Auto.");
+        case TVSimulation:return menu_locale::text(L"Show the phosphor pattern of a CRT television.");
+        case TVScreen:return menu_locale::text(L"Choose the pattern of the TV's red, green and blue phosphors.");
+        case PhosphorStrength:return menu_locale::text(L"Set how visible the phosphor pattern is.");
+        case PhosphorSharpness:return menu_locale::text(L"Adjust how sharply the phosphor edges appear.");
+        case Restore:return menu_locale::text(L"Preview the original settings for this filter.");
+        case SaveCustom:return custom_exists?menu_locale::text(L"Replace your saved custom filter."):menu_locale::text(L"Save a custom copy of this filter.");
         case Profile:
-            if(dirty)return L"Changing profiles discards your preview.";
-            if(!s.filter_enabled())return L"Screen filter effects are off. Choose a profile to enable them.";
-            if(active_profile==custom)return std::wstring(L"Based on ")+names[base_profile()];
-            return L"Choose a profile or edit it to create a copy.";
+            if(dirty)return menu_locale::text(L"Changing profiles discards your preview.");
+            if(!s.filter_enabled())return menu_locale::text(L"Screen filter effects are off. Choose a profile to enable them.");
+            if(active_profile==custom)return menu_locale::format(L"Based on {}",profile_name(base_profile()));
+            return menu_locale::text(L"Choose a profile or edit it to create a copy.");
         default:
-            return L"Save a custom copy to keep your changes.";
+            return menu_locale::text(L"Save a custom copy to keep your changes.");
     }
 }
 static void centered_icon_label(Canvas& c,const wchar_t* text,int x,int y,int width,int height){
-    int left=INT_MAX,right=-1,top=11,bottom=-1,pen=0;
+    int left=INT_MAX,right=-1,top=12,bottom=-1,pen=0;
     for(const wchar_t* p=text;*p;++p){
         const Glyph& g=glyph(*p);
-        for(int gy=0;gy<11;++gy)for(int gx=0;gx<g.width;++gx){
+        for(int gy=0;gy<int(std::size(g.rows));++gy)for(int gx=0;gx<g.width;++gx){
             if(g.rows[gy]&(1u<<(g.width-1-gx))){
                 left=std::min(left,pen+gx);right=std::max(right,pen+gx);
                 top=std::min(top,gy);bottom=std::max(bottom,gy);
@@ -319,7 +323,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     for(int section=0;section<int(std::size(section_names));++section){
         const int x=section*(tab_width+menu_gap);
         c.window(x,0,tab_width,section_height,section==int(page),false);
-        const wchar_t* title=section_names[section];
+        const wchar_t* title=menu_locale::text(section_names[section]);
         const int text_x=x+(tab_width-text_width(title))/2;
         c.label(title,text_x,0,x+tab_width,section_height,0,ink);
         if(choose&&section==int(pending_section))c.cursor(x+4,3);
@@ -332,31 +336,32 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
     if(confirm_close)hint=draw_close_prompt(c,mw-9);
     else if(update_prompt){
         draw_update_prompt(c,mw-9);
-        hint=update_close_failed?L"Close FFVIII normally to apply the update.":
-             close_update_now?L"Close Final Fantasy VIII Remastered.":L"Keep playing and finish the update later.";
+        hint=update_close_failed?menu_locale::text(L"Close FFVIII normally to apply the update."):
+             close_update_now?menu_locale::text(L"Close Final Fantasy VIII Remastered."):menu_locale::text(L"Keep playing and finish the update later.");
     }
     else if(record){
         draw_shortcut_capture(c,mw);
-        hint=shortcut_too_many?L"Use at most two buttons.":shortcut_conflict?L"Already used by another shortcut.":
-             failed?L"Couldn't save the shortcut. Try again.":L"Tap B, Esc or F8 to keep your current shortcut.";
+        hint=shortcut_too_many?menu_locale::text(L"Use at most two buttons."):shortcut_conflict?menu_locale::text(L"Already used by another shortcut."):
+             failed?menu_locale::text(L"Couldn't save the shortcut. Try again."):menu_locale::text(L"Tap B, Esc or F8 to keep your current shortcut.");
     }
     else{
         if(filter)draw_filter(c,s,selected,w,h,footer);
         else if(page==Section::MenuSettings)draw_menu_settings(c,selected);
         else draw_display(c,selected,update,meter,available);
-        hint=choose?std::wstring(L"Enter / A opens ")+section_names[int(pending_section)]+L". Esc / B goes back.":
+        hint=choose?menu_locale::format(L"Enter / A opens {}. Esc / B goes back.",
+                                        menu_locale::text(section_names[int(pending_section)])):
                     help(selected,s,update,failed,available);
     }
     c.window(0,footer,mw,footer_height,false,false);
     c.paragraph(hint,9,footer+6,mw-9,2,
                 !choose&&(failed||(update_prompt&&update_close_failed)||(record&&(shortcut_too_many||shortcut_conflict))||(selected==ModUpdate&&update==update_error))?warning:ink);
 
-    static constexpr const wchar_t* keys[][2]={{L"L1 R1",L"Section"},{L"↑ ↓",L"Navigate"},{L"← →",L"Adjust"},{L"A",L"Select"},{L"B",L"Close"}};
+    const wchar_t* keys[][2]={{L"L1 R1",menu_locale::text(L"Section")},{L"↑ ↓",menu_locale::text(L"Navigate")},{L"← →",menu_locale::text(L"Adjust")},{L"A",menu_locale::text(L"Select")},{L"B",menu_locale::text(L"Close")}};
     const int sx=mw+menu_gap,ky=main_y;
-    static constexpr const wchar_t* prompt_keys[][2]={{L"↑ ↓",L"Navigate"},{L"A",L"Select"},{L"B",L"Back"}};
-    static constexpr const wchar_t* chooser_keys[][2]={{L"← →",L"Section"},{L"A",L"Select"},{L"B",L"Back"}};
-    static constexpr const wchar_t* record_keys[][2]={{L"1 sec",L"Save"},{L"B",L"Cancel"}};
-    static constexpr const wchar_t* update_keys[][2]={{L"↑ ↓",L"Navigate"},{L"A",L"Select"},{L"B",L"Later"}};
+    const wchar_t* prompt_keys[][2]={{L"↑ ↓",menu_locale::text(L"Navigate")},{L"A",menu_locale::text(L"Select")},{L"B",menu_locale::text(L"Back")}};
+    const wchar_t* chooser_keys[][2]={{L"← →",menu_locale::text(L"Section")},{L"A",menu_locale::text(L"Select")},{L"B",menu_locale::text(L"Back")}};
+    const wchar_t* record_keys[][2]={{menu_locale::text(L"1 sec"),menu_locale::text(L"Save")},{L"B",menu_locale::text(L"Cancel")}};
+    const wchar_t* update_keys[][2]={{L"↑ ↓",menu_locale::text(L"Navigate")},{L"A",menu_locale::text(L"Select")},{L"B",menu_locale::text(L"Later")}};
     const auto draw_keys=[&](const auto& actions){
         const int count=int(std::size(actions)),height=12+count*20;
         c.window(sx,ky,side_width,height,false,false);
@@ -382,7 +387,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
                 c.stepped_box(x,y,14,14,ink);
                 c.stepped_box(x+1,y+1,12,12,track);
                 centered_icon_label(c,key,x,y,14,14);
-                c.label(key[0]==L'A'?L"Enter":L"Esc",sx+24,y,sx+57,y+14,0,mint);
+                c.label(key[0]==L'A'?menu_locale::text(L"Enter"):menu_locale::text(L"Esc"),sx+24,y,sx+63,y+14,0,mint);
             }else if(!wcscmp(key,L"L1 R1")){
                 for(int button=0;button<2;++button){
                     const int x=sx+6+button*22;
@@ -393,7 +398,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
             }else{
                 c.label(key,sx+8,y,sx+45,y+14,0,mint);
             }
-            c.label(actions[i][1],sx+64,y,sx+side_width-5,y+14,0,ink);
+            c.label(actions[i][1],sx+64,y,sx+side_width-2,y+14,0,ink);
         }
         return height;
     };
@@ -401,7 +406,7 @@ static void render(Canvas& c,const RetroSettings& s,int selected,bool bypass,boo
                              choose?draw_keys(chooser_keys):draw_keys(keys);
     if(bypass){
         c.window(sx,ky+key_box_height+menu_gap,side_width,20,false,false);
-        c.label(L"Original view",sx+9,ky+key_box_height+menu_gap+2,sx+side_width-4,ky+key_box_height+menu_gap+18,0,mint);
+        c.label(menu_locale::text(L"Original view"),sx+9,ky+key_box_height+menu_gap+2,sx+side_width-4,ky+key_box_height+menu_gap+18,0,mint);
     }
 }
 static bool draw(const RetroSettings& settings,int selected,GLuint target,int w,int h,bool bypass=false){

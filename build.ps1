@@ -6,7 +6,7 @@ $out=(New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'dist')
 $headers=(Resolve-Path -LiteralPath $GlewInclude).Path
 if(!(Test-Path -LiteralPath (Join-Path $headers 'GL/glew.h'))){throw 'GlewInclude must contain GL/glew.h'}
 $dll=Join-Path $out 'libvgmstream.dll'
-& $Zig c++ -target x86-windows-gnu -std=c++17 -O2 -s "-I$headers" -DGEO_NATIVE_CAPTURE -shared (Join-Path $src 'geometry.cpp') (Join-Path $src 'libvgmstream_proxy.def') -o $dll -lopengl32 -lgdi32 -luser32 -lcomctl32 -lwinhttp -ladvapi32
+& $Zig c++ -target x86-windows-gnu -std=c++17 -O2 -s "-I$headers" -DGEO_NATIVE_CAPTURE -shared (Join-Path $src 'geometry.cpp') (Join-Path $src 'libvgmstream_proxy.def') -o $dll -lopengl32 -lgdi32 -luser32 -lcomctl32 -lshell32 -lwinhttp -ladvapi32
 if($LASTEXITCODE){throw 'Renderer build failed.'}
 $hash=(Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
 $package=Join-Path $out 'Paquete.cs'
@@ -29,7 +29,7 @@ $pixelFont=Join-Path $installer 'FF8Menu.ttf'
 if($LASTEXITCODE){throw 'Installer build failed.'}
 $deckDir=(New-Item -ItemType Directory -Force -Path (Join-Path $out 'deck')).FullName
 $deckDll=Join-Path $deckDir 'libvgmstream.dll'
-& $Zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 -s "-I$headers" -DGEO_NATIVE_CAPTURE -DGEO_STEAM_DECK -shared (Join-Path $src 'geometry.cpp') (Join-Path $src 'libvgmstream_proxy.def') -o $deckDll -lopengl32 -lgdi32 -luser32 -lcomctl32 -lwinhttp -ladvapi32
+& $Zig c++ -target x86-windows-gnu -march=znver2 -ffp-contract=off -std=c++17 -O2 -s "-I$headers" -DGEO_NATIVE_CAPTURE -DGEO_STEAM_DECK -shared (Join-Path $src 'geometry.cpp') (Join-Path $src 'libvgmstream_proxy.def') -o $deckDll -lopengl32 -lgdi32 -luser32 -lcomctl32 -lshell32 -lwinhttp -ladvapi32
 if($LASTEXITCODE){throw 'Steam Deck renderer build failed.'}
 & (Join-Path $installer 'package-deck.ps1') -Renderer $deckDll -Output (Join-Path $out 'FF8-Reborn-Deck.pyz') -Zig $Zig
 & (Join-Path $installer 'prepare-updates.ps1')
