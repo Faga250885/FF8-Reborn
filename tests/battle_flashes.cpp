@@ -73,6 +73,9 @@ int main(){
     auto stripes=packet(GL_QUADS);
     rect(stripes,0,24,640,240);rect(stripes,0,240,640,456);
     assert(changed(view,stripes,out));
+    auto padded_flash=packet(GL_TRIANGLES);
+    rect(padded_flash,0,24,640,536);
+    assert(changed(view,padded_flash,out));
     // Native impact of the Rinoa and Angelo attack in Galbadia. It starts at the lower right
     // and the active battle viewport clips the bottom row of both tiles.
     auto angelo=packet(GL_TRIANGLES);
@@ -106,6 +109,63 @@ int main(){
         if(bad==5){rect(local,0,24,640,456);local.vertices[3]=local.vertices[1];}
         assert(!changed(view,local,out));
     }
+    auto storm=packet(GL_TRIANGLES);
+    storm.state.depth=storm.state.blend=true;
+    storm.state.src_rgb=storm.state.dst_rgb=GL_ONE;
+    storm.state.eq_rgb=GL_FUNC_ADD;
+    storm.state.texture[0].id=2;
+    for(int y=24;y<456;y+=12)rect(storm,0,float(y),640,float(y+12),1.f/3000);
+    for(auto& v:storm.vertices)v.p[2]=.026f;
+    auto clear=packet(GL_TRIANGLES);clear.clear=GL_COLOR_BUFFER_BIT;
+    auto effect=storm;effect.state.depth_mask=true;
+    const std::vector<Op> backdrop={clear,storm,effect};
+    view.find_battle_backdrop(backdrop);
+    assert(changed(view,backdrop[1],out));
+    assert(!changed(view,backdrop[2],out));
+
+    auto warped_page=[](float l,float r){
+        auto op=packet(GL_TRIANGLES);
+        op.state.depth=op.state.depth_mask=true;
+        for(int y=24;y<456;y+=24)rect(op,l,float(y),r,float(y+24));
+        for(auto& v:op.vertices){
+            v.p[1]+=(v.p[0]==r?3:0);
+            v.p[2]=.01072f;
+        }
+        return op;
+    };
+    std::vector<Op> separate_sprite={clear,warped_page(0,320),warped_page(320,640),warped_page(100,200)};
+    for(auto& v:separate_sprite.back().vertices)v.p[2]=.0108f;
+    view.find_battle_backdrop(separate_sprite);
+    assert(changed(view,separate_sprite[1],out));
+    assert(changed(view,separate_sprite[2],out));
+    assert(!changed(view,separate_sprite[3],out));
+    const std::vector<Op> incomplete_mesh={clear,warped_page(0,180),warped_page(460,640)};
+    view.find_battle_backdrop(incomplete_mesh);
+    assert(!changed(view,incomplete_mesh[1],out));
+    assert(!changed(view,incomplete_mesh[2],out));
+
+    view.battle=view.corner_hud=true;
+    auto timer=packet(GL_TRIANGLES);
+    rect(timer,574,36,606,68);
+    for(auto& v:timer.vertices)v.p[2]=.0010483871f;
+    timer.vertices.front().uv[0][1]=.625f;
+    view.inspect_battle_hud(timer);
+    auto hand=packet(GL_TRIANGLES);
+    rect(hand,12,338,60,370);
+    for(auto& v:hand.vertices)v.p[2]=.0010645161f;
+    assert(view.sprite_side(hand.vertices.data(),0)==-1);
+    for(auto& v:hand.vertices)v.p[2]=.00179032f;
+    assert(view.sprite_side(hand.vertices.data(),0)==0);
+
+    auto gf=packet(GL_TRIANGLES);
+    gf.state.scissor[1]=64;gf.state.scissor[2]=1248;
+    rect(gf,244,388,388,418);rect(gf,388,388,508,418);
+    gf.vertices.front().uv[0][1]=.375f;
+    assert(view.clipped_hud_side(gf.state)==0);
+    view.inspect_battle_hud(gf);
+    assert(view.clipped_hud_side(gf.state)==1);
+    for(size_t i=0;i<gf.vertices.size();i+=6)assert(view.sprite_side(gf.vertices.data()+i,1)==1);
+
     view.horizontal=1;assert(!changed(view,tiles,out)); // Native presentation.
     assert(glGetError()==GL_NO_ERROR);
     puts("Battle flashes cover both edges. Native view, local effects, HUD and projected geometry preserved.");

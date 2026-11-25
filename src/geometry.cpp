@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <memory>
 #include <array>
+#include <bitset>
 #include <string>
 #include <cstddef>
 #include <atomic>
@@ -65,6 +66,8 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 #include "retro_settings.h"
 #include "controller_bindings.h"
 struct DisplaySettings {
+    static constexpr int frame_rates[]={0,30,60,90,120};
+    static constexpr int frame_rate_count=deck_renderer?2:int(std::size(frame_rates));
     int fps=deck_renderer?0:60;
     int fps_counter=0;
     static constexpr int min_menu_scale=70, max_menu_scale=150, menu_scale_step=10;
@@ -88,8 +91,9 @@ void DisplaySettings::load(const wchar_t* path){
         automatic_fps=false;
         if(legacy)retro_panel::persist(path,retro,0,-1,retro_panel::FPS,30);
     }else{
-        automatic_fps=value!=0&&value!=60&&value!=120;
-        fps=value==0||value==120?value:60;
+        const auto end=std::end(frame_rates);
+        automatic_fps=std::find(std::begin(frame_rates),end,value)==end;
+        fps=automatic_fps?60:value;
     }
     wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
     atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;

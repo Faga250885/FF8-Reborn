@@ -140,6 +140,10 @@ struct WideView {
     int atlas_width=0;
     int command_right=244;
     bool corner_hud=false;
+    bool summon_hud=false;
+    float menu_cursor_depth=.001f;
+    GLuint battle_backdrop_target=0;
+    std::vector<std::pair<const Op*,const Op*>> battle_screen_meshes;
     explicit WideView(const Frame& frame,bool requested):drawable_width(frame.w),drawable_height(frame.h),battle(frame.layout()==3){
         const int mode=frame.layout();
         if(!requested||(!gameplay_layout(mode)&&mode!=6)||frame.w<1||frame.h<1)return;
@@ -213,12 +217,14 @@ struct WideView {
             }
         }
         if(battle&&horizontal<1){
+            find_battle_backdrop(frame.ops);
             for(const auto& op:frame.ops){
                 if(!op.target||op.clear||op.state.viewport[2]!=scene_width||
                    std::abs(op.state.projection[0]-2.f/640)>.00001f)continue;
                 // The trigger gauge is one window with two long horizontal
                 // rails. Its frame tiles and moving sprites share native X.
                 if(has_gauge_rail(op)){corner_hud=false;break;}
+                inspect_battle_hud(op);
                 if(hud_clip(op.state)!=1)continue;
                 corner_hud=true;
                 const int x=int(std::lround(640.*op.state.scissor[0]/scene_width));
@@ -248,7 +254,38 @@ struct WideView {
         if(x<240&&clip[1]+clip[3]<=scene_height/2)return -1;
         return 0;
     }
-    int clipped_hud_side(const State& s) const {return corner_hud?hud_clip(s):0;}
+    // The GF nameplate and HP backing use their own native HUD clip
+    // (x=0..624, y=16..448 in top-left coordinates).
+    bool summon_clip(const State& s) const {
+        const int* clip=s.scissor;
+        return s.scissor_on&&clip[0]==0&&
+               std::lround(640.*clip[2]/scene_width)==624&&
+               std::lround(480.*clip[1]/scene_height)==32&&
+               std::lround(480.*clip[3]/scene_height)==432;
+    }
+    void inspect_battle_hud(const Op& op){
+        if(op.mode!=GL_TRIANGLES||op.vertices.empty()||op.vertices.size()%6||
+           std::abs(op.vertices.front().p[3]-1.f)>.002f)return;
+        const bool gf_clip=summon_clip(op.state);
+        for(size_t i=0;i<op.vertices.size();i+=6){
+            const auto* q=op.vertices.data()+i;
+            Bounds b;
+            if(gf_clip&&!summon_hud&&q->p[1]>=358&&q->p[1]<=448&&
+               q[0].uv[0][1]==.375f&&flat_rect(q,b)&&b.l==244&&b.r==388&&
+               (b.t==358||b.t==388||b.t==418)&&b.b==b.t+30)summon_hud=true;
+            // The countdown is drawn before the command hand. Its last
+            // digit advances the hand's depth, even as the colon blinks.
+            if(q->p[0]>=520&&q->p[0]<=606&&q->p[2]>=.001f&&q->p[2]<.00125f&&
+               q[0].uv[0][1]==.625f&&flat_rect(q,b)&&b.t==36&&b.b==68&&b.r==606&&b.l==574){
+                constexpr float depth_step=.0005f/31;
+                menu_cursor_depth=q->p[2]+depth_step;
+            }
+        }
+    }
+    int clipped_hud_side(const State& s) const {
+        if(!corner_hud)return 0;
+        return summon_hud&&summon_clip(s)?1:hud_clip(s);
+    }
 
     int sprite_side(const Vertex* q,int clip_side) const {
         if(!corner_hud)return 0;
@@ -268,7 +305,7 @@ struct WideView {
         if(clip_side)return clip_side;
         // The floating target hand uses the same artwork as the command
         // hand, at a different depth. Keep it on the battler.
-        if(r-l==48&&b-t==32&&q->p[2]>.00101f&&q[0].uv[0][1]==0.f)return 0;
+        if(r-l==48&&b-t==32&&q->p[2]>menu_cursor_depth+.00001f&&q[0].uv[0][1]==0.f)return 0;
         // The two tiles of the floating target label ("Blanco") can be
         // batched with UI artwork even when the battler is behind a window.
         if(r-l==32&&b-t==32&&q->p[2]>=.00199f&&q->p[2]<.0024f&&
@@ -328,6 +365,111 @@ struct WideView {
             for(const auto& u:s.uniforms)if(u.type==GL_SAMPLER_2D)return true;
         }else for(const auto& t:s.texture)if(t.enabled)return true;
         return false;
+    }
+    bool battle_canvas_draw(const Op& op) const {
+        const auto& s=op.state;
+        return !op.clear&&op.mode==GL_TRIANGLES&&!op.vertices.empty()&&op.vertices.size()%3==0&&
+               s.viewport[2]==scene_width&&s.viewport[3]==scene_height&&
+               s.scissor_on&&s.scissor[0]==0&&s.scissor[2]>=scene_width-2&&
+               std::abs(s.scissor[3]-scene_height*432/480)<=2&&
+               std::abs(s.projection[0]-2.f/640)<.00001f;
+    }
+    bool backdrop_draw(const Op& op) const {
+        const auto& s=op.state;
+        if(!s.blend||s.src_rgb!=GL_ONE||s.dst_rgb!=GL_ONE||s.eq_rgb!=GL_FUNC_ADD||
+           !s.depth||s.depth_mask||s.alpha||s.cull||!battle_canvas_draw(op))return false;
+        // Retain the focal scale of foreground effects, actors and UI.
+        return std::all_of(op.vertices.begin(),op.vertices.end(),[](const Vertex& v){
+            return v.p[2]>.008f&&v.p[3]>0&&v.p[3]<.01f;
+        });
+    }
+    bool screen_mesh_draw(const Op& op) const {
+        const auto& s=op.state;
+        if(!s.depth||!s.depth_mask||s.scissor[1]!=scene_height/20||op.vertices.size()<12||
+           !battle_canvas_draw(op))return false;
+        const auto& first=op.vertices.front();
+        if(first.p[3]!=1.f||first.p[2]<=.004f)return false;
+        return std::all_of(op.vertices.begin(),op.vertices.end(),[&](const Vertex& v){
+            return v.p[3]==1.f&&v.p[2]==first.p[2]&&v.p[0]>=-2.f&&v.p[0]<=642.f;
+        });
+    }
+    struct BattleCoverage {
+        static constexpr int rows=7;
+        std::array<unsigned,3> covered{};
+        size_t vertices=0;
+        void add(const Op& op){
+            vertices+=op.vertices.size();
+            if(std::all_of(covered.begin(),covered.end(),[](unsigned mask){return mask==(1u<<rows)-1;}))return;
+            for(size_t j=0;j<op.vertices.size();j+=3){
+                const float* a=op.vertices[j].p;
+                const float* b=op.vertices[j+1].p;
+                const float* c=op.vertices[j+2].p;
+                const float l=std::min({a[0],b[0],c[0]}),r=std::max({a[0],b[0],c[0]});
+                const float t=std::min({a[1],b[1],c[1]}),bottom=std::max({a[1],b[1],c[1]});
+                const auto edge=[](const float* u,const float* v,float x,float y){
+                    return (v[0]-u[0])*(y-u[1])-(v[1]-u[1])*(x-u[0]);
+                };
+                if(std::abs(edge(a,b,c[0],c[1]))<.001f)continue;
+                for(size_t column=0;column<covered.size();++column){
+                    constexpr float samples[]={8.f,320.f,632.f};
+                    const float x=samples[column];
+                    if(x<l||x>r)continue;
+                    for(int row=0;row<rows;++row){
+                        const unsigned bit=1u<<row;
+                        const float y=36.f+68.f*row;
+                        if((covered[column]&bit)||y<t||y>bottom)continue;
+                        const float p=edge(a,b,x,y),q=edge(b,c,x,y),r=edge(c,a,x,y);
+                        if((p>=0&&q>=0&&r>=0)||(p<=0&&q<=0&&r<=0))covered[column]|=bit;
+                    }
+                }
+            }
+        }
+        bool fills_picture() const {
+            return vertices>=192&&std::all_of(covered.begin(),covered.end(),[](unsigned mask){
+                return std::bitset<rows>(mask).count()>=5;
+            });
+        }
+    };
+    void find_battle_backdrop(const std::vector<Op>& ops){
+        auto clear=std::find_if(ops.begin(),ops.end(),[&](const Op& op){
+            return op.target&&(op.clear&GL_COLOR_BUFFER_BIT)&&op.state.viewport[2]==scene_width&&
+                   op.state.viewport[3]==scene_height;
+        });
+        if(clear==ops.end())return;
+        auto first=clear;
+        auto last=std::find_if(clear+1,ops.end(),[&](const Op& op){return op.target!=clear->target;});
+        for(auto i=clear+1;i!=last;++i)if(i->clear&GL_COLOR_BUFFER_BIT)first=i;
+
+        // Replacement scenery may be interleaved with actors. Coverage must
+        // reach across the picture before widening the additive backdrop.
+        BattleCoverage backdrop;
+        for(auto i=first+1;i!=last;){
+            if(backdrop_draw(*i))backdrop.add(*i);
+            if(!screen_mesh_draw(*i)){++i;continue;}
+
+            // One screen distortion can submit many adjacent texture pages.
+            // Keep those pages together, without moving individual sprites.
+            const auto begin=i++;
+            BattleCoverage mesh;
+            mesh.add(*begin);
+            while(i!=last&&screen_mesh_draw(*i)){
+                const auto& a=begin->state;
+                const auto& b=i->state;
+                if(i->vertices.front().p[2]!=begin->vertices.front().p[2]||
+                   a.program!=b.program||a.blend!=b.blend||a.alpha!=b.alpha||a.cull!=b.cull||
+                   a.src_rgb!=b.src_rgb||a.dst_rgb!=b.dst_rgb||a.eq_rgb!=b.eq_rgb)break;
+                mesh.add(*i++);
+            }
+            if(mesh.fills_picture())battle_screen_meshes.emplace_back(&*begin,&*(i-1));
+        }
+        if(backdrop.fills_picture())battle_backdrop_target=clear->target;
+    }
+    bool fitted_battle_layer(const Op& op) const {
+        if(battle_backdrop_target&&op.target==battle_backdrop_target&&backdrop_draw(op))return true;
+        const std::less<const Op*> less;
+        return std::any_of(battle_screen_meshes.begin(),battle_screen_meshes.end(),[&](const auto& range){
+            return !less(&op,range.first)&&!less(range.second,&op);
+        });
     }
     static void include_result_icons(const Frame& frame,std::vector<Op>::const_reverse_iterator copy,
                                      int& top,int& bottom,int& half_width){
@@ -400,7 +542,10 @@ struct WideView {
         auto bounds=[&](int i,Bounds& b){
             const auto* q=op.vertices.data()+i;
             if(std::abs(q[0].p[3]-1.f)>.002f||!flat_rect(q,b,step)||
-               b.l< -4||b.r>644||b.t< -24||b.b>504||b.r<=b.l||b.b<=b.t)return false;
+               b.l< -4||b.r>644||b.r<=b.l||b.b<=b.t)return false;
+            // Effects can use a 512-line source rectangle. Measure from the
+            // visible canvas instead of rejecting its padded bottom.
+            if(!std::isfinite(b.t)||!std::isfinite(b.b)||b.b<24||b.t>456)return false;
             auto corner=[&](int j){return (q[j].p[0]==b.r?1:0)+(q[j].p[1]==b.b?2:0);};
             // Two adjoining triangles must share a diagonal. Four corners
             // alone also match overlapping triangles that leave a hole.
@@ -473,8 +618,14 @@ struct WideView {
     // Quarter-pixel world packet 555070 submits contiguous 512 x 128 cloud
     // tiles with a fixed atlas window and z=4095. Repeat only a missing neighbour.
     const Vertex* screen_layers(const Op& op,const Vertex* vertices,std::vector<Vertex>& result,GLsizei& count) const {
-        if(horizontal>=1||!op.target||count<4||
+        if(horizontal>=1||!op.target||
            op.state.viewport[2]!=scene_width||std::abs(op.state.projection[0]-2.f/640)>.00001f)return vertices;
+        if(fitted_battle_layer(op)){
+            result.assign(vertices,vertices+count);
+            for(auto& v:result)v.p[0]=320+(v.p[0]-320)/horizontal;
+            return result.data();
+        }
+        if(count<4)return vertices;
         if(battle)return battle_layers(op,vertices,result,count);
         if(op.mode!=GL_TRIANGLES||count<6||count%6)return vertices;
         const bool cloud_layer=std::abs(op.vertices[0].p[3]-1.f/4095)<1e-7f;
