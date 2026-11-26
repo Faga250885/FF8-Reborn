@@ -18,23 +18,40 @@ static void interpolate_battle_point(const float* prior,const float* current,flo
 // An edge can grow in screen space during a zoom or turn and still represent
 // the same rigid edge. Use reciprocal depth to check that case before
 // rejecting a history that would stretch a small face across two actors.
+static float battle_screen_edge2(const float* p,const float* q){
+    const float x=p[0]-q[0],y=p[1]-q[1];return x*x+y*y;
+}
 static bool battle_edge_stretches(const float* a,const float* b,const float* past_a,const float* past_b){
-    const auto length2=[](const float* p,const float* q){
-        const float x=p[0]-q[0],y=p[1]-q[1];return x*x+y*y;
-    };
-    const float screen=length2(a,b),past_screen=length2(past_a,past_b);
+    const float screen=battle_screen_edge2(a,b),past_screen=battle_screen_edge2(past_a,past_b);
     if(std::max(screen,past_screen)<=4*std::min(screen,past_screen)+16*16)return false;
     for(auto p:{a,b,past_a,past_b})if(!(p[3]>0&&p[3]<.1f))return false;
     const auto view_length2=[](const float* p,const float* q){
         const double z=1./p[3],other_z=1./q[3];
         const double x=(p[0]-320.)*z-(q[0]-320.)*other_z;
         const double y=(p[1]-240.)*z-(q[1]-240.)*other_z;
-        const double depth=320.*(z-other_z);
+        const double depth=1024.*(z-other_z);
         return x*x+y*y+depth*depth;
     };
     const double size=view_length2(a,b),past_size=view_length2(past_a,past_b);
     const double slack=8./std::min({a[3],b[3],past_a[3],past_b[3]});
     return std::max(size,past_size)>6.25*std::min(size,past_size)+slack*slack;
+}
+
+// Vertices can move at different rates in screen space as their depths
+// change. Validate the generated edge itself when the rates are far apart.
+static bool battle_edge_overshoots(const float* a,const float* b,const float* past_a,const float* past_b){
+    const float left=past_a[3]*b[3],right=past_b[3]*a[3];
+    if(std::max(left,right)<=1.3f*std::min(left,right))return false;
+    for(auto p:{a,b,past_a,past_b})if(!(p[3]>0&&p[3]<.1f))return false;
+    const float limit=2.25f*std::max(battle_screen_edge2(a,b),battle_screen_edge2(past_a,past_b))+16*16;
+    if(std::max(battle_screen_edge2(a,past_a),battle_screen_edge2(b,past_b))<=limit)return false;
+    for(float phase:{.25f,.5f,.75f}){
+        float p[4],q[4];
+        interpolate_battle_point(past_a,a,phase,p);
+        interpolate_battle_point(past_b,b,phase,q);
+        if(battle_screen_edge2(p,q)>limit)return true;
+    }
+    return false;
 }
 
 using HeldBattlePoints=std::unordered_set<uint64_t>;
@@ -58,6 +75,9 @@ static HeldBattlePoints protect_battle_edges(const std::vector<Primitive>& old,c
         for(unsigned v=0;v<3;++v)past[v]=op.motion_valid[face.start+v]?op.prior_positions[face.start+v].data():vertex[v].p;
         for(unsigned v=0;v<3;++v){
             const unsigned w=(v+1)%3;
+            if(battle_edge_overshoots(vertex[v].p,vertex[w].p,past[v],past[w])){
+                rejected.push_back(i);break;
+            }
             if(!battle_edge_stretches(vertex[v].p,vertex[w].p,past[v],past[w]))continue;
             if(face.prior>=0){
                 const auto& prior=old[face.prior];

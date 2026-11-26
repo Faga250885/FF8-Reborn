@@ -13,7 +13,7 @@ int main(){
     assert(WritePrivateProfileStringW(L"Retro",L"Selected",L"7",path));
     auto stored_fps=[&](){return int(GetPrivateProfileIntW(L"Display",L"FPS",-1,path));};
 
-    for(const int saved:{-1,0,30,60,90,120,DisplaySettings::unlimited_fps,47}){
+    for(const int saved:{-1,0,30,60,90,120,-2,47}){
         if(saved!=-1)assert(retro_panel::number(path,L"Display",L"FPS",saved));
         display_settings.load(path);
         const bool legacy=saved==60||saved==90||saved==120;
@@ -22,10 +22,10 @@ int main(){
             assert(display_settings.fps_setting==display_settings.fps);
             assert(stored_fps()==(legacy?30:saved));
         }else{
-            const bool valid=saved==0||saved==30||saved==60||saved==90||saved==120||saved==DisplaySettings::unlimited_fps;
+            const bool valid=saved==0||saved==30||saved==60||saved==90||saved==120;
             assert(display_settings.fps==(valid?saved:60));
             assert(display_settings.fps_setting==(valid?saved:DisplaySettings::auto_fps));
-            assert(stored_fps()==saved);
+            assert(stored_fps()==(saved==-2?DisplaySettings::auto_fps:saved));
         }
     }
 
@@ -39,7 +39,7 @@ int main(){
         assert(!retro_panel::save_failed()&&!can_present);
         assert(display_settings.fps_setting==setting&&display_settings.fps==effective);
         assert(stored_fps()==setting);
-        if(effective)assert(output_period()==(effective==DisplaySettings::unlimited_fps?0.:1./effective));
+        if(effective)assert(output_period()==1./effective);
     };
     if(deck_renderer){
         step(VK_LEFT,30,30);step(VK_RIGHT,0,0);step(VK_RIGHT,30,30);
@@ -58,33 +58,7 @@ int main(){
         assert(display_settings.fps_setting==automatic&&display_settings.fps==120);
         step(VK_RIGHT,0,0);step(VK_RIGHT,30,30);step(VK_RIGHT,60,60);
         step(VK_RIGHT,90,90);step(VK_LEFT,60,60);step(VK_RIGHT,90,90);
-        constexpr int unlimited=DisplaySettings::unlimited_fps;
-        step(VK_RIGHT,120,120);step(VK_RIGHT,unlimited,unlimited);
-        assert(unlimited_rendering()&&output_period()==0.);
-        finish_generated_output();
-        assert(std::isfinite(next_output)&&next_output<=now());
-        UncappedSourceBudget budget;
-        constexpr double tick=1./30;
-        for(int frame=0;frame<12;++frame)budget.observe(tick,tick,true);
-        assert(budget.fits(10,.002,10+tick));
-        assert(!budget.fits(10+tick,.002,10+tick));
-        budget.spent=.002;
-        assert(!budget.fits(10,.002,10+tick));
-        budget.observe(1.6*tick,tick,true);
-        assert(!budget.fits(10,.002,10+tick));
-        UncappedSourceBudget title_budget;
-        constexpr double title_tick=1./60.;
-        for(int i=0;i<20;++i)
-            for(double wake:{.84,.84,1.32})title_budget.observe(wake*title_tick,title_tick,true);
-        assert(title_budget.fits(10,.002,10+title_tick));
-        for(int frame=0;frame<20;++frame)title_budget.observe(1.06*title_tick,title_tick,true);
-        assert(!title_budget.fits(10,.002,10+title_tick));
-
-        display_settings.monitor_refresh(75);
-        display_settings.load(path);
-        assert(unlimited_rendering()&&stored_fps()==unlimited);
-        display_settings.monitor_refresh(144);
-        step(VK_RIGHT,automatic,120);step(VK_LEFT,unlimited,unlimited);step(VK_LEFT,120,120);
+        step(VK_RIGHT,120,120);step(VK_RIGHT,automatic,120);step(VK_LEFT,120,120);
         display_settings.monitor_refresh(60);
         assert(display_settings.fps==120&&stored_fps()==120);
     }
@@ -92,5 +66,5 @@ int main(){
     assert(display_settings.fps==(deck_renderer?30:120));
     assert(!display_settings.wide&&GetPrivateProfileIntW(L"Retro",L"Selected",-1,path)==7);
     assert(DeleteFileW(path));
-    std::puts(deck_renderer?"Deck Original/30 settings and migration OK":"Windows Auto/Original/30/60/90/120/Unlimited settings OK");
+    std::puts(deck_renderer?"Deck Original/30 settings and migration OK":"Windows Auto/Original/30/60/90/120 settings and migration OK");
 }

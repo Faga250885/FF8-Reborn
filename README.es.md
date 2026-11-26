@@ -3,7 +3,7 @@
 **[Descargar para Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Descargar para Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.25/FF8-Reborn-Deck-Setup)** · [Read in English](README.md) · [Galería de capturas](docs/GALERIA.md)
 
 > [!WARNING]
-> **120 FPS, Sin límite y Pantalla ancha son experimentales.** Los FPS dependen de la escena y del tiempo de renderizado disponible. En **Pantalla** puedes elegir el encuadre original 4:3 y la cadencia original del juego.
+> **120 FPS y Pantalla ancha son experimentales.** Los FPS dependen de la escena y del tiempo de renderizado disponible. En **Pantalla** puedes elegir el encuadre original 4:3 y la cadencia original del juego.
 
 > [!NOTE]
 > **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. **El próximo objetivo son los 60 FPS.** El desarrollo continuará a medida que haya tiempo disponible. Todavía no hay fecha para ese modo.
@@ -40,7 +40,8 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 
 ## Novedades
 
-- **Presentación sin límite en Windows.** Elige **Pantalla → Velocidad de cuadros → Sin límite** para generar cuadros sin un objetivo fijo cuando quede tiempo de renderizado. El juego mantiene su ritmo de simulación. La pantalla de título, los menús y Triple Triad también siguen el ajuste y reutilizan la imagen compuesta por el juego cuando es posible.
+- **Transiciones y cámara en Windows.** El barrido de entrada usa la frecuencia de presentación elegida y conserva el fondo panorámico. Cuando un movimiento de cámara en 3D abriría un hueco estrecho en un borde, el renderizador corrige esa zona y mantiene interpolado el resto del movimiento. Las películas conservan su cadencia original.
+- **Opciones de FPS en Windows.** El ajuste anterior Sin límite pasa a Auto. Los títulos, los menús, los resultados y Triple Triad siguen la frecuencia de presentación elegida.
 - **Mallas de batalla.** Las capas de textura con mezcla aditiva y prueba de profundidad reciben la misma validación de vértices que las mallas opacas. Cuando un emparejamiento estiraría un triángulo entre dos actores, la malla afectada conserva su pose original durante ese intervalo.
 - **Bordes verticales al mover la cámara.** Windows 1.4.24 comprueba los bordes superior e inferior del mapamundi y de las batallas durante la interpolación. Si un cuadro intermedio abriría un hueco, el mod muestra el cuadro del juego durante ese intervalo.
 - **Cortes de cámara en batalla.** Windows 1.4.23 conserva los cambios de plano de las entradas de batalla y mantiene la interpolación durante los giros continuos. También detecta huecos pequeños en el borde inferior del escenario en pantalla ancha.
@@ -49,7 +50,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 - **Menús de batalla en pantalla ancha.** Los nombres se leen durante el cambio de página en Magia Azul. Las pruebas en Windows cubrieron los 16 hechizos de Magia Azul y los 8 tipos de munición.
 - **Límites y destellos de batalla.** Los giros de cámara conservan la cobertura del escenario si un cuadro intermedio dejaría un hueco. Los efectos de fragmentación que ocupan toda la pantalla llegan a ambos bordes panorámicos. Probamos el límite de cada uno de los once personajes jugables en Windows.
 - **Correcciones en batallas panorámicas.** El cursor queda junto al comando en batallas con cronómetro. El nombre, los PV y la barra de carga del GF quedan alineados, y los destellos, las distorsiones y los fondos de invocación que cubren la pantalla se extienden a ambos bordes. [Incidencia #2](https://github.com/Faga250885/FF8-Reborn/issues/2)
-- **FPS automáticos en Windows.** En **Pantalla → Velocidad de cuadros** puedes elegir Auto, Original, 30, 60, 90, 120 FPS y Sin límite. El objetivo de 120 FPS es experimental tanto en Auto como en modo manual.
+- **FPS automáticos en Windows.** En **Pantalla → Velocidad de cuadros** puedes elegir Auto, Original, 30, 60, 90 y 120 FPS. El objetivo de 120 FPS es experimental tanto en Auto como en modo manual.
 - **Zoom y giros de cámara en batalla.** Windows 1.4.22 interpola la geometría 3D con la profundidad de cámara para evitar el estiramiento por perspectiva en los cuadros generados. Se conservan las poses originales y la posición del HUD.
 - **Soporte completo de idiomas.** Windows **v1.4.14** y Steam Deck **v1.4.0-deck.20** traducen las tres secciones del menú, los filtros, las confirmaciones y los avisos en pantalla. En Windows probamos F8 en los seis idiomas y comprobamos que el cambio entre panorámico y 4:3 se aplica en vivo en el mapamundi. [Ver la galería de idiomas](docs/GALERIA.md#menu-languages)
 - **Menú clásico.** Las tres secciones están arriba y la activa permanece resaltada. Pulsa arriba desde la primera opción para llevar la manito a las secciones, elige con izquierda o derecha y abre con A o Intro. Al recorrer las opciones, L1 y R1 cambian de sección inmediatamente. La ayuda muestra iconos de la cruceta y los botones.

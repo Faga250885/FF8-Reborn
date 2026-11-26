@@ -349,6 +349,8 @@ static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
         if(identical&&op.actor_mid.empty()&&op.depth_bias.empty()&&op.front_face.empty())op.match=-1;
         moving_draws+=moving;
     }
-    if((mode==2||mode==3)&&display_settings.wide&&!current.camera_cut)
-        current.camera_cut=scene_loses_vertical_edge(current,outgoing_draws);
+    if((mode==2||mode==3)&&display_settings.wide&&!current.camera_cut){
+        current.border_repair=scene_edge_repair(current,outgoing_draws);
+        if(deck_renderer)current.camera_cut=current.border_repair.needed();
+    }
 }

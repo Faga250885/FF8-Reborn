@@ -3,7 +3,7 @@
 **[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.25/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
-> **120 FPS, Unlimited and Widescreen are experimental.** Frame delivery depends on the scene and the available rendering time. The original 4:3 framing and frame rate are available in the **Display** settings.
+> **120 FPS and Widescreen are experimental.** Frame delivery depends on the scene and the available rendering time. The original 4:3 framing and frame rate are available in the **Display** settings.
 
 > [!NOTE]
 > **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. **60 FPS is the next goal.** Development continues as time allows. There is no release date for that mode.
@@ -40,7 +40,8 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
-- **Unlimited presentation on Windows.** Choose **Display → Frame rate → Unlimited** to generate frames without a fixed target as rendering time allows. The game keeps its own simulation rate. The same setting now applies to the title, menus and Triple Triad. Those screens reuse the image composed by the game where possible.
+- **Battle transitions and camera motion on Windows.** The entry sweep runs at the selected presentation rate and preserves the widescreen backdrop. When a moving 3D view would open a slim gap along the screen edge, the renderer repairs that area and keeps the rest of the camera motion interpolated. Full-motion videos retain their original timing.
+- **Fixed frame-rate choices on Windows.** The former Unlimited setting migrates to Auto. Title screens, menus, results and Triple Triad share the selected presentation cadence.
 - **Battle mesh continuity.** Depth-tested textured additive passes now receive the same vertex checks as opaque meshes. When a match would stretch a triangle between actors, the affected mesh keeps its native pose for that tick.
 - **Vertical edges during camera transitions.** Windows 1.4.24 checks the top and bottom of the world map and battle arena during interpolation. If an intermediate frame would open a gap, the mod displays the game frame for that interval.
 - **Battle camera cuts.** Windows 1.4.23 keeps the original cut between shots during battle intros. Continuous camera movement still interpolates. The mod also checks for small gaps at the bottom of the arena in widescreen.
@@ -49,7 +50,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 - **Widescreen battle menus.** Names stay readable while the Blue Magic list slides between pages. The Windows test run covered all 16 Blue Magic spells and all 8 ammo types.
 - **Battle limits and flashes.** Camera moves keep the arena covered when an intermediate frame would expose a seam. Full-screen shatter effects reach the widescreen edges. We checked the battle limits of all eleven playable characters on Windows.
 - **Battle widescreen fixes.** The command cursor stays beside its text in timed battles. A charging GF's name, HP panel and gauge stay aligned, and full-screen flashes, distorted overlays and summon backgrounds extend to both edges. [Issue #2](https://github.com/Faga250885/FF8-Reborn/issues/2)
-- **Automatic frame rate on Windows.** **Display → Frame rate** offers Auto, Original, 30, 60, 90, 120 FPS and Unlimited. The 120 FPS target is experimental in both Auto and manual mode.
+- **Automatic frame rate on Windows.** **Display → Frame rate** offers Auto, Original, 30, 60, 90 and 120 FPS. The 120 FPS target is experimental in both Auto and manual mode.
 - **Battle zooms and camera turns.** Windows 1.4.22 interpolates 3D battle geometry using camera depth to prevent stretching caused by perspective in generated frames. Native battle poses and HUD layout are preserved.
 - **Full language support.** Windows **v1.4.14** and Steam Deck **v1.4.0-deck.20** localize all three menu sections, filter labels, confirmations and on-screen notices. In Windows testing, F8 opened in all six languages and switching between widescreen and 4:3 took effect live on the world map. [View the language gallery](docs/GALLERY.md#menu-languages)
 - **Classic settings menu.** The three sections sit across the top, with the active section highlighted. Press Up on the first option to move the hand to the section row, then Left or Right to choose and A or Enter to open. While navigating settings, L1 and R1 switch sections immediately. The controls panel shows directional-pad and button icons.

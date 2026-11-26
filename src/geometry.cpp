@@ -20,7 +20,6 @@
 #include <string>
 #include <cstddef>
 #include <atomic>
-#include <limits>
 #include "update_version.h"
 #include "engine_layout.h"
 #include "menu_locale.h"
@@ -68,8 +67,7 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 #include "controller_bindings.h"
 struct DisplaySettings {
     static constexpr int auto_fps=-1;
-    static constexpr int unlimited_fps=-2;
-    static constexpr int frame_rates[]={0,30,60,90,120,unlimited_fps,auto_fps};
+    static constexpr int frame_rates[]={0,30,60,90,120,auto_fps};
     static constexpr int frame_rate_count=deck_renderer?2:int(std::size(frame_rates));
     int fps=deck_renderer?0:60;
     int fps_setting=deck_renderer?0:auto_fps;
@@ -97,9 +95,6 @@ struct DisplaySettings {
     void load(const wchar_t* path);
 } static display_settings;
 static bool deck_fixed_rate(){return deck_renderer&&display_settings.fps==30;}
-static bool unlimited_rendering(){
-    return !deck_renderer&&display_settings.fps==DisplaySettings::unlimited_fps;
-}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
 void DisplaySettings::load(const wchar_t* path){
@@ -111,6 +106,7 @@ void DisplaySettings::load(const wchar_t* path){
     }else{
         const auto end=std::end(frame_rates);
         select_fps(std::find(std::begin(frame_rates),end,value)==end?auto_fps:value);
+        if(value==-2)retro_panel::persist(path,retro,0,-1,retro_panel::FPS,auto_fps);
     }
     wide=GetPrivateProfileIntW(L"Display",L"Wide",1,path)!=0;
     atlas=GetPrivateProfileIntW(L"Display",L"Atlas",1,path)!=0;
@@ -177,6 +173,9 @@ struct DeckSwapInterval {
     }
 };
 static DeckSwapInterval deck_interval;
+// Keep a brief native fallback from toggling the driver's presentation mode
+// twice during a camera change, while restoring the original setting promptly.
+static double windows_interval_until=0,windows_interval_retry=0;
 static const unsigned MAX_VERTICES=300000,MAX_OPS=12000;
 
 static double now() { LARGE_INTEGER t;QueryPerformanceCounter(&t);return double(t.QuadPart)/frequency.QuadPart; }
@@ -668,6 +667,20 @@ struct Op {bool indexed_complete=false;GLbitfield clear=0;GLenum mode=0;GLuint t
 struct Target {Surface seed;GLuint texture=0;int w=0,h=0;bool active=false,depth=false,stencil=false;GLenum format=GL_RGBA8;GLint min_filter=GL_LINEAR,mag_filter=GL_LINEAR,wrap_s=GL_CLAMP_TO_EDGE,wrap_t=GL_CLAMP_TO_EDGE;};
 #include "native_tracks.h"
 struct MatchInput;
+struct SceneEdgeRepair {
+    static constexpr std::array<float,8> phases={1.f,.0625f,.125f,.3125f,.5f,.6875f,.875f,.9375f};
+    std::array<uint64_t,phases.size()> top{},bottom{};
+    bool needed()const{
+        for(unsigned i=1;i<phases.size();++i)if(top[i]||bottom[i])return true;
+        return false;
+    }
+    std::pair<uint64_t,uint64_t> mask(float alpha)const{
+        unsigned lower=1;
+        while(lower+1<phases.size()&&alpha>phases[lower+1])++lower;
+        const unsigned upper=lower+1<phases.size()?lower+1:0;
+        return {top[lower]|top[upper],bottom[lower]|bottom[upper]};
+    }
+};
 struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::array<float,2>> stride_velocity;std::vector<Op> ops;std::unordered_map<GLuint,Target> targets;std::unordered_map<GLuint,GLuint> framebuffer_for_target;bool valid=true,started=false;unsigned vertex_count=0;int w=0,h=0,mode=-1,infirmary_room=-1,infirmary_top=-1;
     std::unordered_map<GLuint,GLuint> depth_texture_for_target;
     mutable std::unordered_map<GLuint,std::array<unsigned,3>> seed_clears;
@@ -684,6 +697,7 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     int layout()const{return layout_override<0?mode:layout_override;}
     StrideFollow stride_follow;float stride_dt=1.f/30;
     bool reactive_sides=false,camera_cut=false,field_movie=false;
+    SceneEdgeRepair border_repair;
     GLuint native_field_target=0;
     bool field_layout_only=false;};
 static Frame building,previous,current;static Surface test_target,backup,reference_target,parity_samples;
@@ -1009,6 +1023,7 @@ static void qa_stage(int reason){
 }
 static void service_at(int,double earliest=next_output);
 static bool present_during_wait(bool force_previous=false);
+static void present_before_next_title_frame(double start);
 static void pump_due(double earliest=next_output);
 static double world_capture_time=0;
 static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
@@ -1119,7 +1134,13 @@ static FieldPrefixCache field_prefix;
 #include "vertex_stream_policy.h"
 static VertexStreamPolicy vertex_policy;
 static GLuint vertex_stream=0;
-static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=false){
+struct EncounterReplay {
+    GLuint feedback;
+    const Surface* start;
+    int lines;
+};
+static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=false,
+                    const EncounterReplay* encounter=nullptr){
     if(current.camera_cut)alpha=1;
     WideView view(current,widescreen);
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
@@ -1151,8 +1172,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
         auto existing=current.targets.find(it->first);
         if(existing==current.targets.end()||!existing->second.active){release(it->second);it=replay_targets.erase(it);}else ++it;}
     for(auto&entry:current.targets){auto&t=entry.second;if(!t.active)continue;GLuint dest=target;
+        bool new_target=false;
         if(entry.first){auto&copy=replay_targets[entry.first];
             const bool resized=resize(copy,t.w,t.h,t.depth,true,t.format,t.stencil);
+            new_target=resized;
             dest=copy.fbo;
             auto depth=current.depth_texture_for_target.find(entry.first);
             attach_replay_depth(entry.first,copy,t,depth==current.depth_texture_for_target.end()?0:depth->second,resized);
@@ -1164,6 +1187,16 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
             restore_prefix=false;
         }
         GLbitfield seed=seed_plan.required(current,entry.first,t);
+        if(encounter&&entry.first==encounter->feedback){
+            if(encounter->start){
+                const auto& background=*encounter->start;
+                const int inner=int(std::lround(t.h*encounter->lines/480.));
+                blit(background.fbo,dest,background.w,background.h,t.w,inner,GL_COLOR_BUFFER_BIT,0,0,(t.h-inner)/2);
+            }else demand(!new_target,"encounter feedback reset");
+            // The original flash and sweep modify last tick's color in place.
+            // Keep the widescreen feedback within the private replay target.
+            seed&=~GL_COLOR_BUFFER_BIT;
+        }
         const auto stored=current.captured_seed_planes.find(entry.first);
         if(stored!=current.captured_seed_planes.end())seed&=stored->second;
         if(seed)blit(t.seed.fbo,dest,t.w,t.h,t.w,t.h,seed);
@@ -1272,7 +1305,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     // time for the 15 Hz simulation, even when a cached replay alone is cheaper.
     const bool reuse_draw_state=!view.full_map&&(deck_renderer?deck_gameplay:
         gameplay&&!current.menu_edge&&current.travel!=Frame::Travel::fade&&
-        (current.mode!=3||(display_settings.fps!=120&&!unlimited_rendering())));
+        (current.mode!=3||display_settings.fps!=120));
     const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
     SamplerState replay_samplers;
     auto draw_op=[&](const Op&op){
@@ -1304,6 +1337,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
         if(!last_draw||memcmp(&op.raster,&last_draw->raster,sizeof(op.raster)))apply_extra(op.raster);
         last_draw=&op;
         if(!same_scene_view)view.apply(op);
+        if(encounter&&!op.target&&!op.clear){
+            const int canvas_h=int(std::lround(height*480./encounter->lines));
+            glViewport(0,(height-canvas_h)/2,width,canvas_h);
+        }
         if(atlas_draw==&op){bind_world_map_detail(op.state.texture[0]);last_draw=nullptr;replay_samplers.clear();}
         if(op.clear){real_clear(op.clear);return;}
         // Card transitions intentionally switch between client arrays. Use
@@ -1385,11 +1422,67 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
 static int game_mode();
 static int presentation_mode=-1;
 static Surface composed_screen;
+static Surface encounter_previous_screen;
+static Surface scene_edge_sample;
 static bool composed_presenting=false;
+static bool encounter_blending=false;
+static void fill_scene_edges(GLuint target,float alpha){
+    if(deck_renderer||alpha>=1||!display_settings.wide||height<16)return;
+    const auto masks=current.border_repair.mask(alpha);
+    if(!masks.first&&!masks.second)return;
+    const int band=std::clamp(int(std::ceil(height*8./(current.mode==3?432:448))),1,height/4);
+    resize(scene_edge_sample,width,1,false);
+    Guard guard(Frame{});
+    glDisable(GL_SCISSOR_TEST);
+    auto extend=[&](uint64_t columns,bool top){
+        if(!columns)return;
+        const int source_row=top?height-band-1:band;
+        pBindFramebuffer(GL_READ_FRAMEBUFFER,target);glReadBuffer(target?GL_COLOR_ATTACHMENT0:GL_BACK);
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,scene_edge_sample.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        pBlitFramebuffer(0,source_row,width,source_row+1,0,0,width,1,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+        pBindFramebuffer(GL_READ_FRAMEBUFFER,scene_edge_sample.fbo);glReadBuffer(GL_COLOR_ATTACHMENT0);
+        pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);glDrawBuffer(target?GL_COLOR_ATTACHMENT0:GL_BACK);
+        for(unsigned i=0;i<64;){
+            if(!(columns&(uint64_t{1}<<i))){++i;continue;}
+            const unsigned start=i++;
+            while(i<64&&(columns&(uint64_t{1}<<i)))++i;
+            const int left=width*start/64,right=width*i/64;
+            const int y=top?height-band:0;
+            pBlitFramebuffer(left,0,right,1,left,y,right,y+band,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+        }
+    };
+    extend(masks.first,true);
+    extend(masks.second,false);
+}
+static void draw_encounter_blend(GLuint target,float alpha){
+    if(alpha>=1||!encounter_previous_screen.fbo)return;
+    Guard guard(Frame{});
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,target);
+    glDrawBuffer(target?GL_COLOR_ATTACHMENT0:GL_BACK);
+    glViewport(0,0,width,height);
+    glDisable(GL_SCISSOR_TEST);glDisable(GL_DEPTH_TEST);glDisable(GL_STENCIL_TEST);
+    glDisable(GL_ALPHA_TEST);glDisable(GL_CULL_FACE);glDisable(GL_LIGHTING);glDisable(GL_FOG);
+    glColorMask(1,1,1,1);pUseProgram(0);
+    for(int i=1;i<4;++i){pActiveTexture(GL_TEXTURE0+i);glDisable(GL_TEXTURE_2D);}
+    pActiveTexture(GL_TEXTURE0);glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D,encounter_previous_screen.color);
+    glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
+    glMatrixMode(GL_TEXTURE);glLoadIdentity();
+    glMatrixMode(GL_PROJECTION);glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);glLoadIdentity();
+    glEnable(GL_BLEND);pBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+    pBlendColor(0,0,0,1-alpha);
+    pBlendFuncSeparate(GL_CONSTANT_ALPHA,GL_ONE_MINUS_CONSTANT_ALPHA,GL_ZERO,GL_ONE);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0,0);glVertex2f(-1,-1);
+    glTexCoord2f(1,0);glVertex2f(1,-1);
+    glTexCoord2f(1,1);glVertex2f(1,1);
+    glTexCoord2f(0,1);glVertex2f(-1,1);
+    glEnd();
+}
 static std::vector<OutgoingDraw> checkpoint_outgoing;
 #include "presentation_clock.h"
 static double output_period(){
-    if(unlimited_rendering())return 0.;
     const double requested=1./std::max(display_settings.fps,1);
     return deck_renderer?std::max(requested,presentation_clock.refresh_period):requested;
 }
@@ -1409,7 +1502,9 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     if(composed_presenting){
         blit(composed_screen.fbo,target,width,height,width,height,GL_COLOR_BUFFER_BIT);
         displayed_source=sources;
-        return 1;
+        const float phase=encounter_blending?float(std::clamp((t-origin)/period,0.,1.)):1.f;
+        if(encounter_blending)draw_encounter_blend(target,phase);
+        return phase;
     }
     if(field_prefix.active){
         const double same_pair_end=old?std::min(origin,previous_origin+previous_period):origin+period;
@@ -1417,7 +1512,7 @@ static float replay_presentation(GLuint target,bool force_previous=false){
     }
     float alpha=(float)std::clamp((t-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
     if(old){std::swap(current,previous);std::swap(outgoing_draws,checkpoint_outgoing);}
-    try{alpha=replay(target,alpha,true,true);}
+    try{alpha=replay(target,alpha,true,true);fill_scene_edges(target,alpha);}
     catch(...){if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}throw;}
     if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}
     displayed_source=sources-(old&&sources?1:0);return alpha;
@@ -1427,7 +1522,7 @@ static void finish_generated_output(){
     next_output=presentation_clock.next_slot(next_output,now(),output_period());
 }
 static void matching_pump(){
-    if(unlimited_rendering()||deck_source_budget.busy||deck_needs_native_swap)return;
+    if(deck_source_budget.busy||deck_needs_native_swap)return;
     present_reason=6;qa_stage(6);
     // Publish is pending: previous still contains the fully prepared pair
     // shown on the preceding tick. Temporarily replay it at CPU checkpoints.
@@ -1468,6 +1563,7 @@ static void qa_native_image(int,int);
 #include "deck_output_audit.h"
 static void track_display_refresh(HDC handle,double time){
     static double next_check=0;
+    static unsigned last_hz=UINT_MAX;
     if(time<next_check)return;
     next_check=time+2.;
     MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);
@@ -1477,6 +1573,12 @@ static void track_display_refresh(HDC handle,double time){
         mode.dmDisplayFrequency:0;
     presentation_clock.refresh_period=hz>1?1./hz:0;
     display_settings.monitor_refresh(hz);
+    if(hz!=last_hz){
+        last_hz=hz;
+        char entry[96];
+        snprintf(entry,sizeof(entry),"Windows display refresh: %u Hz | native swap interval %d\n",hz,saved_interval);
+        log(entry);
+    }
 }
 static bool begin_retro_frame(HDC handle,int& w,int& h,unsigned* drawn_notice=nullptr,bool outer_restores=false){
     if(drawn_notice)*drawn_notice=0;
@@ -1797,6 +1899,7 @@ static bool present_native_world(GLuint native=0,GLuint output=0){
 static void reset_building(){
     building.native_field_target=0;building.field_layout_only=false;
     building.compact_card_view={};
+    building.border_repair={};
     if(deck_renderer)draw_storage.retire(building,deck_fixed_rate()&&building.mode==3);
     building.match_input.reset();
     building.seed_clears.clear();
@@ -1899,7 +2002,7 @@ static int game_mode(){
 #ifdef GEO_NATIVE_CAPTURE
     // The encounter effect shares guest mode 3 with combat even at 4:3.
     // Only that ambiguous word needs an extra lookup on the native 4:3 path.
-    if(display_settings.wide||(deck_fixed_rate()&&value==3)){
+    if(display_settings.wide||(display_settings.fps&&value==3)){
         uint32_t obj=0,loop=0;
         if(native_pose::fetch(engine_layout->main_object,&obj,4)&&obj&&obj<0x10000000&&
            native_pose::fetch(obj+0xb40,&loop,4)&&loop==engine_layout->encounter_loop)return encounter_transition;
@@ -1908,6 +2011,8 @@ static int game_mode(){
     return value;
 }
 static Surface encounter_native;
+static Surface encounter_background;
+static GLuint encounter_feedback=0;
 static const Op* final_surface_copy(const Frame& f,WideView::Bounds* footprint=nullptr){
     if(!f.valid)return nullptr;
     for(auto it=f.ops.rbegin();it!=f.ops.rend();++it){
@@ -2044,14 +2149,57 @@ static bool present_native_layout(const Frame& f,const WideView& v,GLuint target
     }
     return true;
 }
-static void present_encounter(int w,int h,int lines){
+static bool present_encounter(int w,int h,int lines){
     const int native_width=int(std::lround(h*4./3.));
-    if(w<=native_width+2||h<1)return;
+    if(w<=native_width+2||h<1)return false;
     auto&native=encounter_native;
     resize(native,w,h,false);
     blit(0,native.fbo,w,h,w,h,GL_COLOR_BUFFER_BIT);
-    blit(native.fbo,0,w,h,w,h,GL_COLOR_BUFFER_BIT,(w-native_width)/2,
-         int(std::lround(h*(480-lines)/960.)));
+    const auto& ops=current.ops;
+    const bool known=current.valid&&ops.size()==6&&ops[0].target&&ops[0].clear&&
+        !(ops[0].clear&GL_COLOR_BUFFER_BIT)&&ops[1].target==ops[0].target&&
+        ops[1].state.blend&&ops[1].state.dst_rgb==GL_ONE&&ops[4].target==0&&
+        ops[4].clear==GL_COLOR_BUFFER_BIT&&ops[5].target==0&&ops[5].mode==GL_TRIANGLES&&
+        ops[5].vertices.size()==6&&current.w==w&&current.h==h;
+    if(known){
+        try{
+            const GLuint feedback=ops[0].target;
+            const Surface* seed=nullptr;
+            if(encounter_feedback!=feedback){
+                resize(encounter_background,w,h);
+                if(previous.valid&&previous.started&&previous.w==w&&previous.h==h&&
+                   (previous.mode==1||previous.mode==2)){
+                    std::swap(current,previous);
+                    try{replay(encounter_background.fbo,1,true);}
+                    catch(...){std::swap(current,previous);throw;}
+                    std::swap(current,previous);
+                }else if(previous.mode==1||previous.mode==2){
+                    Guard saved(Frame{});
+                    pBindFramebuffer(GL_READ_FRAMEBUFFER,0);glReadBuffer(GL_FRONT);
+                    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,encounter_background.fbo);glDrawBuffer(GL_COLOR_ATTACHMENT0);
+                    glDisable(GL_SCISSOR_TEST);
+                    pBlitFramebuffer(0,0,w,h,0,0,w,h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+                }
+                if(previous.mode==1||previous.mode==2)seed=&encounter_background;
+            }
+            if(seed||encounter_feedback==feedback){
+                const EncounterReplay effect{feedback,seed,lines};
+                replay(0,1,false,false,&effect);
+                encounter_feedback=feedback;
+                return true;
+            }
+        }catch(const std::exception& e){log("Encounter replay fallback: ");log(e.what());log("\n");}
+    }
+    encounter_feedback=0;
+    // Preserve the aspect ratio when a transition uses an unknown draw sequence.
+    const int fit=std::min(w,int(std::lround(native_width*480./lines)));
+    Guard guard(Frame{});
+    pBindFramebuffer(GL_DRAW_FRAMEBUFFER,0);
+    glDisable(GL_SCISSOR_TEST);glColorMask(1,1,1,1);
+    glClearColor(0,0,0,1);real_clear(GL_COLOR_BUFFER_BIT);
+    blit(native.fbo,0,w,h,fit,h,GL_COLOR_BUFFER_BIT,(w-native_width)/2,
+         int(std::lround(h*(480-lines)/960.)),0,(w-fit)/2);
+    return true;
 }
 #ifdef GEO_AUTOTEST
 #include "test_capture.h"
@@ -2071,6 +2219,11 @@ static BOOL WINAPI swap_hook(HDC handle){
     qa_stage(7);
     double t=now(),dt=last_swap?t-last_swap:0;last_swap=t;sources++;bool was_presenting=can_present;can_present=false;bool saved=false;
     const bool was_composed=composed_presenting&&was_presenting;
+    // A cached 2D image has a presentation deadline but no geometry pair
+    // or interpolation origin that the next 3D replay can inherit.
+    const bool had_geometry=was_presenting&&!was_composed;
+    const bool was_encounter_blending=encounter_blending&&was_composed;
+    encounter_blending=false;
     composed_presenting=false;
     if(deck_renderer)deck_source_budget.outputs_at_tick=outputs;
     const double pair_work_start=deck_renderer?matching_seconds+parity_seconds:0;
@@ -2151,7 +2304,11 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(native_pose::fetch(engine_layout->display_region,&region,4)&&(region==448||region==224))lines=448;
 #endif
             RECT area{};
-            if(GetClientRect(WindowFromDC(handle),&area))present_encounter(area.right,area.bottom,lines);
+            if(GetClientRect(WindowFromDC(handle),&area))native_scaled=present_encounter(area.right,area.bottom,lines);
+        }
+        if(mode!=encounter_transition&&encounter_background.fbo){
+            encounter_feedback=0;
+            release(encounter_background);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
         if(deck_fixed_rate()&&enabled&&mode==3&&
@@ -2220,7 +2377,7 @@ static BOOL WINAPI swap_hook(HDC handle){
                 world_parity_times.flush+=now()-flushing;
                 parity_seconds+=now()-began;
             }
-            matching_checkpoint=was_presenting&&pair&&presentation_mode==mode?matching_pump:nullptr;
+            matching_checkpoint=had_geometry&&pair&&presentation_mode==mode?matching_pump:nullptr;
             double phase=now();if(mode==6)match_menu_frames();else match_frames(mode,&pair_work);matching_seconds+=now()-phase;matching_count++;
             if(matching_checkpoint)matching_checkpoint();matching_checkpoint=nullptr;
             #ifdef GEO_AUTOTEST
@@ -2228,7 +2385,7 @@ static BOOL WINAPI swap_hook(HDC handle){
 #endif
             // A GPU readback can span the next deadline. Finish one prepared
             // intermediate frame before blocking for the endpoint comparison.
-            if(!deck_source_budget.busy&&was_presenting&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
+            if(!deck_source_budget.busy&&had_geometry&&pair&&presentation_mode==mode&&now()+.002>=next_output&&now()-origin<period*1.5){
                 present_reason=9;qa_stage(9);present_during_wait(true);}
             qa_stage(10);phase=now();
             const bool valid=early_samples?collect_parity(submit_error,queued_world):parity(captured,capture_error);
@@ -2261,7 +2418,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             }
         }
         if(can_present){
-            prepared_previous=was_presenting&&pair&&presentation_mode==mode;
+            prepared_previous=had_geometry&&pair&&presentation_mode==mode;
             presentation_clock.update(t,dt,prepared_previous);origin=presentation_clock.origin;period=presentation_clock.period;
 #ifdef GEO_AUTOTEST
             test_timeline(t,dt,prepared_previous);
@@ -2294,39 +2451,54 @@ static BOOL WINAPI swap_hook(HDC handle){
         }
         catch(const std::exception& e){log(e.what());log("\n");}
     }
-    // These screens are already composed by the game. Reusing their color
-    // buffer gives them the same presentation setting without interpolating
-    // text, card reveals, or other authored 2D animation.
+    // Keep the selected presentation cadence during native layout, menu
+    // changes, and the single ticks where geometry has no verified pair.
+    // Preserve both full-motion video and actors composited onto a movie.
+    const bool gameplay_screen=current.mode>=1&&current.mode<=3&&
+        (current.mode!=1||(current.valid&&!previous.field_movie));
     if(!deck_renderer&&enabled&&display_settings.fps&&published&&!can_present&&!hold_display&&
-       !current.field_movie&&(current.opening!=Frame::Opening::none||current.mode==after_battle_mode||
-       current.mode==6||current.mode==card_transition::mode||
-       (current.mode==2&&native_atlas_possible()))){
+       !current.field_movie&&(gameplay_screen||current.opening!=Frame::Opening::none||current.mode==after_battle_mode||
+       current.mode==6||current.mode==card_transition::mode||current.mode==encounter_transition)){
         try{
             RECT area{};
             if(GetClientRect(WindowFromDC(handle),&area)&&area.right>0&&area.bottom>0&&
                area.right<=8192&&area.bottom<=8192){
                 width=area.right;height=area.bottom;
+                encounter_blending=current.mode==encounter_transition&&was_encounter_blending&&
+                    composed_screen.w==width&&composed_screen.h==height;
+                if(encounter_blending){
+                    resize(encounter_previous_screen,width,height,false,true);
+                    blit(composed_screen.fbo,encounter_previous_screen.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
+                }
                 resize(composed_screen,width,height,false);
                 blit(0,composed_screen.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
-                if(!was_composed||presentation_mode!=current.mode||previous.opening!=current.opening){
-                    next_output=t;
-                    if(unlimited_rendering())presentation_clock.replay_cost=PresentationClock{}.replay_cost;
-                }
+                if(!was_presenting)next_output=t;
                 presentation_mode=current.mode;
                 prepared_previous=false;
-                origin=t;period=dt>=.004&&dt<=.10?dt:1./60.;
+                origin=t;period=current.mode==encounter_transition?std::clamp(dt,1./40.,1./20.):
+                    dt>=.004&&dt<=.10?dt:1./60.;
                 composed_presenting=can_present=true;
                 output_due=now()>=next_output;
                 displayed_alpha=1;
+                if(output_due)presentation_clock.draw_started=t;
+                if(encounter_blending&&output_due)displayed_alpha=replay_presentation(0);
+                encounter_blending=current.mode==encounter_transition;
             }
         }catch(const std::exception& e){log("2D presentation fallback: ");log(e.what());log("\n");}
     }
     if(!composed_presenting&&composed_screen.fbo)release(composed_screen);
-    const bool unpaced=deck_renderer?deck_interval.keep(deck_scene,current.w,current.h,can_present,t):can_present;
+    if(!encounter_blending&&encounter_previous_screen.fbo)release(encounter_previous_screen);
+    bool unpaced=deck_renderer?deck_interval.keep(deck_scene,current.w,current.h,can_present,t):can_present;
+    if(!deck_renderer){
+        if(!enabled||!display_settings.fps||current.field_movie)windows_interval_until=0;
+        else if(can_present)windows_interval_until=t+.25;
+        unpaced=can_present||t<windows_interval_until;
+    }
     if((uintptr_t)set_interval>3&&(uintptr_t)set_interval!=UINTPTR_MAX){
         if(unpaced==interval_changed){
             if(deck_renderer)deck_interval.retry_after=0;
-        }else if(!deck_renderer||t>=deck_interval.retry_after){
+            else windows_interval_retry=0;
+        }else if(t>=(deck_renderer?deck_interval.retry_after:windows_interval_retry)){
             if(deck_renderer&&saved_interval==0)interval_changed=unpaced;
             else{
                 const int requested=unpaced?0:saved_interval;
@@ -2338,7 +2510,8 @@ static BOOL WINAPI swap_hook(HDC handle){
                     else{++deck_interval.failures;deck_interval.retry_after=finished+1.;}
                     deck_cadence.record({DeckCadence::EventKind::swap_interval,finished,finished-sync_start,
                         0,sources,current.mode,requested,0,applied!=FALSE});
-                }else interval_changed=unpaced;
+                }else if(applied){interval_changed=unpaced;windows_interval_retry=0;}
+                else{windows_interval_retry=now()+1.;log("Windows driver declined swap interval change\n");}
             }
         }
     }
@@ -2367,7 +2540,8 @@ static BOOL WINAPI swap_hook(HDC handle){
         native_frame_wait.start(current.mode,t,dt,layout_seconds+filter_seconds+
             (direct_complete&&current.mode==2?deck_world.wait_credit:0.),true);
     else {
-        native_frame_wait.start(composed_presenting?6:presentation_mode,t,dt,now()-t,
+        const int wait_mode=composed_presenting&&current.mode>3&&current.mode!=encounter_transition?6:presentation_mode;
+        native_frame_wait.start(wait_mode,t,dt,now()-t,
                                 can_present&&(prepared_previous||(composed_presenting&&was_composed)));
         // The limiter delay belongs to this tick. The previous tick may have
         // been punctual even if today's matching/validation used most of the
@@ -2378,9 +2552,9 @@ static BOOL WINAPI swap_hook(HDC handle){
             native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
         }
     }
-    if(unlimited_rendering())
-        uncapped_source.observe(dt,native_frame_wait.period,can_present&&
-            (prepared_previous||(composed_presenting&&was_composed)));
+    if(!deck_renderer&&composed_presenting&&was_composed&&display_settings.fps>60&&
+       current.opening!=Frame::Opening::none&&current.opening==previous.opening&&dt>.008&&dt<.025)
+        present_before_next_title_frame(t);
     if(measure_world||(direct_complete&&dt>0&&dt<.25)){
         auto& w=world_frame_stats;
         ++w.frames;w.direct_frames+=direct_complete;w.draws+=direct_complete?deck_world.draws:unsigned(current.ops.size());w.intervals+=dt;
@@ -2438,22 +2612,12 @@ struct IdleBackbuffer {
         return target!=frame.targets.end()&&target->second.active&&frame.w==width&&frame.h==height;
     }
 };
-static bool uncapped_source_fits(double time){
-    // Complete 2D pages can be resubmitted even when the engine issues its
-    // first draw just after the preceding tick's deadline. The observed
-    // source budget still limits those copies and backs off on slow ticks.
-    const double deadline=composed_presenting?std::numeric_limits<double>::infinity():
-        native_frame_wait.arrival+native_frame_wait.period;
-    return uncapped_source.fits(time,presentation_clock.replay_cost,deadline);
-}
 static bool present_during_wait(bool force_previous){
     // Snapshot and restore the entire native BACK buffer (including depth),
     // so extra swaps never become input to incremental game rendering.
     auto window=IdleBackbuffer::active;
     if(deck_needs_native_swap)return false;
     const double started=now();
-    const bool spend_uncapped=unlimited_rendering()&&!window;
-    if(spend_uncapped&&!uncapped_source_fits(started))return false;
     // Each replay seeds its own drawable before drawing. During a native idle
     // window restore the game's buffer once, immediately before it resumes.
     const bool seeded=composed_presenting||(IdleBackbuffer::reinitializes_drawable(current)&&
@@ -2477,10 +2641,6 @@ static bool present_during_wait(bool force_previous){
     if(!swapped)return false;
     const double finished=now(),elapsed=finished-started;
     presentation_clock.measured_replay(elapsed);
-    if(spend_uncapped){
-        uncapped_source.spent+=elapsed;
-        native_frame_wait.draw_credit+=elapsed;
-    }
     if(deck_fixed_rate())deck_wait_recovery.extra(finished,elapsed);
     finish_generated_output();
     return true;
@@ -2495,7 +2655,6 @@ static void pump_due(double earliest){
 }
 static void service_at(int reason,double earliest){
     if(GetCurrentThreadId()!=thread||!loaded||inside||!can_present)return;
-    if(unlimited_rendering()&&reason!=4&&!uncapped_source_fits(now()))return;
     const bool busy=deck_source_budget.busy&&reason!=4;
     if(busy){
         if(!deck_fixed_rate()||presentation_mode!=3||!can_present)return;
@@ -2504,12 +2663,24 @@ static void service_at(int reason,double earliest){
     }
     present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
+static void present_before_next_title_frame(double start){
+    // Opening pages reach the GL hooks in bursts. Use at most one more
+    // presentation slot in the observed 60 Hz source interval.
+    if(!output_timer)return;
+    const double time=now(),slot=std::max(time,next_output),end=start+1./60.-.0015;
+    if(!presentation_clock.fits_wait(slot,end))return;
+    if(slot>time){
+        LARGE_INTEGER due;due.QuadPart=-(LONGLONG)std::max(1.,std::ceil((slot-time)*1e7));
+        if(!SetWaitableTimer(output_timer,&due,0,nullptr,nullptr,FALSE)||
+           real_wait(output_timer,INFINITE)!=WAIT_OBJECT_0)return;
+    }
+    if(presentation_clock.fits_wait(now(),end))service_at(4,slot);
+}
 static bool pacing_callback=false;
 static BOOL WINAPI counter_hook(LARGE_INTEGER*value){
     BOOL result=real_counter(value);
     if(!result||GetCurrentThreadId()!=thread||!can_present||inside||pacing_callback||
        value->QuadPart<double(frequency.QuadPart)*next_output)return result;
-    if(unlimited_rendering()&&!uncapped_source_fits(double(value->QuadPart)/frequency.QuadPart))return result;
     pacing_callback=true;unsigned prior=outputs;service_at(3);clock_presents+=outputs-prior;pacing_callback=false;
     return real_counter(value);
 }
@@ -2605,20 +2776,6 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
     IdleBackbuffer idle_backup;
     auto remaining_ms=[&]()->DWORD{return timeout==INFINITE?INFINITE:
         (DWORD)std::max(0.,std::ceil((end-now())*1000.));};
-    if(unlimited_rendering()){
-        while(can_present&&now()-origin<=period*1.5&&
-              (timeout==INFINITE||presentation_clock.fits_wait(now(),end))){
-            const DWORD ready=real_wait(handle,0);
-            if(ready!=WAIT_TIMEOUT)return ready;
-            try{if(!present_during_wait())break;}
-            catch(const std::exception& e){
-                log("idle presentation fallback: ");log(e.what());log("\n");
-                can_present=false;break;
-            }
-        }
-        idle_backup.restore();
-        return real_wait(handle,remaining_ms());
-    }
     if(output_timer){
         HANDLE handles[]={handle,output_timer};
         for(;;){double t=now();DWORD remaining=INFINITE;
@@ -2659,7 +2816,8 @@ static void forget_deleted_context(){
     atlas_detail_texture=0;atlas_allocation_attempted=false;native_atlas_view=unread_atlas_view;deck_draw_mode=unknown_draw_mode;deck_world={};world_state::state={};world_state::tracking=false;
     retro_display::forget();
     composed_screen={};composed_presenting=false;
-    deck_source_budget={};uncapped_source={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
+    encounter_background={};encounter_previous_screen={};scene_edge_sample={};encounter_feedback=0;encounter_blending=false;
+    deck_source_budget={};deck_native_layout_wait=false;world_capture_time=0;world_frame_stats={};
     world_original_frames=0;world_original_intervals=0;
     if(deck_renderer&&deck_cadence.event_count)deck_cadence.report();
     deck_cadence={};deck_black={};deck_output={};deck_needs_native_swap=false;
@@ -2685,6 +2843,7 @@ static void forget_deleted_context(){
     presentation_mode=-1;capture_target=0;test_capture_requested=false;
     origin=next_output=last_swap=previous_origin=0;period=previous_period=1./30.;
     width=height=0;interval_changed=false;set_interval=nullptr;deck_interval={};
+    windows_interval_until=windows_interval_retry=0;
     log("render context deleted; discarded old scene and GPU caches, ready to reinitialize\n");
 }
 static BOOL WINAPI delete_context_hook(HGLRC rc){

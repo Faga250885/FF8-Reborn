@@ -41,10 +41,14 @@ int main(){
     demand(protect_battle_edges({},bat).empty(),"full-screen effect classified as an actor mesh");
 
     // Foreshortening alone can make a rigid edge shrink almost to a point.
-    auto horizontal=vertex(360,240),center=vertex(320,240),toward=vertex(320,240,1125);
+    auto horizontal=vertex(360,240),center=vertex(320,240),toward=vertex(320,240,1039.0625f);
     demand(!battle_edge_stretches(center.p,horizontal.p,center.p,toward.p),"legitimate rotation");
     auto near_a=vertex(320,240,200),near_b=vertex(520,240,200);
     demand(!battle_edge_stretches(center.p,horizontal.p,near_a.p,near_b.p),"legitimate zoom");
+    const auto old_left=vertex(80,120,680),old_right=vertex(88,120,1700);
+    const auto new_left=vertex(210,120,1700),new_right=vertex(218,120,680);
+    demand(battle_edge_overshoots(new_left.p,new_right.p,old_left.p,old_right.p),
+           "short endpoints hid a stretched intermediate edge");
 
     // A camera dolly shifts one rigid edge with two different camera depths.
     // Screen-space interpolation alone incorrectly changes its 3D length.
@@ -129,6 +133,8 @@ int main(){
     demand(!scene_loses_vertical_edge(battle,{}),"continuous floor rejected");
     for(auto& p:battle.ops.front().prior_positions)p[1]-=28;
     demand(scene_loses_vertical_edge(battle,{}),"interpolation exposed a strip beneath the floor");
+    const auto edge_masks=scene_edge_repair(battle,{}).mask(.5f);
+    demand(!edge_masks.first&&edge_masks.second,"floor gap changed the upper edge");
     demand(!scene_loses_vertical_edge(battle,{{floor,0}}),"departing floor already covers the strip");
     battle.ops.front().vertices[1].p[1]=432;
     battle.ops.front().vertices[4].p[1]=432;

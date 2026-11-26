@@ -1,16 +1,16 @@
 // A fast tilt can expose small wedges above or below the reconstructed
-// scene. Reuse the game frame if interpolation would open a gap in an edge
-// that the game covers.
-static bool scene_loses_vertical_edge(const Frame& frame,const std::vector<OutgoingDraw>& departing){
-    if(frame.ops.empty()||(frame.mode!=2&&frame.mode!=3))return false;
+// scene. Track only the parts of the edges that the native scene covers.
+static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<OutgoingDraw>& departing){
+    SceneEdgeRepair repair;
+    if(frame.ops.empty()||(frame.mode!=2&&frame.mode!=3))return repair;
     const bool battle=frame.mode==3;
     const float inset=battle?24.f:16.f;
     const auto& end=frame.ops.back();
     const float width=std::round(end.state.viewport[2]*480.f/(480-2*inset));
-    if(width<=0||width>=frame.w||!centered_menu_composite(end,frame.w,frame.h))return false;
+    if(width<=0||width>=frame.w||!centered_menu_composite(end,frame.w,frame.h))return repair;
     constexpr unsigned columns=64;
     constexpr uint64_t all=~uint64_t{0};
-    constexpr std::array<float,8> phases={1.f,.0625f,.125f,.3125f,.5f,.6875f,.875f,.9375f};
+    constexpr auto phases=SceneEdgeRepair::phases;
     const std::array<float,6> rows={inset+.5f,inset+2.f,inset+7.f,
                                     473.f-inset,478.f-inset,479.5f-inset};
     std::array<std::array<uint64_t,6>,phases.size()> coverage{};
@@ -84,8 +84,13 @@ static bool scene_loses_vertical_edge(const Frame& frame,const std::vector<Outgo
         if(std::bitset<columns>(endpoint).count()<columns-3)continue;
         for(size_t i=1;i<phases.size();++i){
             const uint64_t lost=endpoint&~coverage[i][row];
-            if(lost&(lost>>1))return true;
+            if(lost&(lost>>1))(row<rows.size()/2?repair.top:repair.bottom)[i]|=lost;
         }
     }
-    return false;
+    return repair;
 }
+#ifdef GEO_TEST
+static bool scene_loses_vertical_edge(const Frame& frame,const std::vector<OutgoingDraw>& departing){
+    return scene_edge_repair(frame,departing).needed();
+}
+#endif
