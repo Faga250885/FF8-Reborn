@@ -17,7 +17,7 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
     const float step=640.f*frame.w/(width*columns);
     const float left=320.f-step*(columns-1)/2;
 
-    auto collect=[&](const Op& op,size_t first_phase,size_t end_phase){
+    auto collect=[&](const Op& op,bool leaving){
         if(!op.target||!opaque_projected(op)||op.vertices.empty()||
            std::abs(op.state.projection[0]-2.f/640)>.00001f||
            std::abs(op.state.projection[5]+2.f/480)>.00001f)return;
@@ -37,7 +37,7 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
                 }
             }
             if(std::none_of(rows.begin(),rows.end(),[&](float y){return y>=low&&y<=high;}))continue;
-            for(size_t phase=first_phase;phase<end_phase;++phase){
+            for(size_t phase=leaving?1:0;phase<phases.size();++phase){
                 auto& mask=coverage[phase];
                 if(std::all_of(mask.begin(),mask.end(),[](uint64_t row){return row==all;}))continue;
                 float x[3],y[3];
@@ -77,13 +77,8 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
             }
         }
     };
-    // Fixed geometry covers the same samples at every interpolation phase.
-    // Seed those masks once, before evaluating moving and departing faces.
-    const auto fixed=[](const Op& op){return op.match<0&&op.front_face.empty();};
-    for(const auto& op:frame.ops)if(fixed(op))collect(op,0,1);
-    std::fill(coverage.begin()+1,coverage.end(),coverage.front());
-    for(const auto& op:frame.ops)if(!fixed(op))collect(op,0,phases.size());
-    for(const auto& draw:departing)collect(draw.op,1,phases.size());
+    for(const auto& op:frame.ops)collect(op,false);
+    for(const auto& draw:departing)collect(draw.op,true);
     for(size_t row=0;row<rows.size();++row){
         const uint64_t endpoint=coverage[0][row];
         if(std::bitset<columns>(endpoint).count()<columns-3)continue;

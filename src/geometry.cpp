@@ -1211,26 +1211,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
         const Vertex* vertices=op.vertices.data();
         if(!op.clear&&op.match>=0&&alpha<1){scratch=op.vertices;
             const bool battle_projection=current.mode==3&&projected_geometry(op);
-            const bool world_surface=!deck_renderer&&current.mode==2&&view.horizontal<1&&op.target&&
-                op.state.viewport[2]==view.scene_width&&opaque_projected(op)&&op.actor_mid.empty();
-            const float half_view=world_surface?320.f/view.horizontal:0;
             for(size_t i=0;i<scratch.size();i++)if(op.motion_valid[i]){
                 const auto& before=op.prior_positions[i];const auto* point=op.vertices[i].p;
                 if(battle_projection)interpolate_battle_point(before.data(),point,alpha,scratch[i].p);
                 else for(int k=0;k<4;k++)scratch[i].p[k]=before[k]+alpha*(point[k]-before[k]);
-                if(world_surface&&point[3]>0&&point[3]<.1f){
-                    // Keep terrain that bounds the native view outside the same
-                    // clipping plane until the next block has been submitted.
-                    for(int axis=0;axis<2;++axis){
-                        const float center=axis==0?320.f:240.f;
-                        const float extent=axis==0?half_view:224.f;
-                        const float offset=point[axis]-center;
-                        const float delta=point[axis]-scratch[i].p[axis];
-                        if(offset*delta<=0)continue;
-                        const float weight=std::clamp(1.f+(std::abs(offset)-extent)/32.f,0.f,1.f);
-                        scratch[i].p[axis]+=weight*delta;
-                    }
-                }
             }
             for(size_t i=0;i<op.color_valid.size();i++)if(op.color_valid[i])for(int k=0;k<4;k++)
                 scratch[i].c[k]=op.prior_colors[i][k]+alpha*(op.vertices[i].c[k]-op.prior_colors[i][k]);
