@@ -55,7 +55,13 @@ static void retain_outgoing(const std::vector<Primitive>&old,const std::vector<P
             for(const auto&op:current.ops)if(projected_geometry(op)){
                 const auto state=surface_state_key(op);
                 for(unsigned v=0;v<op.vertices.size();v++)if(op.motion_valid[v])
-                    shared.emplace(surface_point_key(state,op.prior_positions[v].data()),&op.vertices[v]);
+                    {
+                        auto entry=shared.emplace(surface_point_key(state,op.prior_positions[v].data()),&op.vertices[v]);
+                        auto& existing=entry.first->second;
+                        const auto* p=op.vertices[v].p;
+                        if(!entry.second&&existing&&(existing->p[0]!=p[0]||existing->p[1]!=p[1]||existing->p[3]!=p[3]))
+                            existing=nullptr;
+                    }
             }
             shared_ready=true;
         }
@@ -78,7 +84,7 @@ static void retain_outgoing(const std::vector<Primitive>&old,const std::vector<P
             was_left&=p[0]<xmin+1;was_right&=p[0]>xmax-1;
             was_top&=p[1]<ymin+1;was_bottom&=p[1]>ymax-1;
             predicted[v]=before.vertices[tri.start+v];valid&=camera_forward(forward,predicted[v].p,predicted[v].p);
-            auto welded=shared.find(surface_point_key(before_state,before.vertices[tri.start+v].p));if(welded!=shared.end()){
+            auto welded=shared.find(surface_point_key(before_state,before.vertices[tri.start+v].p));if(welded!=shared.end()&&welded->second){
                 predicted[v].p[0]=welded->second->p[0];predicted[v].p[1]=welded->second->p[1];predicted[v].p[3]=welded->second->p[3];}
             left&=predicted[v].p[0]<xmin+1;right&=predicted[v].p[0]>xmax-1;
             top&=predicted[v].p[1]<ymin+1;bottom&=predicted[v].p[1]>ymax-1;

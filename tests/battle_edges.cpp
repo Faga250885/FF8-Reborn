@@ -11,7 +11,51 @@ static Op mesh(std::initializer_list<Vertex> corners){
     for(const auto& v:corners)op.prior_positions.push_back({v.p[0]+10,v.p[1],v.p[2],v.p[3]});
     return op;
 }
+static void repeated_enemy_orbit(){
+    const auto formation=[](int first,int second){
+        Frame frame;frame.mode=3;
+        const int centers[]={first,second,240};
+        for(unsigned actor=0;actor<3;++actor){
+            const float x=float(centers[actor]),y=actor==2?160.f:180.f;
+            frame.ops.push_back(mesh({vertex(x,y),vertex(x+4,y),vertex(x,y+5)}));
+            for(unsigned i=0;i<3;++i){
+                BonePoint p;
+                demand(from_gl(frame.ops.back().vertices[i].p,p),"invalid test projection");
+                frame.bones.push_back({(actor+4)<<16,2+6*i,p.x,p.y,p.z,0});
+            }
+        }
+        return frame;
+    };
+    auto before=formation(200,230),after=formation(232,202);
+    std::swap(after.ops[0],after.ops[1]);
+    const auto check=[&](bool identified){
+        MatchInput a(before),b(after);a.index_materials();b.index_materials();
+        PairCorrespondence pair;pair.resolve(3,before,after,a,b,nullptr);
+        const auto& faces=pair.use_working?pair.working:b.triangles;
+        demand(faces[0].prior==(identified?1:0)&&faces[1].prior==(identified?0:1)&&
+               faces[2].prior==2,"duplicate combatants exchanged geometry during the orbit");
+    };
+    check(true);
+    after.bones.pop_back(); // Two projected corners still identify the rear actor.
+    check(true);
+    previous=formation(200,230);current=formation(232,202);
+    previous.match_input=std::make_shared<MatchInput>(previous);
+    current.match_input=std::make_shared<MatchInput>(current);
+    for(unsigned i=0;i<current.ops.size();++i)
+        for(unsigned v=0;v<3;++v)memcpy(current.ops[i].prior_positions[v].data(),previous.ops[i].vertices[v].p,sizeof(Vertex::p));
+    auto faces=current.match_input->triangles;
+    demand(protect_battle_edges({},faces).empty(),"verified duplicate-enemy paths rejected");
+    // After matching, a surface fit can choose the other fish even when the
+    // projected edge remains within the ordinary geometric stretch tolerance.
+    memcpy(current.ops[0].prior_positions[0].data(),previous.ops[1].vertices[0].p,sizeof(Vertex::p));
+    demand(protect_battle_edges({},faces).size()==3,"wrong final owner passed surface reconstruction");
+    demand(current.ops[1].motion_valid[0],"unaffected enemy was held");
+    previous={};current={};
+    before.bones.clear();after.bones.clear();
+    check(false); // Same geometry deliberately fools the proximity-only matcher.
+}
 int main(){
+    repeated_enemy_orbit();
     // The head shares a mesh seam with the body across a material boundary.
     // A pooled vertex address incorrectly points from its head to an enemy.
     auto a=vertex(100,100),b=vertex(105,100),c=vertex(104,105),d=vertex(104,110);
@@ -57,9 +101,23 @@ int main(){
     const auto current_u=project(50,55,120),current_v=project(190,75,420);
     const auto sample=[](const Vertex& from,const Vertex& to,float phase){
         std::array<float,4> point;
-        interpolate_battle_point(from.p,to.p,phase,point.data());
+        interpolate_projected_point(from.p,to.p,phase,point.data());
         return view_point(point);
     };
+    // Shore tiles can split one long edge into two short edges. During
+    // camera motion their shared T-junction must stay on the long edge.
+    const auto coast_a=project(-80,30,180),coast_b=project(60,70,520);
+    const auto coast_mid=project(-10,50,350);
+    const auto turn_a=project(-10,30,120),turn_b=project(130,70,460);
+    const auto turn_mid=project(60,50,290);
+    for(float phase:{.125f,.5f,.875f}){
+        float a[4],b[4],mid[4];
+        interpolate_projected_point(coast_a.p,turn_a.p,phase,a);
+        interpolate_projected_point(coast_b.p,turn_b.p,phase,b);
+        interpolate_projected_point(coast_mid.p,turn_mid.p,phase,mid);
+        const float area=(b[0]-a[0])*(mid[1]-a[1])-(b[1]-a[1])*(mid[0]-a[0]);
+        demand(std::abs(area)<.05f,"camera turn separated two shore tiles");
+    }
     for(float phase:{0.f,.125f,.25f,.5f,.75f,.875f,1.f}){
         const auto u=sample(prior_u,current_u,phase),v=sample(prior_v,current_v,phase);
         const Point3 expected={-60+110*phase,20+35*phase,240-120*phase};
@@ -93,6 +151,9 @@ int main(){
     for(auto& p:cut)p.x+=1700;
     demand(battle_shot_changed(shot,cut),"camera cut missed when screen position stayed centered");
     demand(battle_shot_changed({},shot),"stage projection appeared at the camera cut");
+    std::vector<BoneSample> only_actors={shot.back()};
+    demand(battle_shot_changed(only_actors,shot)&&battle_shot_changed(shot,only_actors),
+           "lingering actor samples hid the stage change at a battle cut");
     demand(!battle_shot_changed({},{}),"empty capture marked as a cut");
 
     // One projected point shared by two source addresses is ambiguous if the

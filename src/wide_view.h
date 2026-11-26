@@ -439,6 +439,30 @@ struct WideView {
         }
         return corners==15;
     }
+    // The battle time gauge repeats one atlas cell between two end caps.
+    // Its centre is transparent, but both neighbouring atlas cells have
+    // opaque borders. Keep fractional output scales inside the repeated cell.
+    static const Vertex* gauge_atlas(const Op& op,const Vertex* vertices,std::vector<Vertex>& buffer){
+        if(!op.target||!op.state.texture[0].id||op.mode!=GL_TRIANGLES||
+           op.vertices.empty()||op.vertices.size()%6||!hud_vertex(op.vertices.front()))return vertices;
+        for(size_t i=0;i<op.vertices.size();i+=6){
+            const auto* q=op.vertices.data()+i;
+            if((q[0].uv[0][0]!=.125f&&q[0].uv[0][0]!=.0625f)||
+               (q[0].uv[0][1]!=.3125f&&q[0].uv[0][1]!=.375f))continue;
+            Bounds b;
+            if(!flat_rect(q,b)||b.l<514||b.r>610||b.r-b.l!=16||b.b-b.t!=16||
+               (b.t!=370&&b.t!=400&&b.t!=430))continue;
+            bool cell=true;
+            for(unsigned j=0;j<6;++j)
+                cell&=q[j].uv[0][0]==(q[j].p[0]==b.l?.0625f:.125f)&&
+                      q[j].uv[0][1]==(q[j].p[1]==b.t?.3125f:.375f);
+            if(!cell)continue;
+            if(vertices!=buffer.data()){buffer.assign(vertices,vertices+op.vertices.size());vertices=buffer.data();}
+            for(unsigned j=0;j<6;++j)
+                buffer[i+j].uv[0][0]+=(q[j].p[0]==b.l?1.f:-1.f)/512;
+        }
+        return vertices;
+    }
     static bool has_gauge_rail(const Op& op){
         if(op.mode!=GL_TRIANGLES||op.vertices.size()%6||op.vertices.empty()||
            std::abs(op.vertices.front().p[3]-1)>.002f)return false;

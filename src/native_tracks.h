@@ -35,11 +35,12 @@ static bool battle_shot_changed(const std::vector<BoneSample>& before,const std:
     };
     const auto key=[](const BoneSample& p){return (uint64_t(p.group)<<32)|p.address;};
     std::unordered_map<uint64_t,const BoneSample*> prior;
-    unsigned before_visible=0,after_visible=0,seen=0,displaced=0;
+    unsigned before_visible=0,after_visible=0,after_stage=0,seen=0,displaced=0;
     for(const auto& p:before)if(stage(p)){
         if(prior.emplace(key(p),&p).second&&visible(p))++before_visible;
     }
     for(const auto& p:after)if(stage(p)){
+        ++after_stage;
         if(visible(p))++after_visible;
         const auto found=prior.find(key(p));
         if(found==prior.end())continue;
@@ -53,7 +54,7 @@ static bool battle_shot_changed(const std::vector<BoneSample>& before,const std:
     if(seen>=8)return displaced*4>=seen*3;
     // The game can change its projection pass between shots and provide
     // stage samples on just one side of the cut.
-    return labeled&&((before_visible>=8&&after.empty())||(after_visible>=8&&before.empty()));
+    return labeled&&((before_visible>=8&&!after_stage)||(after_visible>=8&&prior.empty()));
 }
 
 // Each input sample contributes at most one key. The four temporary bone

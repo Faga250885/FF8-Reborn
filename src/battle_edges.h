@@ -1,7 +1,7 @@
 // The engine supplies projected XY and reciprocal camera depth. Interpolating
 // those independently moves corners at different physical speeds in a zoom.
 // Interpolate the camera-space point, then project it into the current view.
-static void interpolate_battle_point(const float* prior,const float* current,float alpha,float* point){
+static void interpolate_projected_point(const float* prior,const float* current,float alpha,float* point){
     const float before=prior[3],after=current[3];
     float fraction=alpha;
     point[3]=before+alpha*(after-before);
@@ -47,11 +47,22 @@ static bool battle_edge_overshoots(const float* a,const float* b,const float* pa
     if(std::max(battle_screen_edge2(a,past_a),battle_screen_edge2(b,past_b))<=limit)return false;
     for(float phase:{.25f,.5f,.75f}){
         float p[4],q[4];
-        interpolate_battle_point(past_a,a,phase,p);
-        interpolate_battle_point(past_b,b,phase,q);
+        interpolate_projected_point(past_a,a,phase,p);
+        interpolate_projected_point(past_b,b,phase,q);
         if(battle_screen_edge2(p,q)>limit)return true;
     }
     return false;
+}
+
+// Surface welding and topology recovery run after material matching. Reject
+// a final corner trajectory if the projectors identify disjoint combatants.
+static bool crosses_combatants(const Frame& from,const float* p,const Frame& to,const float* q){
+    if(!from.match_input||!to.match_input||from.match_input->actor_slots.empty()||
+       to.match_input->actor_slots.empty()||(p[0]==q[0]&&p[1]==q[1]&&p[3]==q[3]))return false;
+    const unsigned before=actor_mask(from.match_input->actor_slots,p);
+    if(!before)return false;
+    const unsigned after=actor_mask(to.match_input->actor_slots,q);
+    return after&&!(before&after);
 }
 
 using HeldBattlePoints=std::unordered_set<uint64_t>;
@@ -75,7 +86,8 @@ static HeldBattlePoints protect_battle_edges(const std::vector<Primitive>& old,c
         for(unsigned v=0;v<3;++v)past[v]=op.motion_valid[face.start+v]?op.prior_positions[face.start+v].data():vertex[v].p;
         for(unsigned v=0;v<3;++v){
             const unsigned w=(v+1)%3;
-            if(battle_edge_overshoots(vertex[v].p,vertex[w].p,past[v],past[w])){
+            if(crosses_combatants(previous,past[v],current,vertex[v].p)||
+               battle_edge_overshoots(vertex[v].p,vertex[w].p,past[v],past[w])){
                 rejected.push_back(i);break;
             }
             if(!battle_edge_stretches(vertex[v].p,vertex[w].p,past[v],past[w]))continue;

@@ -146,7 +146,7 @@ static void coherent_projected_motion(const std::vector<Primitive>* field_faces=
     spread();
     for(unsigned i=0;i<nodes.size();i++)if(!nodes[i].reachable&&(nodes[i].vote||nodes[i].camera)){
         auto&node=nodes[i];node.reachable=true;node.anchor=true;
-        if(!node.vote)node.delta={};queue.push_back(i);spread();
+        if(!node.vote||(node.conflict&&node.camera))node.delta={};queue.push_back(i);spread();
     }
     std::vector<unsigned> relaxed;relaxed.reserve(nodes.size());
     for(unsigned i=0;i<nodes.size();i++)if(nodes[i].reachable&&!nodes[i].anchor&&offsets[i+1]>offsets[i])relaxed.push_back(i);

@@ -1,14 +1,14 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.27/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
 > **120 FPS and Widescreen are experimental.** Frame delivery depends on the scene and the available rendering time. The original 4:3 framing and frame rate are available in the **Display** settings.
 
 > [!NOTE]
-> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. Use **Display → Check for updates** and restart the game to get the [Deck update](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.27). Then select **Display → Frame rate → 60 FPS**. Sustained 60 FPS and the intermittent black screen during Draw still need verification on Steam Deck hardware.
+> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. Use **Display → Check for updates** and restart the game to get the [Deck update](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.28). Then select **Display → Frame rate → 60 FPS**. Sustained 60 FPS and the intermittent black screen during Draw still need verification on Steam Deck hardware.
 
-FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 FPS on Steam Deck and 30, 60, 90 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
+FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 or 60 FPS on Steam Deck and 30, 60, 90 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
 **All six Steam game languages are supported.** The Reborn menu and its on-screen notices automatically follow the Steam launcher's language selection. [English, Español, Français, Deutsch, Italiano and 日本語](docs/GALLERY.md#menu-languages)
 
@@ -40,6 +40,8 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
+- **Coast, battle camera and gauges (Windows and Steam Deck).** World-map terrain now follows depth during camera turns. The battle renderer checks combatant ownership after reconstructing a mesh and skips interpolation across cuts where the stage disappears. The battle gauge samples inside its texture tiles to keep the end cap from bleeding into the fill.
+
 - **Battle transitions and camera motion on Windows.** The entry sweep runs at the selected presentation rate and preserves the widescreen backdrop. When a moving 3D view would open a slim gap along the screen edge, the renderer repairs that area and keeps the rest of the camera motion interpolated. Full-motion videos retain their original timing.
 - **Fixed frame-rate choices on Windows.** The former Unlimited setting migrates to Auto. Title screens, menus, results and Triple Triad share the selected presentation cadence.
 - **Battle mesh continuity.** Depth-tested textured additive passes now receive the same vertex checks as opaque meshes. When a match would stretch a triangle between actors, the affected mesh keeps its native pose for that tick.
@@ -58,7 +60,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 - **Blurred sidebars.** Fixed a thin dark line where the left sidebar met the picture in prerendered fields at 1280×800. The mod now aligns the blur with the edge drawn by the game.
 - **In-game updates on Windows and Steam Deck.** FF8 Reborn checks its platform's release channel once when the game starts. When a newer version is available, a matching blue notice appears in the upper left with a short Chocobo call. The call plays once for that version per game session. The notice stays for ten seconds and fades over two. Open **F8** or **Select + Start** to see the installed and available versions. Choose **Download update** when you want to install it.
 - **Filters adapt to your game resolution.** The same profile adjusts its sampling and CRT pattern for Steam Deck at 720p/800p, Full HD at 1080p, QHD at 1440p and 4K at 2160p. **Screen filter → Output tuning** shows the active resolution. Each profile also has its own **Motion blur** strength, adjustable from 0% to 100% in steps of 10.
-- **Steam Deck performance.** The 30 FPS mode uses native frames in towns and on the world map and interpolates battles. Physical Deck playtests confirmed stable 30 FPS in those scenes. The Deck version remains experimental, and 60 FPS is a development goal. Selected rendering optimizations also ship on Windows.
+- **Steam Deck performance.** The 30 FPS mode uses native frames in towns and on the world map and interpolates battles. Physical Deck playtests confirmed stable 30 FPS in those scenes. The experimental 60 FPS setting can reach its target on Deck. Turning toward a distant horizon and some battles can still cause drops. Selected rendering optimizations also ship on Windows.
 - **Widescreen battles and transitions.** Battle flashes reach both edges even when the game draws the flash in tiles. We verified this during the attack with Rinoa and Angelo in Galbadia. The EXP, items and ability-point pages use the available height and make room for active battle-assist icons. The scene holds its size as you enter Triple Triad. During camera movement, battle interpolation checks for triangles that stretch between separate combatants.
 
 In 66 recorded battle frame pairs, the edge check flagged stretched triangles in 21 pairs with the previous renderer and zero after the change. The new renderer kept 99.1% of the vertices that previously received interpolated motion. The experience and item-results panels were measured in a live battle at 2560 × 1440.
@@ -83,8 +85,9 @@ In widescreen mode, both title screens fit the available height. On the black ti
 | --- | --- | --- |
 | **Original** (default) | The game draws at its native pace, usually around 30 FPS. | The game draws combat at its native pace, usually around 15 FPS. |
 | **30 FPS** | Uses the game's own frames at the same pace as Original, including the widescreen view. | Interpolates motion between compatible 15 FPS battle poses, targeting a new image every 33.3 ms. Combat inputs and animation timing follow the game clock. |
+| **60 FPS (experimental)** | Interpolates compatible movement between native updates. | Targets one presentation every 16.7 ms during compatible animations. |
 
-Menus and movies keep their native timing. Scene changes and battle frames that cannot be matched safely can hold the original image. In a recorded field with six characters, the mod skipped 414 of 447 geometry copies in one frame and preserved the complete image.
+At 60 FPS the Deck uses the shared presentation path for menus, Triple Triad and battle transitions. The encounter sweep blends consecutive images at the selected rate and preserves the proportions of the outgoing scene. Static menus can repeat an image. Movies keep their native timing. Scene changes and battle frames that cannot be matched safely can hold the original image. In a recorded field with six characters, the mod skipped 414 of 447 geometry copies in one frame and preserved the complete image.
 
 In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 submitted 30.00 frames/s. With simulated game work raised to 53 ms per battle update, it submitted 29.51 frames/s and the 99th-percentile interval reached 52.39 ms.
 
@@ -93,11 +96,11 @@ In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 sub
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.27/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.27/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck.pyz) is also available.
 
 If a release has just appeared and the menu says **Up to date**, compare **Display → Installed version** with the Deck release linked above. GitHub can take a few minutes to show the new release to the game. Select **Check for updates** again. When the row changes to **Download update**, press **A** again to download it. You can also close FFVIII and choose **Update or repair** in the Desktop Mode installer to update while keeping your settings.
 
@@ -138,7 +141,7 @@ Windows 1.4.1 uses a Steam Deck optimization that skips redundant OpenGL state c
 
 | Setting | What it does |
 | --- | --- |
-| Frame rate | **Auto**, **Original**, **30**, **60**, **90** or **120 (experimental)** on Windows, and **Original** or **30** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
+| Frame rate | **Auto**, **Original**, **30**, **60**, **90** or **120 (experimental)** on Windows, and **Original**, **30** or **60 (experimental)** on Deck. The mod draws intermediate frames for supported motion. Original animation timing and battle input windows still apply. Unsupported frames can fall back to their native presentation. |
 | FPS counter | Show a pixel-font counter in the upper-left corner. Choose **Off** (default), **Small**, **Medium** or **Large**. It counts completed game-window swaps, including intermediate frames, and updates about twice per second. |
 | Aspect ratio | **Widescreen (experimental)** expands the camera in battle and on the world map. **Original (4:3)** restores the original framing. |
 | Blurred sidebars | Available across all prerendered fields in widescreen. Fills the side margins with diffuse colors from the current scene, including characters near the edges. Deling City is shown as an example. |

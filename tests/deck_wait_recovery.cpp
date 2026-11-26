@@ -66,17 +66,21 @@ int main(){
     DeckSourceBudget source;
     source.relative_period=1.13;
     source.outputs_at_tick=100;
-    assert(source.can_draw_battle(100,.015,.006)); // Source swap arrived early.
-    assert(source.can_draw_battle(101,.040,.006)); // Second slot in this tick.
-    assert(!source.can_draw_battle(102,.040,.006));
-    assert(!source.can_draw_battle(101,.062,.006)); // Preserve the next game tick.
-    assert(!source.can_draw_battle(101,.020,.015)); // Expensive replay.
-    assert(source.can_draw_battle(103,.045,.003,60));
-    assert(!source.can_draw_battle(104,.045,.003,60));
-    assert(!source.can_draw_battle(102,.045,.008,60));
+    assert(source.can_draw(100,.015,.006,30,3)); // Source swap arrived early.
+    assert(source.can_draw(101,.040,.006,30,3)); // Second slot in this tick.
+    assert(!source.can_draw(102,.040,.006,30,3));
+    assert(!source.can_draw(101,.062,.006,30,3)); // Preserve the next game tick.
+    assert(!source.can_draw(101,.020,.015,30,3)); // Expensive replay.
+    assert(source.can_draw(103,.045,.003,60,3));
+    assert(!source.can_draw(104,.045,.003,60,3));
+    assert(!source.can_draw(102,.045,.008,60,3));
     assert(PresentationClock::live_pair(1.025,1.,1./30.));
     assert(!PresentationClock::live_pair(1.06,1.,1./30.));
     assert(!PresentationClock::live_pair(7.,1.,1./15.));
+    assert(source.can_draw(101,.012,.003,60,2));
+    assert(!source.can_draw(102,.012,.003,60,2)); // Two world slots per tick.
+    assert(!source.can_draw(101,.030,.003,60,2)); // Protect the next 30 Hz tick.
+    assert(!source.can_draw(101,.012,.010,60,2));
     source.relative_period=1.27;
-    assert(!source.can_draw_battle(101,.020,.006)); // Insufficient source budget.
+    assert(!source.can_draw(101,.020,.006,30,3)); // Insufficient source budget.
 }

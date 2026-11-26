@@ -91,12 +91,13 @@ struct DeckSourceBudget {
     bool busy=false;
     unsigned outputs_at_tick=0;
 
-    bool can_draw_battle(unsigned rendered,double elapsed,double cost,int target=30) const {
-        constexpr double tick=1./15.;
+    bool can_draw(unsigned rendered,double elapsed,double cost,int target,int mode) const {
+        const unsigned source_rate=mode==3?15:30;
+        const double tick=1./source_rate;
         // A source swap can arrive before its screen deadline and emit
         // nothing. Count actual output for the entire tick so that both
         // slots can be serviced later without creating unbounded work.
-        const unsigned slots=target==60?4:2;
+        const unsigned slots=unsigned(target)/source_rate;
         return rendered-outputs_at_tick<slots&&elapsed>=0&&elapsed+2*cost<tick&&
             cost<=tick*.36/slots&&relative_period+cost/tick<=1.30;
     }

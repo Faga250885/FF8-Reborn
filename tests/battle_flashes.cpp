@@ -276,6 +276,22 @@ int main(){
     for(size_t i=0;i<out.size();i++)assert(out[i].p[0]==shot.vertices[i].p[0]+shift);
 
     view.horizontal=1;assert(!changed(view,tiles,out)); // Native presentation.
+    auto tile=packet(GL_TRIANGLES);
+    rect(tile,514,370,530,386);
+    tile.state.texture[0].id=66;
+    for(auto& v:tile.vertices){
+        v.uv[0][0]=v.p[0]==514?.0625f:.125f;
+        v.uv[0][1]=v.p[1]==370?.3125f:.375f;
+    }
+    auto adjusted=tile.vertices;
+    for(auto& v:adjusted)v.p[0]+=shift;
+    const auto* sample=WideView::gauge_atlas(tile,adjusted.data(),out);
+    for(unsigned i=0;i<6;++i){
+        assert(sample[i].uv[0][0]>.0625f&&sample[i].uv[0][0]<.125f);
+        assert(sample[i].p[0]==adjusted[i].p[0]&&sample[i].uv[0][1]==adjusted[i].uv[0][1]);
+    }
+    tile.vertices[0].uv[0][0]=.1875f;
+    assert(WideView::gauge_atlas(tile,tile.vertices.data(),out)==tile.vertices.data());
     assert(view.position_hud(timer,timer.vertices.data(),out)==timer.vertices.data());
     assert(glGetError()==GL_NO_ERROR);
     puts("Battle flashes cover both edges. Native view, local effects, HUD and projected geometry preserved.");

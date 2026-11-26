@@ -95,6 +95,9 @@ struct DisplaySettings {
     void load(const wchar_t* path);
 } static display_settings;
 static bool deck_fixed_rate(){return deck_renderer&&(display_settings.fps==30||display_settings.fps==60);}
+static bool deck_recovery_scene(int mode){
+    return deck_fixed_rate()&&(mode==3||((mode==1||mode==2)&&display_settings.fps==60));
+}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
 void DisplaySettings::load(const wchar_t* path){
@@ -1217,10 +1220,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     auto prepare=[&](const Op&op,GLsizei& vertex_count){
         const Vertex* vertices=op.vertices.data();
         if(!op.clear&&op.match>=0&&alpha<1){scratch=op.vertices;
-            const bool battle_projection=current.mode==3&&projected_geometry(op);
+            const bool camera_projection=(current.mode==3||(current.mode==2&&camera_motion.valid))&&projected_geometry(op);
             for(size_t i=0;i<scratch.size();i++)if(op.motion_valid[i]){
                 const auto& before=op.prior_positions[i];const auto* point=op.vertices[i].p;
-                if(battle_projection)interpolate_battle_point(before.data(),point,alpha,scratch[i].p);
+                if(camera_projection)interpolate_projected_point(before.data(),point,alpha,scratch[i].p);
                 else for(int k=0;k<4;k++)scratch[i].p[k]=before[k]+alpha*(point[k]-before[k]);
             }
             for(size_t i=0;i<op.color_valid.size();i++)if(op.color_valid[i])for(int k=0;k<4;k++)
@@ -1235,6 +1238,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
             vertices=scratch.data();
         }
         vertices=view.position_hud(op,vertices,scratch);
+        if(widescreen&&current.mode==3)vertices=WideView::gauge_atlas(op,vertices,scratch);
         vertex_count=(GLsizei)op.vertices.size();
         static std::vector<Vertex> layer_vertices;
         vertices=view.screen_layers(op,vertices,layer_vertices,vertex_count);
@@ -1310,9 +1314,10 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     // cache before the game resumes or a custom atlas touches the bindings.
     // At 120 Hz in Windows battles the original submission path leaves more
     // time for the 15 Hz simulation, even when a cached replay alone is cheaper.
-    const bool reuse_draw_state=!view.full_map&&(deck_renderer?deck_gameplay:
-        gameplay&&!current.menu_edge&&current.travel!=Frame::Travel::fade&&
-        (current.mode!=3||display_settings.fps!=120));
+    const bool common_draw_cache=gameplay&&!current.menu_edge&&current.travel!=Frame::Travel::fade&&
+        (current.mode!=3||display_settings.fps!=120);
+    const bool reuse_draw_state=!view.full_map&&(deck_renderer?
+        deck_gameplay||(display_settings.fps==60&&common_draw_cache):common_draw_cache);
     const Op* atlas_draw=display_settings.atlas?view.full_map:nullptr;
     SamplerState replay_samplers;
     auto draw_op=[&](const Op&op){
@@ -1648,7 +1653,7 @@ static BOOL timed_swap(HDC handle,float alpha=-1,bool outer_restores=false,doubl
         if(f){fprintf(f,"%.9f,%u,%d,%.6f,%.6f,%.6f,%d,%d\n",began,sources,present_reason,alpha,began-next_output,maximum_gap,gap_from,gap_to);
             if(++rows%120==0)fflush(f);if(rows==9000){fclose(f);f=nullptr;}}}
     maximum_gap=0;qa_stage(12);
-    const bool probed=deck_fixed_rate()&&current.mode==3&&deck_output_diagnostics&&
+    const bool probed=deck_recovery_scene(current.mode)&&deck_output_diagnostics&&
         deck_output.before_swap(alpha,began,outer_restores,native_replayed);
     const double swap_start=(deck_fixed_rate()||alpha>=0)?now():0;
     BOOL result=real_swap(handle);
@@ -1789,7 +1794,7 @@ struct DeckBlackEndpoint {
     bool suspect=false;
     void sample(bool ok,GLenum error,const BYTE* native,const BYTE* reconstructed){
         suspect=false;
-        if(!deck_fixed_rate()||current.mode!=3||current.layout()!=current.mode||
+        if(!deck_recovery_scene(current.mode)||current.field_movie||current.layout()!=current.mode||current.travel==Frame::Travel::fade||
            current.menu_edge||error){tick=0;return;}
         const bool consecutive=tick&&tick+1==sources&&mode==current.mode&&w==width&&h==height;
         if(!ok&&!consecutive){tick=0;return;}
@@ -2000,7 +2005,6 @@ static void stats(){static double last=0;static unsigned ps=0,po=0;
 }
 // The guest mode word is shared by the encounter effect and active combat.
 // The installed main-loop callback (game object + B40) distinguishes them.
-static constexpr int encounter_transition=3003;
 static int game_mode(){
     if(!engine)return -1;const unsigned guest=engine_layout->mode;
     auto entry=(const unsigned*)((BYTE*)engine+engine_layout->guest_pages+(guest>>12)*4);
@@ -2229,7 +2233,6 @@ static BOOL WINAPI swap_hook(HDC handle){
     // A cached 2D image has a presentation deadline but no geometry pair
     // or interpolation origin that the next 3D replay can inherit.
     const bool had_geometry=was_presenting&&!was_composed;
-    const bool was_encounter_blending=encounter_blending&&was_composed;
     encounter_blending=false;
     composed_presenting=false;
     if(deck_renderer)deck_source_budget.outputs_at_tick=outputs;
@@ -2357,7 +2360,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         }else if(!native_endpoint&&candidate&&dt>=0.008&&dt<=0.15){
             // Own a copy of the game's exact backbuffer before any extra
             // swap for the outgoing pair or any offscreen validation draw.
-            const bool captured=deck_fixed_rate()&&mode==3;
+            const bool captured=deck_recovery_scene(mode)&&!atlas_open;
             double native_copy_cost=0;
             GLenum capture_error=GL_NO_ERROR;
             if(captured){
@@ -2438,7 +2441,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(!was_presenting)next_output=t;
             output_due=now()>=next_output;
             if(output_due){
-                if(deck_fixed_rate()&&prepared_previous&&mode==3&&
+                if(deck_recovery_scene(mode)&&prepared_previous&&
                    deck_source_budget.busy&&deck_wait_recovery.needs_sample(presentation_clock,t))source_replay_start=now();
                 resize(backup,width,height);blit(0,backup.fbo,width,height,width,height,all_buffers());saved=true;
                 if(source_replay_start)source_backup_time=now()-source_replay_start;
@@ -2467,7 +2470,8 @@ static BOOL WINAPI swap_hook(HDC handle){
     // Preserve both full-motion video and actors composited onto a movie.
     const bool gameplay_screen=current.mode>=1&&current.mode<=3&&
         (current.mode!=1||(current.valid&&!previous.field_movie));
-    if(!deck_renderer&&enabled&&display_settings.fps&&published&&!can_present&&!hold_display&&
+    const bool compose_here=!deck_renderer||(display_settings.fps==60&&!deck_needs_native_swap);
+    if(compose_here&&enabled&&display_settings.fps&&published&&!can_present&&!hold_display&&
        !current.field_movie&&(gameplay_screen||current.opening!=Frame::Opening::none||current.mode==after_battle_mode||
        current.mode==6||current.mode==card_transition::mode||current.mode==encounter_transition)){
         try{
@@ -2475,13 +2479,12 @@ static BOOL WINAPI swap_hook(HDC handle){
             if(GetClientRect(WindowFromDC(handle),&area)&&area.right>0&&area.bottom>0&&
                area.right<=8192&&area.bottom<=8192){
                 width=area.right;height=area.bottom;
-                encounter_blending=current.mode==encounter_transition&&was_encounter_blending&&
+                encounter_blending=current.mode==encounter_transition&&was_composed&&previous.mode==encounter_transition&&
                     composed_screen.w==width&&composed_screen.h==height;
-                if(encounter_blending){
-                    resize(encounter_previous_screen,width,height,false,true);
-                    blit(composed_screen.fbo,encounter_previous_screen.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
-                }
-                resize(composed_screen,width,height,false);
+                // The preceding capture is the first endpoint of the wipe.
+                // Rotate the textures so both platforms avoid a full-screen copy.
+                if(encounter_blending)std::swap(encounter_previous_screen,composed_screen);
+                resize(composed_screen,width,height,false,true);
                 blit(0,composed_screen.fbo,width,height,width,height,GL_COLOR_BUFFER_BIT);
                 if(!was_presenting)next_output=t;
                 presentation_mode=current.mode;
@@ -2493,7 +2496,6 @@ static BOOL WINAPI swap_hook(HDC handle){
                 displayed_alpha=1;
                 if(output_due)presentation_clock.draw_started=t;
                 if(encounter_blending&&output_due)displayed_alpha=replay_presentation(0);
-                encounter_blending=current.mode==encounter_transition;
             }
         }catch(const std::exception& e){log("2D presentation fallback: ");log(e.what());log("\n");}
     }
@@ -2541,6 +2543,8 @@ static BOOL WINAPI swap_hook(HDC handle){
         if(can_present&&result)finish_generated_output();
     }
     if(native_scaled)blit(encounter_native.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
+    else if(encounter_blending&&can_present&&output_due)
+        blit(composed_screen.fbo,0,width,height,width,height,GL_COLOR_BUFFER_BIT);
     deck_native_layout_wait=native_deck_rate&&!can_present&&
         display_settings.wide&&(native_endpoint||native_scaled)&&(current.mode>=1&&current.mode<=3||current.mode==6);
     if(deck_native_layout_wait)
@@ -2558,7 +2562,7 @@ static BOOL WINAPI swap_hook(HDC handle){
         // been punctual even if today's matching/validation used most of the
         // budget. Only the portion that overruns this tick's deadline can be
         // reclaimed, at most once; unrelated game/driver time earns no credit.
-        if(deck_fixed_rate()&&can_present&&prepared_previous&&current.mode==3){
+        if(deck_recovery_scene(current.mode)&&can_present&&prepared_previous){
             const double pair_work=matching_seconds+parity_seconds-pair_work_start;
             native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
         }
@@ -2676,9 +2680,9 @@ static void service_at(int reason,double earliest){
     if(GetCurrentThreadId()!=thread||!loaded||inside||!can_present)return;
     const bool busy=deck_source_budget.busy&&reason!=4;
     if(busy){
-        if(!deck_fixed_rate()||presentation_mode!=3||!can_present)return;
+        if(!deck_recovery_scene(presentation_mode))return;
         const double t=now();
-        if(t<earliest||!deck_source_budget.can_draw_battle(outputs,t-last_swap,presentation_clock.replay_cost,display_settings.fps))return;
+        if(t<earliest||!deck_source_budget.can_draw(outputs,t-last_swap,presentation_clock.replay_cost,display_settings.fps,presentation_mode))return;
     }
     present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
@@ -2723,7 +2727,7 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         double time=now();if(time>=end)break;
         // The 15 Hz battle engine can issue several short waits in one tick.
         // Keep the midpoint inside an observed idle window when load is high.
-        const bool short_scene_wait=deck_fixed_rate()&&deck_source_budget.busy&&presentation_mode==3;
+        const bool short_scene_wait=deck_recovery_scene(presentation_mode)&&deck_source_budget.busy;
         const double slot=short_scene_wait?presentation_clock.wait_slot(next_output,time,end,output_period()):next_output;
         const bool can_draw=presentation_clock.fits_wait(std::max(time,slot),end);
         if(!can_draw&&short_scene_wait)

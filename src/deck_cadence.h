@@ -1,6 +1,11 @@
 // Count successful swaps separately from game updates. Starting a new
 // scene or returning from pause begins a fresh interval.
+static constexpr int encounter_transition=3003;
 struct DeckCadence {
+    static int scene_index(int mode){
+        if(mode==encounter_transition)return 3;
+        return mode>=1&&mode<=3?mode-1:-1;
+    }
     struct Scene {
         unsigned intervals=0,long_intervals=0,intermediate=0,source_intervals=0;
         double source_elapsed=0;
@@ -15,7 +20,7 @@ struct DeckCadence {
             return 250;
         }
     };
-    Scene scenes[3]{};
+    Scene scenes[4]{};
     int target=30;
     int last_mode=0;
     double last_time=0;
@@ -47,8 +52,8 @@ struct DeckCadence {
     }
     void source(int mode,double time){
         const double interval=time-last_source_time;
-        if(mode>=1&&mode<=3&&mode==last_source_mode&&interval>0&&interval<=5.){
-            auto& scene=scenes[mode-1];
+        if(scene_index(mode)>=0&&mode==last_source_mode&&interval>0&&interval<=5.){
+            auto& scene=scenes[scene_index(mode)];
             ++scene.source_intervals;
             scene.source_elapsed+=interval;
         }
@@ -59,11 +64,11 @@ struct DeckCadence {
                  double replay_budget=0,bool source_busy=false){
         if(!origin)origin=time;
         const double interval=time-last_time;
-        const bool same_scene=mode>=1&&mode<=3&&mode==last_mode;
+        const bool same_scene=scene_index(mode)>=0&&mode==last_mode;
         if(same_scene&&interval>=.080)record({EventKind::gap,time,interval,driver,source,mode,0,alpha,
             true,replay_budget,source_busy});
         if(same_scene&&interval>0&&interval<=5.){
-            auto& scene=scenes[mode-1];
+            auto& scene=scenes[scene_index(mode)];
             ++scene.intervals;
             scene.elapsed+=interval;
             scene.long_intervals+=interval>1.5/std::max(1,target);
@@ -102,11 +107,11 @@ struct DeckCadence {
         last_busy=source_busy;
     }
     template<class Write=void (*)(const char*)> void report(Write write=log){
-        const char* names[]={"field","world","battle"};
+        const char* names[]={"field","world","battle","encounter wipe"};
         char line[256];
         for(unsigned i=0;i<event_count;++i){
             const auto& e=events[i];
-            const char* scene=e.mode>=1&&e.mode<=3?names[e.mode-1]:"transition";
+            const char* scene=scene_index(e.mode)>=0?names[scene_index(e.mode)]:"transition";
             if(e.kind==EventKind::gap){
                 const char* image=e.alpha<0?"native":(e.alpha>0&&e.alpha<1?"intermediate":"endpoint");
                 snprintf(line,sizeof(line),"Deck gap +%.3f s | %s | tick %u | %.1f ms between swaps | %.1f ms inside swap | %s | replay budget %.1f ms | source busy %d\n",
@@ -122,7 +127,7 @@ struct DeckCadence {
         }
         if(omitted){snprintf(line,sizeof(line),"Deck event buffer | %u additional events omitted\n",omitted);write(line);}
         event_count=omitted=0;
-        for(int i=0;i<3;i++){
+        for(int i=0;i<4;i++){
             auto& scene=scenes[i];
             if(!scene.intervals){scene={};continue;}
             char line[180];

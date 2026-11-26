@@ -15,8 +15,21 @@ static void matching_position(const State&s,const float*p,double*out){
     if(s.program&&zero_model(s)){for(int k=0;k<4;k++)out[k]=p[k];}
     else transform(s.model,p,out);
 }
-static std::vector<Primitive> primitives(const Frame&frame,void (*checkpoint)()=matching_checkpoint){
+// The native projector tags a combatant before faces are sorted by material.
+using ActorSlots=std::pmr::unordered_map<uint64_t,unsigned>;
+static unsigned actor_mask(const ActorSlots& slots,const float* position){
+    BonePoint point;
+    if(!from_gl(position,point))return 0;
+    const auto it=slots.find(point.key());
+    return it==slots.end()?0:it->second;
+}
+static std::vector<Primitive> primitives(const Frame&frame,ActorSlots& actor_slots,void (*checkpoint)()){
     std::vector<Primitive> out;size_t count=0;for(const auto&op:frame.ops)count+=op.vertices.size()/3;out.reserve(count);
+    if(frame.mode==3)for(const auto& p:frame.bones){
+        const unsigned slot=p.group>>16;
+        if(slot<1||slot>7||p.z<=10||(p.flags&(battle_stage_sample|2)))continue;
+        actor_slots[BonePoint{p.x,p.y,p.z}.key()]|=1u<<slot;
+    }
     for(unsigned i=0;i<frame.ops.size();i++){const auto&op=frame.ops[i];if(op.clear||op.mode!=GL_TRIANGLES||op.vertices.size()%3)continue;
         if((i&7)==0&&checkpoint)checkpoint();
         bool used[4]={};for(int j=0;j<4;j++)used[j]=!op.state.program&&op.state.texture[j].enabled;
@@ -31,6 +44,17 @@ static std::vector<Primitive> primitives(const Frame&frame,void (*checkpoint)()=
                 const auto& uv=op.vertices[start+v].uv[j];
                 key=deck_renderer&&frame.mode!=2?match_hash_lane(match_hash_lane(key,uv),uv+2):hash(key,uv,sizeof(uv));
             }
+            if(screen_coordinates&&!actor_slots.empty()){
+                unsigned possible=~0u,anchors=0;
+                for(unsigned v=0;v<3;++v){
+                    const unsigned owners=actor_mask(actor_slots,op.vertices[start+v].p);
+                    if(!owners)continue;
+                    possible&=owners;
+                    ++anchors;
+                }
+                if(anchors>=2&&possible&&(possible&(possible-1))==0)
+                    key=hash(key,&possible,sizeof(possible));
+            }
             out.push_back({i,start,key,-1});
             for(unsigned v=0;v<3;v++){
                 const float* point=op.vertices[start+v].p;
@@ -44,6 +68,8 @@ struct Topology;
 struct SurfaceGraph;
 namespace field_scroll {struct TileIndex;}
 struct MatchInput {
+    std::pmr::monotonic_buffer_resource actor_storage;
+    ActorSlots actor_slots{&actor_storage};
     std::vector<Primitive> triangles;
     // The group table and all its index lists have exactly one frame lifetime.
     // Release their storage together instead of returning thousands of small
@@ -55,7 +81,7 @@ struct MatchInput {
     std::shared_ptr<SurfaceGraph> battle_surface;
     std::shared_ptr<field_scroll::TileIndex> field_tiles;
 
-    explicit MatchInput(const Frame& frame,void (*checkpoint)()=matching_checkpoint):triangles(primitives(frame,checkpoint)) {}
+    explicit MatchInput(const Frame& frame,void (*checkpoint)()=matching_checkpoint):triangles(primitives(frame,actor_slots,checkpoint)) {}
     void index_materials(void (*checkpoint)()=matching_checkpoint){
         groups.reserve(triangles.size());
         for(unsigned i=0;i<triangles.size();i++){

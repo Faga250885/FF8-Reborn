@@ -52,7 +52,8 @@ static void retain_battle_outgoing(const std::vector<Primitive>&old,const std::v
         if(!valid||screen_area(predicted)<1e-5)continue;
         for(unsigned v=0;v<3;++v){
             const auto w=(v+1)%3;
-            if((!held.empty()&&held.count(surface_point_key(before_state,predicted[v].p)))||
+            if(crosses_combatants(previous,before.vertices[tri.start+v].p,current,predicted[v].p)||
+               (!held.empty()&&held.count(surface_point_key(before_state,predicted[v].p)))||
                battle_edge_stretches(before.vertices[tri.start+v].p,before.vertices[tri.start+w].p,predicted[v].p,predicted[w].p)||
                battle_edge_overshoots(before.vertices[tri.start+v].p,before.vertices[tri.start+w].p,predicted[v].p,predicted[w].p)){
                 valid=false;break;

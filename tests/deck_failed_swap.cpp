@@ -11,6 +11,30 @@ int main(){
     static_assert(deck_renderer,"compile with GEO_STEAM_DECK");
     QueryPerformanceFrequency(&frequency);
     real_swap=simulated_swap;
+    display_settings.select_fps(60);
+    std::vector<BYTE> black(parity_plane_bytes),lit(parity_plane_bytes,128);
+    for(int mode:{2,3}){
+        DeckBlackEndpoint guard;
+        current.mode=mode;
+        sources=1;
+        guard.sample(true,GL_NO_ERROR,lit.data(),lit.data());
+        ++sources;
+        guard.sample(false,GL_NO_ERROR,black.data(),lit.data());
+        assert(guard.suspect);
+        ++sources;
+        guard.sample(false,GL_NO_ERROR,black.data(),lit.data());
+        assert(!guard.suspect);
+        guard.sample(true,GL_NO_ERROR,lit.data(),lit.data());
+        ++sources;
+        guard.sample(true,GL_NO_ERROR,black.data(),black.data());
+        assert(!guard.suspect);
+        guard.sample(true,GL_NO_ERROR,lit.data(),lit.data());
+        ++sources;
+        current.travel=Frame::Travel::fade;
+        guard.sample(false,GL_NO_ERROR,black.data(),lit.data());
+        assert(!guard.suspect);
+        current.travel=Frame::Travel::none;
+    }
     for(int rate:{30,60}){
         display_settings.select_fps(rate);
         attempts=0;swap_result=FALSE;

@@ -47,7 +47,7 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
                     float point[4];
                     if(phase&&op.match>=0&&op.motion_valid[v]){
                         const auto& prior=op.prior_positions[v];
-                        if(battle)interpolate_battle_point(prior.data(),p,phases[phase],point);
+                        if(battle||camera_motion.valid)interpolate_projected_point(prior.data(),p,phases[phase],point);
                         else for(unsigned axis=0;axis<2;++axis)
                             point[axis]=prior[axis]+phases[phase]*(p[axis]-prior[axis]);
                         p=point;
