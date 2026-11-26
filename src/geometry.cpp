@@ -1023,7 +1023,7 @@ static void qa_stage(int reason){
 }
 static void service_at(int,double earliest=next_output);
 static bool present_during_wait(bool force_previous=false);
-static void present_before_next_title_frame(double start);
+static void present_before_next_composed_frame(double start);
 static void pump_due(double earliest=next_output);
 static double world_capture_time=0;
 static bool draw_native_atlas(GLenum,GLsizei,GLenum,const void*);
@@ -2552,9 +2552,11 @@ static BOOL WINAPI swap_hook(HDC handle){
             native_frame_wait.draw_credit=std::max(native_frame_wait.draw_credit,pair_work);
         }
     }
+    const bool stable_opening=current.opening!=Frame::Opening::none&&current.opening==previous.opening;
+    const bool stable_results=current.mode==after_battle_mode&&previous.mode==after_battle_mode;
     if(!deck_renderer&&composed_presenting&&was_composed&&display_settings.fps>60&&
-       current.opening!=Frame::Opening::none&&current.opening==previous.opening&&dt>.008&&dt<.025)
-        present_before_next_title_frame(t);
+        (stable_opening||stable_results)&&dt>.008&&dt<.025)
+        present_before_next_composed_frame(t);
     if(measure_world||(direct_complete&&dt>0&&dt<.25)){
         auto& w=world_frame_stats;
         ++w.frames;w.direct_frames+=direct_complete;w.draws+=direct_complete?deck_world.draws:unsigned(current.ops.size());w.intervals+=dt;
@@ -2663,9 +2665,9 @@ static void service_at(int reason,double earliest){
     }
     present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
-static void present_before_next_title_frame(double start){
-    // Opening pages reach the GL hooks in bursts. Use at most one more
-    // presentation slot in the observed 60 Hz source interval.
+static void present_before_next_composed_frame(double start){
+    // Title and result pages reach the GL hooks in bursts. Use at most one
+    // more presentation slot within their 60 Hz source interval.
     if(!output_timer)return;
     const double time=now(),slot=std::max(time,next_output),end=start+1./60.-.0015;
     if(!presentation_clock.fits_wait(slot,end))return;
