@@ -102,7 +102,8 @@ static void pair(const char*path,bool reading){
         TransferState(){glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&read);glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&draw);}
         ~TransferState(){pBindFramebuffer(GL_READ_FRAMEBUFFER,read);pBindFramebuffer(GL_DRAW_FRAMEBUFFER,draw);}
     } transfer;
-    file.item(width);file.item(height);file.item(stencil_bits);pixel_state();
+    int recorded_stencil=stencil_bits;
+    file.item(width);file.item(height);file.item(recorded_stencil);pixel_state();
     std::unordered_map<GLuint,GLuint> programs,textures;
     if(!reading)for(const Frame*f:{&previous,&current})for(const auto&op:f->ops){if(op.state.program)programs[op.state.program]=op.state.program;
         for(const auto&t:op.state.texture)if(t.copy)textures[t.copy->id]=t.copy->id;}
@@ -118,7 +119,7 @@ static void pair(const char*path,bool reading){
         if(header[1]>=2)file.list(f->bones,64000);else if(reading)f->bones.clear();
         file.item(f->valid);file.item(f->started);file.item(f->vertex_count);file.item(f->w);file.item(f->h);file.item(f->mode);
         n=(unsigned)f->targets.size();file.item(n);demand(n<=32,"snapshot target limit");
-        if(reading){f->targets.clear();for(unsigned j=0;j<n;j++){GLuint id;Target t;file.item(id);file.item(t);if(header[1]<3)t.stencil=t.depth&&stencil_bits;seed(file,t);f->targets.emplace(id,t);}}
+        if(reading){f->targets.clear();for(unsigned j=0;j<n;j++){GLuint id;Target t;file.item(id);file.item(t);if(header[1]<3)t.stencil=t.depth&&recorded_stencil;seed(file,t);f->targets.emplace(id,t);}}
         else for(auto entry:f->targets){GLuint id=entry.first;file.item(id);file.item(entry.second);seed(file,entry.second);}
         if(reading)f->depth_texture_for_target.clear();
         if(header[1]>=5){

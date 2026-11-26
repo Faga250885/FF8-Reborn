@@ -194,7 +194,14 @@ static bool initialize_gl() {
     API_LIST(LOAD)
 #undef LOAD
     QueryPerformanceFrequency(&frequency);context=wglGetCurrentContext();dc=wglGetCurrentDC();thread=GetCurrentThreadId();
-    glGetIntegerv(GL_STENCIL_BITS,&stencil_bits);loaded=true;
+    // The first intercepted draw can already target a game-owned FBO.
+    // Backbuffer backups must match the window, including its stencil plane.
+    GLint draw_target=0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&draw_target);
+    if(draw_target)pBindFramebuffer(GL_DRAW_FRAMEBUFFER,0);
+    glGetIntegerv(GL_STENCIL_BITS,&stencil_bits);
+    if(draw_target)pBindFramebuffer(GL_DRAW_FRAMEBUFFER,draw_target);
+    loaded=true;
     terrain_resource=nullptr;
     if(deck_renderer){
         initialize_deck_bindings();
@@ -872,7 +879,7 @@ static bool capture_start(Op* clear=nullptr) {
 #ifndef GEO_AUTOTEST
         // Diagnostic snapshot files serialize all attachments, including
         // the initial contents of planes the stock scene never reads.
-        if(clear&&(!deck_renderer||deck_battle_capture())){
+        if(clear&&(!deck_renderer||display_settings.fps==60||deck_battle_capture())){
             const auto retained=bits&~discarded_seed_planes(building,current,*clear,target);
             if(retained!=bits)building.captured_seed_planes[capture_target]=retained;
             bits=retained;
