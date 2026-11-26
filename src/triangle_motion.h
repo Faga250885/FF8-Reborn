@@ -254,6 +254,7 @@ static void match_frames(int mode=-1,MatchPreparation* early=nullptr){
     const auto& old=previous.match_input->triangles;
     auto& cur=correspondence.use_working?correspondence.working:current.match_input->triangles;
     camera_motion=correspondence.camera;
+    current.world_camera_projection=mode==2&&camera_motion.valid;
     if(matching_checkpoint)matching_checkpoint();
 #ifdef GEO_PROFILE
     mark_stage("material and camera correspondence");

@@ -24,6 +24,14 @@ int main(){
         assert(native_deck_frame()==(scene!=3));
     }
 #ifdef GEO_NATIVE_CAPTURE
+    for(int y:{-80,1792,1871}){
+        assert(native_pose::terrain_visibility(5,100,y,250,80)==7);
+        assert(native_pose::terrain_visibility(4,-10,y,250,80)==7);
+        assert(native_pose::terrain_visibility(0x105,100,y,250,80)==0x105);
+        assert(native_pose::terrain_visibility(1,100,y,250,80)==1);
+        assert(native_pose::terrain_visibility(4,-251,y,250,80)==4);
+    }
+    for(int y:{-81,1872})assert(native_pose::terrain_visibility(5,100,y,250,80)==5);
     const short battle=3;
     const unsigned encounter=0x559890;
     memcpy(mode_location,&battle,sizeof(battle));

@@ -250,6 +250,22 @@ int main(){
     for(auto& p:battle.ops[1].prior_positions)
         if(p[1]==464)p[1]=460;
     demand(scene_loses_vertical_edge(battle,{}),"world tilt exposed the bottom edge");
+    battle.ops.erase(battle.ops.begin()+2);
+    const auto shore=scene_edge_repair(battle,{});
+    demand(shore.needed(),"a partially covered coastline hid a local terrain gap");
+    SceneEdgeRepair late_gap;
+    late_gap.top[5]=4;
+    demand(late_gap.world_phase(.2f)==.2f&&late_gap.world_phase(.6f)==1&&late_gap.world_phase(.95f)==1,
+           "a coastal camera turn rewound after switching to its intact endpoint");
+    battle.ops={patch(-120,220),patch(220,232),patch(232,760),composite};
+    for(unsigned i=0;i<3;++i){
+        for(auto& v:battle.ops[i].vertices)v.p[1]=472-v.p[1];
+        for(auto& p:battle.ops[i].prior_positions)p[1]=472-p[1];
+    }
+    for(auto& p:battle.ops[1].prior_positions)if(p[1]==16)p[1]=20;
+    const auto thin_shore=scene_edge_repair(battle,{});
+    demand(std::bitset<64>(thin_shore.top[1]).count()==1&&thin_shore.world_phase(0)==1.f,
+           "the first generated pose exposed a single-column shore gap");
 
 
     puts("battle edge continuity passed");

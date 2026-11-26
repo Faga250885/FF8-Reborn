@@ -40,7 +40,7 @@ Estas vistas utilizan el renderizador actual del mod sobre una escena capturada 
 
 ## Novedades
 
-- **Costa, cámara de batalla y barras (Windows y Steam Deck).** El terreno del mapamundi tiene en cuenta la profundidad al girar la cámara. En batalla se comprueba a qué combatiente pertenece cada vértice después de reconstruir el movimiento y se respetan los cortes de plano cuando desaparece el escenario. La barra de combate toma el color del interior de cada pieza de su textura para evitar líneas en el relleno.
+- **Costa, cámara de batalla y barras (Windows y Steam Deck).** Al girar la cámara del mapamundi, el juego conserva terreno un poco más allá de los bordes superior e inferior. Si la interpolación fuera a abrir un hueco en la costa, el mod muestra el cuadro intacto del juego hasta el siguiente par. En batalla se comprueba a qué combatiente pertenece cada vértice después de reconstruir el movimiento y se respetan los cortes de plano cuando desaparece el escenario. La barra de combate toma el color del interior de cada pieza de su textura para evitar líneas en el relleno.
 
 - **Transiciones y cámara en Windows.** El barrido de entrada usa la frecuencia de presentación elegida y conserva el fondo panorámico. Cuando un movimiento de cámara en 3D abriría un hueco estrecho en un borde, el renderizador corrige esa zona y mantiene interpolado el resto del movimiento. Las películas conservan su cadencia original.
 - **Opciones de FPS en Windows.** El ajuste anterior Sin límite pasa a Auto. Los títulos, los menús, los resultados y Triple Triad siguen la frecuencia de presentación elegida.

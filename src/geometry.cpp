@@ -684,6 +684,16 @@ struct SceneEdgeRepair {
         for(unsigned i=1;i<phases.size();++i)if(top[i]||bottom[i])return true;
         return false;
     }
+    // Once an intermediate pose loses native terrain, show the intact endpoint
+    // for the rest of that pair. Returning to an earlier pose would rewind a pan.
+    float world_phase(float alpha)const{
+        for(size_t i=1;i<phases.size();++i){
+            const float start=i==1?0.f:phases[i-1];
+            if(i>1&&alpha<=start)break;
+            if(top[i]||bottom[i])return 1.f;
+        }
+        return alpha;
+    }
     std::pair<uint64_t,uint64_t> mask(float alpha)const{
         unsigned lower=1;
         while(lower+1<phases.size()&&alpha>phases[lower+1])++lower;
@@ -707,6 +717,7 @@ struct Frame {std::vector<BoneSample> bones;std::unordered_map<uint64_t,std::arr
     int layout()const{return layout_override<0?mode:layout_override;}
     StrideFollow stride_follow;float stride_dt=1.f/30;
     bool reactive_sides=false,camera_cut=false,field_movie=false;
+    bool world_camera_projection=false;
     SceneEdgeRepair border_repair;
     GLuint native_field_target=0;
     bool field_layout_only=false;};
@@ -1152,6 +1163,8 @@ struct EncounterReplay {
 static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=false,
                     const EncounterReplay* encounter=nullptr){
     if(current.camera_cut)alpha=1;
+    if(alpha<1&&widescreen&&display_settings.wide&&current.layout()==2&&current.mode==2)
+        alpha=current.border_repair.world_phase(alpha);
     WideView view(current,widescreen);
     if(view.full_map)alpha=1; // Keep every map label and the pointer on the same native tick.
     if(!display_settings.wide){view.outer_width=0;view.horizontal=1;}
@@ -1220,7 +1233,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     auto prepare=[&](const Op&op,GLsizei& vertex_count){
         const Vertex* vertices=op.vertices.data();
         if(!op.clear&&op.match>=0&&alpha<1){scratch=op.vertices;
-            const bool camera_projection=(current.mode==3||(current.mode==2&&camera_motion.valid))&&projected_geometry(op);
+            const bool camera_projection=(current.mode==3||current.world_camera_projection)&&projected_geometry(op);
             for(size_t i=0;i<scratch.size();i++)if(op.motion_valid[i]){
                 const auto& before=op.prior_positions[i];const auto* point=op.vertices[i].p;
                 if(camera_projection)interpolate_projected_point(before.data(),point,alpha,scratch[i].p);
@@ -1439,7 +1452,7 @@ static Surface scene_edge_sample;
 static bool composed_presenting=false;
 static bool encounter_blending=false;
 static void fill_scene_edges(GLuint target,float alpha){
-    if(deck_renderer||alpha>=1||!display_settings.wide||height<16)return;
+    if(current.mode!=3||deck_renderer||alpha>=1||!display_settings.wide||height<16)return;
     const auto masks=current.border_repair.mask(alpha);
     if(!masks.first&&!masks.second)return;
     const int band=std::clamp(int(std::ceil(height*8./(current.mode==3?432:448))),1,height/4);
@@ -1912,6 +1925,7 @@ static void reset_building(){
     building.native_field_target=0;building.field_layout_only=false;
     building.compact_card_view={};
     building.border_repair={};
+    building.world_camera_projection=false;
     if(deck_renderer)draw_storage.retire(building,deck_fixed_rate()&&building.mode==3);
     building.match_input.reset();
     building.seed_clears.clear();

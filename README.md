@@ -40,7 +40,7 @@ These previews use the current mod renderer over a captured game scene. See the 
 
 ## Recent changes
 
-- **Coast, battle camera and gauges (Windows and Steam Deck).** World-map terrain now follows depth during camera turns. The battle renderer checks combatant ownership after reconstructing a mesh and skips interpolation across cuts where the stage disappears. The battle gauge samples inside its texture tiles to keep the end cap from bleeding into the fill.
+- **Coast, battle camera and gauges (Windows and Steam Deck).** During a world-map turn, the renderer keeps terrain available just beyond the top and bottom of the viewport. If interpolation would expose a hole at the coast, it uses the intact game frame for the remainder of that pair. The battle renderer checks combatant ownership after reconstructing a mesh and skips interpolation across cuts where the stage disappears. The battle gauge samples inside its texture tiles to keep the end cap from bleeding into the fill.
 
 - **Battle transitions and camera motion on Windows.** The entry sweep runs at the selected presentation rate and preserves the widescreen backdrop. When a moving 3D view would open a slim gap along the screen edge, the renderer repairs that area and keeps the rest of the camera motion interpolated. Full-motion videos retain their original timing.
 - **Fixed frame-rate choices on Windows.** The former Unlimited setting migrates to Auto. Title screens, menus, results and Triple Triad share the selected presentation cadence.

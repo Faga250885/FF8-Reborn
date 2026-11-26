@@ -47,7 +47,7 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
                     float point[4];
                     if(phase&&op.match>=0&&op.motion_valid[v]){
                         const auto& prior=op.prior_positions[v];
-                        if(battle||camera_motion.valid)interpolate_projected_point(prior.data(),p,phases[phase],point);
+                        if(battle||frame.world_camera_projection)interpolate_projected_point(prior.data(),p,phases[phase],point);
                         else for(unsigned axis=0;axis<2;++axis)
                             point[axis]=prior[axis]+phases[phase]*(p[axis]-prior[axis]);
                         p=point;
@@ -81,10 +81,13 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
     for(const auto& draw:departing)collect(draw.op,true);
     for(size_t row=0;row<rows.size();++row){
         const uint64_t endpoint=coverage[0][row];
-        if(std::bitset<columns>(endpoint).count()<columns-3)continue;
+        if(battle&&std::bitset<columns>(endpoint).count()<columns-3)continue;
         for(size_t i=1;i<phases.size();++i){
-            const uint64_t lost=endpoint&~coverage[i][row];
-            if(lost&(lost>>1))(row<rows.size()/2?repair.top:repair.bottom)[i]|=lost;
+            // Along a coastline the native sky can leave much of this row open.
+            // Compare only columns surrounded by native terrain in that case.
+            const uint64_t solid=battle?endpoint:endpoint&((endpoint<<1)|1)&((endpoint>>1)|(uint64_t{1}<<63));
+            const uint64_t lost=solid&~coverage[i][row];
+            if(battle?(lost&(lost>>1)):lost)(row<rows.size()/2?repair.top:repair.bottom)[i]|=lost;
         }
     }
     return repair;

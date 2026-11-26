@@ -197,23 +197,30 @@ static bool install_foot(){
     }
     return true;
 }
+// The world projector packs independent X, Y and depth visibility bits.
+// Its vertical interval is [0,1792) in quarter-pixels on both engine builds.
+static int16_t terrain_visibility(int16_t flags,int x,int y,int margin,int vertical_guard){
+    if(x< -margin||x>=2560+margin)return flags;
+    if(x<0||x>=2560)flags|=1;
+    if((flags&0x104)==4&&((y<0&&y>=-vertical_guard)||(y>=1792&&y<1792+vertical_guard)))flags|=2;
+    return flags;
+}
 static void __cdecl world_projected(void*cpu){
     uint32_t sp=0,count=0;memcpy(&sp,(BYTE*)cpu+0x2c,4);
     bool valid=enabled&&display_settings.wide&&sp<=UINT32_MAX-8&&
         (deck_renderer?terrain_count(sp+4,count):fetch(sp+4,&count,4))&&count>0&&count<=4096;
     world_original(cpu);
     if(!valid)return;
-    const int margin=world_margin()+int(std::ceil(4*turn_guard(width,height,448)));
+    const int guard=int(std::ceil(4*turn_guard(width,height,448)));
+    const int margin=world_margin()+guard;
     ReadableRegion writable;
     for(uint32_t i=0;i<count;){
         const uint32_t addr=engine_layout->terrain_points+8*i;
         const uint32_t n=std::min(count-i,(4096u-(addr&4095u))/8u);
         auto point=deck_renderer?terrain_points(addr,8*n,writable):(int16_t*)writable_guest(addr,8*n);
         if(!point||!n)break;
-        // Bit zero is the native horizontal visibility bit. Its original
-        // interval is [0,2560); retain the original near and vertical flags.
-        for(uint32_t j=0;j<n;j++,point+=4){const int x=point[0];
-            if((x>=-margin&&x<0)||(x>=2560&&x<2560+margin))point[3]|=1;}
+        for(uint32_t j=0;j<n;j++,point+=4)
+            point[3]=terrain_visibility(point[3],point[0],point[1],margin,guard);
         i+=n;
     }
 }
