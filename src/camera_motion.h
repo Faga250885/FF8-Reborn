@@ -1,6 +1,6 @@
 // Common camera motion in homogeneous screen coordinates, estimated only
 // from unique primitive identities. Independent actor motion is downweighted.
-struct CameraMotion {double matrix[4][3]{};double confidence=0;unsigned points=0;bool valid=false;};
+struct CameraMotion {double matrix[4][3]{};double confidence=0;unsigned points=0;bool valid=false,identity=false;};
 static CameraMotion camera_motion;
 static bool camera_predict(const float*p,float*out,const CameraMotion& motion=camera_motion){
     memcpy(out,p,4*sizeof(float));if(!motion.valid||p[3]<=0||p[3]>=.1f)return false;
@@ -68,6 +68,24 @@ static void fit_camera_motion(const std::vector<Primitive>&old,const std::vector
     for(const auto&s:samples)for(int j=0;j<3;j++){double d=s.source[j]-center[j];scale[j]+=d*d/samples.size();}
     for(int j=0;j<3;j++){scale[j]=std::sqrt(scale[j]);if(scale[j]<1e-8)return;}
     for(auto&s:samples){for(int j=0;j<3;j++)s.design[j]=(s.source[j]-center[j])/scale[j];s.design[3]=1;}
+    // A parked world camera often supplies exactly the same landmarks at both
+    // endpoints. Verify the same weighted system has full rank before accepting
+    // an identity transform. Coplanar terrain alone cannot identify a camera.
+    if(deck_renderer&&display_settings.fps==60&&std::all_of(samples.begin(),samples.end(),[](const Sample& s){
+        return s.source[0]==s.target[0]&&s.source[1]==s.target[1]&&s.source[2]==s.target[2]&&
+               std::isfinite(s.source[0])&&std::isfinite(s.source[1])&&std::isfinite(s.weight);
+    })){
+        double normal[4][4]{},rhs[4][3]{},solution[4][3]{};
+        for(const auto& sample:samples)for(unsigned i=0;i<4;i++){
+            const double weight=sample.weight*sample.design[i];
+            for(unsigned j=0;j<4;j++)normal[i][j]+=weight*sample.design[j];
+        }
+        if(!solve_camera(normal,rhs,solution))return;
+        for(unsigned i=0;i<3;i++)motion.matrix[i][i]=1.;
+        motion.points=unsigned(samples.size());motion.confidence=1.;
+        motion.valid=motion.identity=true;
+        return;
+    }
     // Adjacent triangles often repeat both endpoints of a corner. Their
     // fit weights still contribute individually in the original order, but
     // their projected error is identical on every solver iteration.

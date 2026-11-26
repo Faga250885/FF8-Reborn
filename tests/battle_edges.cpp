@@ -54,7 +54,37 @@ static void repeated_enemy_orbit(){
     before.bones.clear();after.bones.clear();
     check(false); // Same geometry deliberately fools the proximity-only matcher.
 }
+static void parked_camera(){
+    if(!deck_renderer)return;
+    Frame frame;
+    Op terrain=mesh({});terrain.state.program=1;
+    std::fill_n(terrain.state.model,16,0.f);
+    std::vector<Primitive> faces;
+    std::unordered_map<uint64_t,std::vector<unsigned>> groups;
+    for(unsigned i=0;i<20;i++){
+        float x=35.f*(i%5),y=41.f*(i/5),z=800.f+70.f*((i*i+3*i)%7);
+        for(const auto& v:{vertex(x,y,z),vertex(x+14,y,z),vertex(x,y+18,z)})
+            terrain.vertices.push_back(v);
+        faces.push_back({0,3*i,i});groups[i].push_back(i);
+    }
+    frame.ops.push_back(terrain);
+    const Frame prior=frame;
+    CameraMotion camera;
+    display_settings.fps=60;
+    const auto fit=[&](const Frame& a,const Frame& b){
+        fit_camera_motion(faces,faces,groups,groups,a,b,camera);
+    };
+    fit(prior,frame);
+    demand(camera.valid&&camera.identity&&camera.points==60,"parked camera not recognized");
+    frame.ops[0].vertices[0].p[0]+=.125f;
+    fit(prior,frame);
+    demand(!camera.identity,"moving landmark treated as stationary");
+    for(auto& v:frame.ops[0].vertices)v.p[3]=.001f;
+    fit(frame,frame);
+    demand(!camera.valid,"flat stationary landmarks identified a camera");
+}
 int main(){
+    parked_camera();
     repeated_enemy_orbit();
     // The head shares a mesh seam with the body across a material boundary.
     // A pooled vertex address incorrectly points from its head to an enemy.

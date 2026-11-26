@@ -182,10 +182,10 @@ struct PairCorrespondence {
         if(mode==2)fit_camera_motion(old,input.triangles,old_groups,new_groups,before,after,camera);
         // Keep original projected coordinates for the next tick. Other Deck
         // scenes only write triangle.prior, which is transient match output.
-        use_working=!deck_renderer||camera.valid;
+        use_working=!deck_renderer||(camera.valid&&!camera.identity);
         if(use_working)working=input.triangles;
         auto& cur=use_working?working:input.triangles;
-        if(camera.valid)for(auto& tri:cur){
+        if(camera.valid&&!camera.identity)for(auto& tri:cur){
             const auto& op=after.ops[tri.op];
             if(!projected_geometry(op))continue;
             for(unsigned v=0;v<3;v++){
