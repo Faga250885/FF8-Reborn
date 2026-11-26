@@ -48,6 +48,15 @@ struct PresentationClock {
         return scheduled;
     }
 
+    double pose_time(double start,double due,double tick) const {
+        // A short wake or a few milliseconds spent validating a new tick can
+        // move the draw either side of the intended display slot. Sample the
+        // pose on the same grid as the preceding image while that slot is live.
+        if(!last_submission||due!=scheduled||slot<=last_submission||
+           std::abs(start-slot)>tick*.25)return start;
+        return slot;
+    }
+
     void measured_replay(double elapsed) {
         // Reserve time for backup, swap and restore as well as the draw.
         // Adapt immediately to a heavier scene and relax after cheaper draws.

@@ -63,6 +63,21 @@ int main(){
     assert(early<battle_due&&early>=clock.last_submission+.85*battle_tick);
     assert(clock.fits_wait(early,4.0355)&&!clock.fits_wait(battle_due,4.0355));
 
+    // A constant walk on a healthy 60 Hz grid keeps equal visible steps
+    // across alternating late and early wakes. After a stall use wall time.
+    PresentationClock walk;
+    double last_pose=10.;
+    for(unsigned i=1;i<=120;++i){
+        walk.slot=walk.scheduled=10.+i*tick;
+        walk.last_submission=walk.slot-tick+.001;
+        const double wake=walk.slot+(i%2?.003:-.002);
+        const double pose=walk.pose_time(wake,walk.scheduled,tick);
+        assert(std::abs(pose-last_pose-tick)<1e-10);
+        last_pose=pose;
+    }
+    assert(walk.pose_time(last_pose+.009,walk.scheduled,tick)==last_pose+.009);
+    assert(walk.pose_time(last_pose+.001,walk.scheduled+.002,tick)==last_pose+.001);
+
     DeckSourceBudget source;
     source.relative_period=1.13;
     source.outputs_at_tick=100;

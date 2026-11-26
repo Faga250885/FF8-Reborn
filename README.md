@@ -1,12 +1,12 @@
 # FF8 Reborn
 
-**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
+**[Download for Windows](https://github.com/Faga250885/FF8-Reborn/releases/latest/download/FF8-Reborn-Setup.exe)** · **[Download for Steam Deck](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.29/FF8-Reborn-Deck-Setup)** · [Leer en español](README.es.md) · [Screenshot gallery](docs/GALLERY.md)
 
 > [!WARNING]
 > **120 FPS and Widescreen are experimental.** Frame delivery depends on the scene and the available rendering time. The original 4:3 framing and frame rate are available in the **Display** settings.
 
 > [!NOTE]
-> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. Use **Display → Check for updates** and restart the game to get the [Deck update](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.28). Then select **Display → Frame rate → 60 FPS**. Sustained 60 FPS and the intermittent black screen during Draw still need verification on Steam Deck hardware.
+> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. Use **Display → Check for updates** and restart the game to get the [Deck update](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.29). Then select **Display → Frame rate → 60 FPS**. In Deling City, the mod now prepares character motion while the GPU checks the original image. Towns and the world map also use the next display slot to time movement during short waits. Sustained 60 FPS across all scenes still needs confirmation on Deck hardware.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 or 60 FPS on Steam Deck and 30, 60, 90 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 
@@ -96,11 +96,11 @@ In a 42-second battle replay at 1280 × 800 on Windows, version 1.4.0-deck.4 sub
 If you have version **1.4.0-deck.1** or later, press **View + Menu → Check for updates → Download update**. When **Update ready** appears, close FFVIII and its launcher, then reopen the game. An existing **Original** selection is preserved. For a first install, follow the steps below.
 
 1. Install **FINAL FANTASY VIII Remastered** from Steam. Close the game and its launcher.
-2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck-Setup).
+2. Switch to Desktop Mode and download [FF8-Reborn-Deck-Setup](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.29/FF8-Reborn-Deck-Setup).
 3. In Dolphin, right-click the downloaded file. Under **Properties → Permissions**, check **Is executable** and click **OK**.
 4. Double-click the file and choose **Install**. When it finishes, return to Gaming Mode and launch FFVIII from Steam. Press **View + Menu** together to open the mod settings.
 
-The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.28/FF8-Reborn-Deck.pyz) is also available.
+The installer finds registered Steam libraries, including microSD cards. If it asks you to locate a library, choose the folder containing `steamapps`. To remove the mod, close the game, reopen the installer and select **Uninstall**. The graphical installer uses Python 3.8+ and Zenity. A [command-line installer](https://github.com/Faga250885/FF8-Reborn/releases/download/v1.4.0-deck.29/FF8-Reborn-Deck.pyz) is also available.
 
 If a release has just appeared and the menu says **Up to date**, compare **Display → Installed version** with the Deck release linked above. GitHub can take a few minutes to show the new release to the game. Select **Check for updates** again. When the row changes to **Download update**, press **A** again to download it. You can also close FFVIII and choose **Update or repair** in the Desktop Mode installer to update while keeping your settings.
 

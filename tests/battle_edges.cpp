@@ -268,5 +268,23 @@ int main(){
            "the first generated pose exposed a single-column shore gap");
 
 
+    if(deck_renderer){
+        // A static neighbour can cover a moving coastal triangle in one or
+        // both rows. Its contribution must survive the shared-mask shortcut.
+        for(auto i:{0,2}){
+            auto& op=battle.ops[i];
+            for(size_t v=0;v<op.vertices.size();++v)
+                std::copy_n(op.vertices[v].p,4,op.prior_positions[v].begin());
+        }
+        for(bool project:{false,true}){
+            battle.world_camera_projection=project;
+            display_settings.fps=30;
+            const auto native=scene_edge_repair(battle,{});
+            display_settings.fps=60;
+            const auto optimized=scene_edge_repair(battle,{});
+            demand(native.needed()&&native.top==optimized.top&&native.bottom==optimized.bottom,
+                   "stationary coastal faces changed the moving edge mask");
+        }
+    }
     puts("battle edge continuity passed");
 }

@@ -17,6 +17,9 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
     const float step=640.f*frame.w/(width*columns);
     const float left=320.f-step*(columns-1)/2;
 
+    // Identical projected faces cover the same samples at every phase. Keep
+    // them in a common mask so a stationary horizon is rasterized only once.
+    std::array<uint64_t,6> fixed{};
     auto collect=[&](const Op& op,bool leaving){
         if(!op.target||!opaque_projected(op)||op.vertices.empty()||
            std::abs(op.state.projection[0]-2.f/640)>.00001f||
@@ -24,6 +27,8 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
         const bool clouds=!battle&&std::abs(op.vertices.front().p[3]-1.f/4095)<1e-7f;
         if(!op.state.depth_mask&&!clouds)return;
         for(size_t i=0;i+2<op.vertices.size();i+=3){
+            bool invariant=deck_renderer&&display_settings.fps==60&&!battle&&!leaving&&
+                (i/3>=op.front_face.size()||!op.front_face[i/3]);
             float low=INFINITY,high=-INFINITY;
             for(size_t corner=0;corner<3;++corner){
                 const size_t v=i+corner;
@@ -32,13 +37,18 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
                 low=std::min(low,p[1]);
                 high=std::max(high,p[1]);
                 if(op.match>=0&&op.motion_valid[v]){
+                    // Projective interpolation also uses reciprocal depth.
+                    // Even equal endpoints can round differently on that path.
+                    if((frame.world_camera_projection&&p[3]!=op.prior_positions[v][3])||
+                       p[0]!=op.prior_positions[v][0]||
+                       p[1]!=op.prior_positions[v][1])invariant=false;
                     low=std::min(low,op.prior_positions[v][1]);
                     high=std::max(high,op.prior_positions[v][1]);
                 }
             }
             if(std::none_of(rows.begin(),rows.end(),[&](float y){return y>=low&&y<=high;}))continue;
-            for(size_t phase=leaving?1:0;phase<phases.size();++phase){
-                auto& mask=coverage[phase];
+            for(size_t phase=leaving?1:0;phase<(invariant?1:phases.size());++phase){
+                auto& mask=invariant?fixed:coverage[phase];
                 if(std::all_of(mask.begin(),mask.end(),[](uint64_t row){return row==all;}))continue;
                 float x[3],y[3];
                 for(size_t corner=0;corner<3;++corner){
@@ -80,13 +90,13 @@ static SceneEdgeRepair scene_edge_repair(const Frame& frame,const std::vector<Ou
     for(const auto& op:frame.ops)collect(op,false);
     for(const auto& draw:departing)collect(draw.op,true);
     for(size_t row=0;row<rows.size();++row){
-        const uint64_t endpoint=coverage[0][row];
+        const uint64_t endpoint=coverage[0][row]|fixed[row];
         if(battle&&std::bitset<columns>(endpoint).count()<columns-3)continue;
         for(size_t i=1;i<phases.size();++i){
             // Along a coastline the native sky can leave much of this row open.
             // Compare only columns surrounded by native terrain in that case.
             const uint64_t solid=battle?endpoint:endpoint&((endpoint<<1)|1)&((endpoint>>1)|(uint64_t{1}<<63));
-            const uint64_t lost=solid&~coverage[i][row];
+            const uint64_t lost=solid&~(coverage[i][row]|fixed[row]);
             if(battle?(lost&(lost>>1)):lost)(row<rows.size()/2?repair.top:repair.bottom)[i]|=lost;
         }
     }

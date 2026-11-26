@@ -818,6 +818,11 @@ static bool deck_battle_capture(){
     if(deck_draw_mode==unknown_draw_mode)deck_draw_mode=game_mode();
     return deck_draw_mode==3;
 }
+static bool deck_pooled_capture(){
+    if(!deck_fixed_rate())return false;
+    if(deck_draw_mode==unknown_draw_mode)deck_draw_mode=game_mode();
+    return deck_recovery_scene(deck_draw_mode);
+}
 static bool native_deck_frame(){
     if(!deck_renderer||display_settings.wide)return false;
     if(!display_settings.fps)return true;
@@ -1009,10 +1014,11 @@ static void record_draw(GLenum mode,GLsizei count,GLenum type,const void*indices
     demand(count>0&&unsigned(count)<=MAX_VERTICES&&building.vertex_count+count<=MAX_VERTICES,"vertex budget exceeded");
     demand(mode==GL_TRIANGLES||mode==GL_TRIANGLE_STRIP||mode==GL_TRIANGLE_FAN||mode==GL_LINES||mode==GL_POINTS||mode==GL_QUADS,"primitive mode unsupported");
     const bool battle=deck_battle_capture();
+    const bool pooled=deck_pooled_capture();
     const bool compact_draw=deck_renderer&&mode==GL_TRIANGLES&&
-        (battle||(display_settings.wide&&current.mode==2&&capture_target));
+        (pooled||(display_settings.wide&&current.mode==2&&capture_target));
     unsigned inputs=127;Op op;op.mode=mode;op.target=capture_target;op.state=get_state(&op.raster,false,&inputs,compact_draw);
-    if(battle)draw_storage.take(op,count);
+    if(pooled)draw_storage.take(op,count);
     read_draw_vertices(op,inputs,count,type,indices,battle?&capture_regions:nullptr);
     bool used_texture[4]={};
     for(int j=0;j<4;j++)used_texture[j]=!op.state.program&&op.state.texture[j].enabled;
@@ -1173,7 +1179,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     // phase. Reflect the inputs once per replay, including on intermediate poses.
     const bool gameplay=current.layout()==current.mode&&current.mode>=1&&current.mode<=3;
     const bool deck_gameplay=deck_renderer&&gameplay&&
-        ((deck_fixed_rate()&&current.mode==3)||(current.mode==2&&(alpha==1||display_settings.fps==60)));
+        (deck_recovery_scene(current.mode)||(current.mode==2&&alpha==1));
     Guard guard(current,deck_gameplay);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
     const ReplaySeedPlan seed_plan(alpha);
@@ -1522,7 +1528,11 @@ static bool prepared_previous=false;
 static bool deck_needs_native_swap=false;
 static unsigned displayed_source=0;
 static float replay_presentation(GLuint target,bool force_previous=false){
-    double t=now();bool old=force_previous||(prepared_previous&&t<origin);
+    double t=now();
+    const bool paced_pose=deck_renderer&&display_settings.fps==60&&prepared_previous&&
+        !composed_presenting&&(presentation_mode==1||presentation_mode==2);
+    const double sample=paced_pose?presentation_clock.pose_time(t,next_output,output_period()):t;
+    bool old=force_previous||(prepared_previous&&sample<origin);
     presentation_clock.draw_started=t;
     if(composed_presenting){
         blit(composed_screen.fbo,target,width,height,width,height,GL_COLOR_BUFFER_BIT);
@@ -1535,7 +1545,7 @@ static float replay_presentation(GLuint target,bool force_previous=false){
         const double same_pair_end=old?std::min(origin,previous_origin+previous_period):origin+period;
         field_prefix.next(same_pair_end,output_period(),presentation_clock.replay_cost);
     }
-    float alpha=(float)std::clamp((t-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
+    float alpha=(float)std::clamp((sample-(old?previous_origin:origin))/(old?previous_period:period),0.,1.);
     if(old){std::swap(current,previous);std::swap(outgoing_draws,checkpoint_outgoing);}
     try{alpha=replay(target,alpha,true,true);fill_scene_edges(target,alpha);}
     catch(...){if(old){std::swap(outgoing_draws,checkpoint_outgoing);std::swap(current,previous);}throw;}
@@ -1926,7 +1936,7 @@ static void reset_building(){
     building.compact_card_view={};
     building.border_repair={};
     building.world_camera_projection=false;
-    if(deck_renderer)draw_storage.retire(building,deck_fixed_rate()&&building.mode==3);
+    if(deck_renderer)draw_storage.retire(building,deck_recovery_scene(building.mode));
     building.match_input.reset();
     building.seed_clears.clear();
     building.captured_seed_planes.clear();
@@ -2386,7 +2396,9 @@ static BOOL WINAPI swap_hook(HDC handle){
             // At alpha=1 battle replay uses captured vertices. Its depth
             // corrections and departing faces apply only to intermediate
             // poses. Queue validation of this endpoint before CPU matching.
-            const bool early_samples=pair&&(mode==2||(deck_fixed_rate()&&mode==3))&&
+            // Field tile scrolling changes the previous pose, leaving the native endpoint intact.
+            const bool field_samples=captured&&mode==1&&current.layout()==1&&!current.menu_edge&&!current.field_movie;
+            const bool early_samples=pair&&(mode==2||(deck_fixed_rate()&&mode==3)||field_samples)&&
                 world_readback.available();
             MatchPreparation pair_work(previous,current,early_samples&&deck_fixed_rate());
             bool queued_world=false;
@@ -2723,6 +2735,10 @@ static BOOL WINAPI counter_hook(LARGE_INTEGER*value){
 }
 // Service the compositor inside the time requested by either the OS sleep
 // or the game's frame limiter. Both delays end on the same wall-clock grid.
+static bool deck_field_or_world_60(){
+    return deck_renderer&&display_settings.fps==60&&!composed_presenting&&
+        (presentation_mode==1||presentation_mode==2);
+}
 static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
     if(!milliseconds||milliseconds>150||GetCurrentThreadId()!=thread||!can_present||inside||pacing_callback||
        !output_timer||wglGetCurrentContext()!=context)return false;
@@ -2742,7 +2758,8 @@ static bool draw_within_wait(DWORD milliseconds,bool game_limiter=false){
         // The 15 Hz battle engine can issue several short waits in one tick.
         // Keep the midpoint inside an observed idle window when load is high.
         const bool short_scene_wait=deck_recovery_scene(presentation_mode)&&deck_source_budget.busy;
-        const double slot=short_scene_wait?presentation_clock.wait_slot(next_output,time,end,output_period()):next_output;
+        const bool flexible_wait=short_scene_wait||deck_field_or_world_60();
+        const double slot=flexible_wait?presentation_clock.wait_slot(next_output,time,end,output_period()):next_output;
         const bool can_draw=presentation_clock.fits_wait(std::max(time,slot),end);
         if(!can_draw&&short_scene_wait)
             deck_wait_recovery.missed(next_output,time,end);
@@ -2816,11 +2833,14 @@ static DWORD WINAPI wait_hook(HANDLE handle,DWORD timeout){
     if(output_timer){
         HANDLE handles[]={handle,output_timer};
         for(;;){double t=now();DWORD remaining=INFINITE;
+            double slot=next_output;
+            if(timeout!=INFINITE&&deck_field_or_world_60())
+                slot=presentation_clock.wait_slot(next_output,t,end,output_period());
             if(timeout!=INFINITE){
                 remaining=remaining_ms();
-                if(!presentation_clock.fits_wait(std::max(t,next_output),end))return real_wait(handle,remaining);
+                if(!presentation_clock.fits_wait(std::max(t,slot),end))return real_wait(handle,remaining);
             }
-            LARGE_INTEGER due;due.QuadPart=-(LONGLONG)std::max(1.,std::ceil((next_output-t)*10000000.));
+            LARGE_INTEGER due;due.QuadPart=-(LONGLONG)std::max(1.,std::ceil((slot-t)*10000000.));
             if(!SetWaitableTimer(output_timer,&due,0,nullptr,nullptr,FALSE))break;
             DWORD result=WaitForMultipleObjects(2,handles,FALSE,remaining);
             if(result==WAIT_OBJECT_0)return WAIT_OBJECT_0;
