@@ -16,6 +16,7 @@ struct DeckCadence {
         }
     };
     Scene scenes[3]{};
+    int target=30;
     int last_mode=0;
     double last_time=0;
     bool last_busy=false;
@@ -65,7 +66,7 @@ struct DeckCadence {
             auto& scene=scenes[mode-1];
             ++scene.intervals;
             scene.elapsed+=interval;
-            scene.long_intervals+=interval>.050;
+            scene.long_intervals+=interval>1.5/std::max(1,target);
             scene.intermediate+=alpha>0&&alpha<1;
             if(interval<.25){
                 ++scene.histogram_intervals;
@@ -74,7 +75,7 @@ struct DeckCadence {
             // Attribute intervals only when the sampled load agrees at both
             // swaps. A mixed interval spans a change in the source budget.
             auto& load=source_busy!=last_busy?scene.mixed:(source_busy?scene.busy:scene.clear);
-            ++load.intervals;load.late+=interval>.050;load.elapsed+=interval;
+            ++load.intervals;load.late+=interval>1.5/std::max(1,target);load.elapsed+=interval;
         }
         // Use the counter's half-second time scale. Hysteresis keeps a
         // fluctuating rate near a threshold from flooding the event buffer.
@@ -87,8 +88,8 @@ struct DeckCadence {
                 const double fps=rate_intervals/elapsed;
                 int band=rate_band;
                 if(fps<=15)band=-1;
-                else if(fps>=28)band=1;
-                else if((band<0&&fps>=20)||(band>0&&fps<=24))band=0;
+                else if(fps>=target*.93)band=1;
+                else if((band<0&&fps>=20)||(band>0&&fps<=target*.80))band=0;
                 if(band!=rate_band){
                     record({EventKind::rate_change,time,elapsed,0,source,mode,int(fps+.5),alpha});
                     rate_band=band;
@@ -125,26 +126,26 @@ struct DeckCadence {
             auto& scene=scenes[i];
             if(!scene.intervals){scene={};continue;}
             char line[180];
-            snprintf(line,sizeof(line),"Deck 30 %s | %.2f swaps/s | %u of %u intervals over 50 ms\n",
-                     names[i],scene.intervals/scene.elapsed,scene.long_intervals,scene.intervals);
+            snprintf(line,sizeof(line),"Deck %d %s | %.2f swaps/s | %u of %u intervals over %d ms\n",
+                     target,names[i],scene.intervals/scene.elapsed,scene.long_intervals,scene.intervals,1500/std::max(1,target));
             write(line);
-            snprintf(line,sizeof(line),"Deck 30 %s timing | %.2f game updates/s | %u intermediate swaps of %u\n",
-                     names[i],scene.source_elapsed?scene.source_intervals/scene.source_elapsed:0.,
+            snprintf(line,sizeof(line),"Deck %d %s timing | %.2f game updates/s | %u intermediate swaps of %u\n",
+                     target,names[i],scene.source_elapsed?scene.source_intervals/scene.source_elapsed:0.,
                      scene.intermediate,scene.intervals);
             write(line);
             if(scene.histogram_intervals){
-                snprintf(line,sizeof(line),"Deck 30 %s gaps under 250 ms | p50 <=%u ms | p95 <=%u ms | p99 <=%u ms\n",
-                         names[i],scene.percentile(50),scene.percentile(95),scene.percentile(99));
+                snprintf(line,sizeof(line),"Deck %d %s gaps under 250 ms | p50 <=%u ms | p95 <=%u ms | p99 <=%u ms\n",
+                         target,names[i],scene.percentile(50),scene.percentile(95),scene.percentile(99));
                 write(line);
             }
             if(scene.intervals>scene.histogram_intervals){
-                snprintf(line,sizeof(line),"Deck 30 %s gaps of 250 ms or longer | %u included in rate\n",
-                         names[i],scene.intervals-scene.histogram_intervals);
+                snprintf(line,sizeof(line),"Deck %d %s gaps of 250 ms or longer | %u included in rate\n",
+                         target,names[i],scene.intervals-scene.histogram_intervals);
                 write(line);
             }
             const auto& b=scene.busy;const auto& c=scene.clear;const auto& m=scene.mixed;
-            snprintf(line,sizeof(line),"Deck 30 %s gaps over 50 ms/intervals | busy %u/%u (%.2fs) | clear %u/%u (%.2fs) | mixed %u/%u (%.2fs)\n",
-                     names[i],b.late,b.intervals,b.elapsed,c.late,c.intervals,c.elapsed,m.late,m.intervals,m.elapsed);
+            snprintf(line,sizeof(line),"Deck %d %s gaps over %d ms/intervals | busy %u/%u (%.2fs) | clear %u/%u (%.2fs) | mixed %u/%u (%.2fs)\n",
+                     target,names[i],1500/std::max(1,target),b.late,b.intervals,b.elapsed,c.late,c.intervals,c.elapsed,m.late,m.intervals,m.elapsed);
             write(line);scene={};
         }
     }

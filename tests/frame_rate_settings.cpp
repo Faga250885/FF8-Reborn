@@ -16,9 +16,9 @@ int main(){
     for(const int saved:{-1,0,30,60,90,120,-2,47}){
         if(saved!=-1)assert(retro_panel::number(path,L"Display",L"FPS",saved));
         display_settings.load(path);
-        const bool legacy=saved==60||saved==90||saved==120;
+        const bool legacy=saved==90||saved==120;
         if(deck_renderer){
-            assert(display_settings.fps==(saved==30||legacy?30:0));
+            assert(display_settings.fps==(saved==60?60:(saved==30||legacy?30:0)));
             assert(display_settings.fps_setting==display_settings.fps);
             assert(stored_fps()==(legacy?30:saved));
         }else{
@@ -42,7 +42,7 @@ int main(){
         if(effective)assert(output_period()==1./effective);
     };
     if(deck_renderer){
-        step(VK_LEFT,30,30);step(VK_RIGHT,0,0);step(VK_RIGHT,30,30);
+        step(VK_LEFT,60,60);step(VK_RIGHT,0,0);step(VK_RIGHT,30,30);step(VK_RIGHT,60,60);
     }else{
         constexpr int automatic=DisplaySettings::auto_fps;
         display_settings.monitor_refresh(75);
@@ -63,8 +63,8 @@ int main(){
         assert(display_settings.fps==120&&stored_fps()==120);
     }
     display_settings.load(path);
-    assert(display_settings.fps==(deck_renderer?30:120));
+    assert(display_settings.fps==(deck_renderer?60:120));
     assert(!display_settings.wide&&GetPrivateProfileIntW(L"Retro",L"Selected",-1,path)==7);
     assert(DeleteFileW(path));
-    std::puts(deck_renderer?"Deck Original/30 settings and migration OK":"Windows Auto/Original/30/60/90/120 settings and migration OK");
+    std::puts(deck_renderer?"Deck Original/30/60 settings and migration OK":"Windows Auto/Original/30/60/90/120 settings and migration OK");
 }

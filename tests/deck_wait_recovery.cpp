@@ -71,6 +71,12 @@ int main(){
     assert(!source.can_draw_battle(102,.040,.006));
     assert(!source.can_draw_battle(101,.062,.006)); // Preserve the next game tick.
     assert(!source.can_draw_battle(101,.020,.015)); // Expensive replay.
+    assert(source.can_draw_battle(103,.045,.003,60));
+    assert(!source.can_draw_battle(104,.045,.003,60));
+    assert(!source.can_draw_battle(102,.045,.008,60));
+    assert(PresentationClock::live_pair(1.025,1.,1./30.));
+    assert(!PresentationClock::live_pair(1.06,1.,1./30.));
+    assert(!PresentationClock::live_pair(7.,1.,1./15.));
     source.relative_period=1.27;
     assert(!source.can_draw_battle(101,.020,.006)); // Insufficient source budget.
 }

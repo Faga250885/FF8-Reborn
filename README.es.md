@@ -6,7 +6,7 @@
 > **120 FPS y Pantalla ancha son experimentales.** Los FPS dependen de la escena y del tiempo de renderizado disponible. En **Pantalla** puedes elegir el encuadre original 4:3 y la cadencia original del juego.
 
 > [!NOTE]
-> **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. **El próximo objetivo son los 60 FPS.** El desarrollo continuará a medida que haya tiempo disponible. Todavía no hay fecha para ese modo.
+> **Steam Deck sigue en desarrollo.** Las pruebas de juego en una Deck física confirmaron **30 FPS estables** en batallas, ciudades y mapamundi al elegir la opción de 30 FPS. La [versión de prueba de 60 FPS](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.26) añade **Pantalla → Frecuencia de cuadros → 60 FPS**. Quedan por verificar en una Steam Deck física la estabilidad a 60 FPS y el pantallazo negro intermitente durante Extraer.
 
 FF8 Reborn es un mod visual gratuito para **FINAL FANTASY VIII Remastered** de Steam. Puedes elegir la cadencia original del juego o apuntar a 30 FPS en Steam Deck y a 30, 60, 90 o 120 FPS en Windows. También puedes ampliar la cámara de batallas y mapamundi y ajustar cómo se integran los personajes en los fondos prerenderizados. Los cambios se pueden probar mientras juegas.
 

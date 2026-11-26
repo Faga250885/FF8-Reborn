@@ -66,5 +66,9 @@ int main(){
     assert(field_draw_is_native(scene_target)&&building.ops.back().target==scene_target);
     reset_building();
     assert(!building.field_layout_only&&!building.native_field_target);
+    display_settings.select_fps(60);
+    recognize_native_field_target(tile);
+    assert(!building.native_field_target&&!building.field_layout_only);
+    for(int scene:{1,2,3})assert(!native_rate_for_mode(scene));
     std::puts("Native gameplay routing and field draw capture OK");
 }

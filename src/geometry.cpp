@@ -68,7 +68,7 @@ static bool loaded=false,inside=false,enabled=true,can_present=false,accessibili
 struct DisplaySettings {
     static constexpr int auto_fps=-1;
     static constexpr int frame_rates[]={0,30,60,90,120,auto_fps};
-    static constexpr int frame_rate_count=deck_renderer?2:int(std::size(frame_rates));
+    static constexpr int frame_rate_count=deck_renderer?3:int(std::size(frame_rates));
     int fps=deck_renderer?0:60;
     int fps_setting=deck_renderer?0:auto_fps;
     int monitor_target=60;
@@ -94,14 +94,14 @@ struct DisplaySettings {
     }
     void load(const wchar_t* path);
 } static display_settings;
-static bool deck_fixed_rate(){return deck_renderer&&display_settings.fps==30;}
+static bool deck_fixed_rate(){return deck_renderer&&(display_settings.fps==30||display_settings.fps==60);}
 static std::wstring retro_ini_path;
 #include "retro_panel.h"
 void DisplaySettings::load(const wchar_t* path){
     const int value=GetPrivateProfileIntW(L"Display",L"FPS",auto_fps,path);
     if(deck_renderer){
-        const bool legacy=value==60||value==90||value==120;
-        select_fps(value==30||legacy?30:0);
+        const bool legacy=value==90||value==120;
+        select_fps(value==60?60:(value==30||legacy?30:0));
         if(legacy)retro_panel::persist(path,retro,0,-1,retro_panel::FPS,30);
     }else{
         const auto end=std::end(frame_rates);
@@ -257,7 +257,7 @@ static std::vector<Uniform> uniforms(GLuint program,unsigned* inputs=nullptr,boo
     // sampler unit selections) still belong to the individual draw.
     // Reflection describes the linked shader for every primitive type.
     // Fields submit many tile strips and quads through the same program.
-    const bool cache=inputs&&deck_battle_capture()&&deck_programs::available();
+    const bool cache=inputs&&(deck_battle_capture()||(deck_renderer&&display_settings.fps==60))&&deck_programs::available();
     if(cache){
         auto entry=deck_programs::layouts.find(program);
         if(entry!=deck_programs::layouts.end()){
@@ -1115,7 +1115,7 @@ static void recognize_native_field_target(const Op& op){
     // A moving camera, NPCs and masks share the native field target. After
     // confirming an actual gameplay tile on this tick, an already established
     // native field needs only its completed image and final layout metadata.
-    if(!deck_fixed_rate()||!enabled||!display_settings.wide||!field_blur::preferred||
+    if(!deck_renderer||display_settings.fps!=30||!enabled||!display_settings.wide||!field_blur::preferred||
        current.mode!=1||current.layout()!=1||current.menu_edge||!current.reactive_sides||
        !scenery_draw(op))return;
     const auto& s=op.state;
@@ -1150,7 +1150,7 @@ static float replay(GLuint target,float alpha,bool widescreen=false,bool motion=
     // phase. Reflect the inputs once per replay, including on intermediate poses.
     const bool gameplay=current.layout()==current.mode&&current.mode>=1&&current.mode<=3;
     const bool deck_gameplay=deck_renderer&&gameplay&&
-        ((deck_fixed_rate()&&current.mode==3)||(current.mode==2&&alpha==1));
+        ((deck_fixed_rate()&&current.mode==3)||(current.mode==2&&(alpha==1||display_settings.fps==60)));
     Guard guard(current,deck_gameplay);
     if(alpha<1)for(const auto&draw:outgoing_draws)guard.protect(draw.op.state);
     const ReplaySeedPlan seed_plan(alpha);
@@ -2235,7 +2235,11 @@ static BOOL WINAPI swap_hook(HDC handle){
     int deck_scene=0;
     try {
         int mode=game_mode();
-        if(deck_renderer)deck_cadence.source(deck_fixed_rate()?mode:0,t);
+        if(deck_renderer){
+            const int target=display_settings.fps;
+            if(deck_cadence.target!=target){deck_cadence.report();deck_cadence={};deck_cadence.target=target;}
+            deck_cadence.source(deck_fixed_rate()?mode:0,t);
+        }
         bool candidate=enabled&&!deck_needs_native_swap&&!native_deck_frame()&&building.valid&&building.started&&!building.ops.empty();
         // In 4:3 a native field can hand off to battle between two draws.
         // A partial battle capture cannot stand in for this native frame.
@@ -2311,7 +2315,7 @@ static BOOL WINAPI swap_hook(HDC handle){
             release(encounter_background);
         }
         const bool atlas_open=candidate&&mode==2&&(display_settings.wide?transition.full_map:WideView(current,true).full_map);
-        if(deck_fixed_rate()&&enabled&&mode==3&&
+        if(deck_fixed_rate()&&enabled&&(mode==3||(display_settings.fps==60&&(mode==1||mode==2)))&&
            current.layout()==mode&&!current.menu_edge&&!atlas_open)deck_scene=mode;
         const bool native_rate=native_rate_for_mode(mode);
         measure_world=deck_renderer&&candidate&&display_settings.wide&&native_rate&&mode==2&&
@@ -2620,11 +2624,17 @@ static bool present_during_wait(bool force_previous){
     auto window=IdleBackbuffer::active;
     if(deck_needs_native_swap)return false;
     const double started=now();
+    // The engine timer can stay unsignaled throughout a scene handoff.
+    // Stop replaying this pair when its last source tick has expired and
+    // leave the original wait handle in charge of waking the game.
+    if(window&&deck_renderer&&(!building.valid||
+       !presentation_clock.live_pair(started,origin,period)||
+       (engine&&game_mode()!=presentation_mode)))return false;
     // Each replay seeds its own drawable before drawing. During a native idle
     // window restore the game's buffer once, immediately before it resumes.
     const bool seeded=composed_presenting||(IdleBackbuffer::reinitializes_drawable(current)&&
         (!(force_previous||prepared_previous)||IdleBackbuffer::reinitializes_drawable(previous)));
-    const bool defer_restore=window&&!deck_renderer&&seeded;
+    const bool defer_restore=window&&(!deck_renderer||display_settings.fps==60)&&seeded;
     const GLbitfield planes=composed_presenting?GL_COLOR_BUFFER_BIT:all_buffers();
     if(window&&!defer_restore)window->restore();
     if(!window||!window->saved){
@@ -2661,7 +2671,7 @@ static void service_at(int reason,double earliest){
     if(busy){
         if(!deck_fixed_rate()||presentation_mode!=3||!can_present)return;
         const double t=now();
-        if(t<earliest||!deck_source_budget.can_draw_battle(outputs,t-last_swap,presentation_clock.replay_cost))return;
+        if(t<earliest||!deck_source_budget.can_draw_battle(outputs,t-last_swap,presentation_clock.replay_cost,display_settings.fps))return;
     }
     present_reason=reason;qa_stage(reason);pump_due(earliest);
 }
@@ -2899,7 +2909,7 @@ static DWORD WINAPI initialize(void* module){
         if(!engine)Sleep(50);
     }
     FILE*f=fopen("FF8_geometry.log","w");if(f){
-        fputs(deck_renderer?"FF8 Reborn Steam Deck - Original / 30 FPS, F8 opens live settings\n":
+        fputs(deck_renderer?"FF8 Reborn Steam Deck - Original / 30 / 60 FPS, F8 opens live settings\n":
             "FFVIII - indexed geometry, verified native source frames; F8 opens live settings\n",f);
         fclose(f);
     }

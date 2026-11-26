@@ -41,6 +41,15 @@ int main(){
     battle.report([&](const char* line){result+=line;});
     assert(result.find("Deck 30 battle | 30.00 swaps/s | 0 of 60 intervals over 50 ms")!=std::string::npos);
     assert(result.find("15.00 game updates/s | 30 intermediate swaps of 60")!=std::string::npos);
+    DeckCadence sixty;
+    sixty.target=60;
+    sixty.present(3,1.,.25f);
+    sixty.present(3,1.017,.50f);
+    sixty.present(3,1.047,.75f);
+    result.clear();
+    sixty.report([&](const char* text){result+=text;});
+    assert(result.find("Deck 60 battle |")!=std::string::npos);
+    assert(result.find("1 of 2 intervals over 25 ms")!=std::string::npos);
     DeckCadence stalled;
     stalled.source(3,1.);
     stalled.source(3,1.30);

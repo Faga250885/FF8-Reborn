@@ -6,7 +6,7 @@
 > **120 FPS and Widescreen are experimental.** Frame delivery depends on the scene and the available rendering time. The original 4:3 framing and frame rate are available in the **Display** settings.
 
 > [!NOTE]
-> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. **60 FPS is the next goal.** Development continues as time allows. There is no release date for that mode.
+> **Steam Deck is still in development.** On a physical Deck, playtesting has confirmed stable **30 FPS** in battles, towns and on the world map with the 30 FPS setting. The [optional 60 FPS test build](https://github.com/Faga250885/FF8-Reborn/releases/tag/v1.4.0-deck.26) adds **Display → Frame rate → 60 FPS**. Sustained 60 FPS and the intermittent black screen during Draw still need verification on Steam Deck hardware.
 
 FF8 Reborn is a free visual mod for **FINAL FANTASY VIII Remastered** on Steam. Choose the original frame rate or target 30 FPS on Steam Deck and 30, 60, 90 or 120 FPS on Windows. Widen the view in battle and on the world map, and tune the way character models blend into prerendered backgrounds. Change the settings while playing.
 

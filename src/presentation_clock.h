@@ -7,6 +7,10 @@ struct PresentationClock {
     double last_submission=0, quick_draw=0, refresh_period=0;
     double recovery=0;
 
+    static bool live_pair(double time,double origin,double period){
+        return period>0&&time<=origin+1.5*period;
+    }
+
     void submitted(double time){
         const double elapsed=std::max(0.,time-draw_started);
         // An inexpensive following draw can reach SwapBuffers earlier than
@@ -87,13 +91,14 @@ struct DeckSourceBudget {
     bool busy=false;
     unsigned outputs_at_tick=0;
 
-    bool can_draw_battle(unsigned rendered,double elapsed,double cost) const {
+    bool can_draw_battle(unsigned rendered,double elapsed,double cost,int target=30) const {
         constexpr double tick=1./15.;
         // A source swap can arrive before its screen deadline and emit
         // nothing. Count actual output for the entire tick so that both
         // slots can be serviced later without creating unbounded work.
-        return rendered-outputs_at_tick<2&&elapsed>=0&&elapsed+2*cost<tick&&
-            cost<=tick*.18&&relative_period+cost/tick<=1.30;
+        const unsigned slots=target==60?4:2;
+        return rendered-outputs_at_tick<slots&&elapsed>=0&&elapsed+2*cost<tick&&
+            cost<=tick*.36/slots&&relative_period+cost/tick<=1.30;
     }
 
     void observe(double interval,double nominal){
