@@ -200,7 +200,7 @@ static bool install_foot(){
 static void __cdecl world_projected(void*cpu){
     uint32_t sp=0,count=0;memcpy(&sp,(BYTE*)cpu+0x2c,4);
     bool valid=enabled&&display_settings.wide&&sp<=UINT32_MAX-8&&
-        (deck_renderer?terrain_count(sp+4,count):fetch(sp+4,&count,4))&&count>0&&count<=4096;
+        terrain_count(sp+4,count)&&count>0&&count<=4096;
     world_original(cpu);
     if(!valid)return;
     const int margin=world_margin()+int(std::ceil(4*turn_guard(width,height,448)));
@@ -208,7 +208,7 @@ static void __cdecl world_projected(void*cpu){
     for(uint32_t i=0;i<count;){
         const uint32_t addr=engine_layout->terrain_points+8*i;
         const uint32_t n=std::min(count-i,(4096u-(addr&4095u))/8u);
-        auto point=deck_renderer?terrain_points(addr,8*n,writable):(int16_t*)writable_guest(addr,8*n);
+        auto point=terrain_points(addr,8*n,writable);
         if(!point||!n)break;
         // Bit zero is the native horizontal visibility bit. Its original
         // interval is [0,2560); retain the original near and vertical flags.
@@ -249,7 +249,7 @@ static bool install_world(){
     // skip the old horizontal rejection only. Vertical/depth branches follow.
     const auto& legacy=engine_layout->terrain_branches;
     for(auto&b:legacy)if(memcmp((BYTE*)engine+b.rva,b.bytes,6))return false;
-    if(deck_renderer)identify_terrain_page_table();
+    identify_terrain_page_table();
     for(auto&b:legacy){auto p=(BYTE*)engine+b.rva;DWORD old,tmp;
         if(!VirtualProtect(p,6,PAGE_EXECUTE_READWRITE,&old))return false;
         memset(p,0x90,6);FlushInstructionCache(GetCurrentProcess(),p,6);VirtualProtect(p,6,old,&tmp);}
